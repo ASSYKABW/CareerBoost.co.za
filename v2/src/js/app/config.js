@@ -13,7 +13,11 @@
       forceLocal: false,
       // Show Google + LinkedIn sign-in buttons. Set to true AFTER you've
       // configured those providers in the Supabase Dashboard.
-      oauthEnabled: false,
+      // Phase 4: enabled by default — Google OAuth is the highest-leverage
+      // conversion lift. Disable here if you haven't configured providers yet.
+      oauthEnabled: true,
+      // Which OAuth providers to surface on auth + landing CTAs.
+      oauthProviders: ["google"],
       // LinkedIn-style listings via Google Programmable Search (Custom Search JSON
       // API). Set GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX on the external-search and
       // company-intel-search Edge Functions; disable here if you do not want the extra call each search.

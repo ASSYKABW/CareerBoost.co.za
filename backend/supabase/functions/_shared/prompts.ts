@@ -201,11 +201,23 @@ export const prompts: Record<Skill, PromptSpec> = {
   "interview-score": {
     systemStable:
       "You are an interview assessor. Score the candidate's answer on " +
-      "clarity, structure (STAR), evidence, and measurable impact. Be fair " +
-      "but honest." + JSON_ONLY +
-      ' Schema: { "score": number (0-100), "strengths": string[], "improvements": string[] }' +
+      "STAR structure (Situation, Task, Action, Result), clarity, and " +
+      "measurable impact. Be fair but honest. Each STAR letter is scored " +
+      "0-100 based on whether the candidate clearly addressed THAT specific " +
+      "element of the answer. If the candidate skipped Situation entirely, " +
+      "set situation to a low score (0-25) and call it out in `improvements`. " +
+      "If the answer was almost all Action with no measurable Result, drop " +
+      "the result score accordingly. The overall `score` should be a holistic " +
+      "weighted read across all four letters + clarity, NOT a simple average." +
+      JSON_ONLY +
+      ' Schema: { "score": number (0-100), ' +
+      '"situation": number (0-100), "task": number (0-100), ' +
+      '"action": number (0-100), "result": number (0-100), ' +
+      '"strengths": string[], "improvements": string[] }' +
       " Provide 2-4 strengths and 2-4 improvements. Each item should be a " +
-      "single specific sentence.",
+      "single specific sentence. When a STAR letter is weak, the corresponding " +
+      "improvement should explicitly name that letter (e.g. \"Add a Result: " +
+      "what was the measurable outcome?\").",
     userTemplate: (input) => {
       const question = pick(input, ["question"]);
       const answer = pick(input, ["answer"]);

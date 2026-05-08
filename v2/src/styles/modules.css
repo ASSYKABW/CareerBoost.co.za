@@ -2712,6 +2712,159 @@
   font-weight: 700;
 }
 
+/* Phase 4: STAR sub-score bars on interview-score result panel. */
+.star-bars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 12px 0 16px;
+}
+@media (max-width: 540px) {
+  .star-bars { grid-template-columns: 1fr; }
+}
+.star-bar {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.star-bar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.star-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-weight: 700;
+  background: rgba(34, 227, 255, 0.12);
+  color: #9ef8ff;
+}
+.star-name {
+  flex: 1;
+  color: var(--color-text-muted);
+}
+.star-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.star-bar-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.star-bar-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22e3ff, #b06bff);
+}
+.star-bar--green .star-bar-track i { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.star-bar--warning .star-bar-track i { background: linear-gradient(90deg, #f5a524, #fbbf24); }
+.star-bar--rose .star-bar-track i { background: linear-gradient(90deg, #ef4855, #ff6b78); }
+
+/* Phase 4: pipeline bulk-action bar (sticky, only visible when ≥1 selected). */
+.pipeline-bulkbar {
+  position: sticky;
+  top: 70px;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 12px 0 14px;
+  border-radius: 12px;
+  background: rgba(34, 227, 255, 0.08);
+  border: 1px solid rgba(34, 227, 255, 0.22);
+  backdrop-filter: blur(6px);
+}
+.pipeline-bulkbar-summary {
+  font-size: 13px;
+  color: var(--color-text);
+}
+.pipeline-bulkbar-summary strong {
+  color: #9ef8ff;
+  margin-right: 4px;
+}
+.pipeline-bulkbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.pipeline-bulkbar-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-right: 4px;
+}
+.pipeline-bulkbar-delete {
+  margin-left: auto;
+  color: #ffb9c5 !important;
+  border-color: rgba(239, 72, 85, 0.3) !important;
+}
+.pipeline-bulkbar-clear {
+  color: var(--color-text-muted);
+}
+
+/* Per-card multi-select checkbox. */
+.app-card-select {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  cursor: pointer;
+}
+.app-card-select input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #22e3ff;
+}
+.app-card.is-selected {
+  outline: 2px solid rgba(34, 227, 255, 0.5);
+  outline-offset: -2px;
+}
+
+/* Confidence chip on conversion rows (analytics). */
+.conv-confidence {
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 2px 7px;
+  letter-spacing: 0.02em;
+}
+
+/* Onboarding upload row. */
+.ob-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 6px;
+}
+.ob-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.ob-upload-or {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.ob-parsed-note {
+  margin: 4px 0 8px;
+}
+
 .job-search-history-workspace {
   max-width: min(920px, 100%);
 }

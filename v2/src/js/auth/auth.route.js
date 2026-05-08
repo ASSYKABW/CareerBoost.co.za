@@ -113,17 +113,22 @@
           '<p class="auth-subtitle">' + subtitle + "</p>" +
           renderBackendOffBanner() +
 
-          // OAuth buttons are hidden until Google/LinkedIn are configured in
-          // the Supabase Dashboard. To re-enable, set window.CB_CONFIG.oauthEnabled = true
-          // in config.js (or flip the check below).
+          // OAuth buttons are gated by window.CB_CONFIG.oauthEnabled +
+          // oauthProviders array. Phase 4 ships google as the default
+          // provider; add "linkedin_oidc" to oauthProviders once LinkedIn
+          // OAuth is configured in the Supabase Dashboard.
           (backendOn && viewState.mode !== "forgot" && window.CB_CONFIG && window.CB_CONFIG.oauthEnabled
             ? '<div class="auth-oauth">' +
-              '<button class="btn-ghost oauth-btn" data-oauth="google" type="button">' +
-                '<i class="fa-brands fa-google"></i> Continue with Google' +
-              '</button>' +
-              '<button class="btn-ghost oauth-btn" data-oauth="linkedin_oidc" type="button">' +
-                '<i class="fa-brands fa-linkedin-in"></i> Continue with LinkedIn' +
-              '</button>' +
+              ((window.CB_CONFIG.oauthProviders || ["google"]).indexOf("google") >= 0
+                ? '<button class="btn-ghost oauth-btn" data-oauth="google" type="button">' +
+                  '<i class="fa-brands fa-google"></i> Continue with Google' +
+                  '</button>'
+                : "") +
+              ((window.CB_CONFIG.oauthProviders || ["google"]).indexOf("linkedin_oidc") >= 0
+                ? '<button class="btn-ghost oauth-btn" data-oauth="linkedin_oidc" type="button">' +
+                  '<i class="fa-brands fa-linkedin-in"></i> Continue with LinkedIn' +
+                  '</button>'
+                : "") +
               '</div>' +
               '<div class="auth-divider"><span>or use email</span></div>'
             : "") +
@@ -167,11 +172,36 @@
         await window.CBV2.auth.signInWithPassword(viewState.email, viewState.password);
         window.location.hash = "#/dashboard";
       } else if (viewState.mode === "signup") {
+        // Phase 4: auto-sign-in flow.
+        // 1. Sign up. If the project has email-confirmation OFF, signUp returns
+        //    a session immediately and the user is already authed → straight to
+        //    dashboard. If confirmation is ON, signUp returns user-without-session
+        //    and we show "Check your inbox".
+        // 2. As a belt-and-braces step, attempt signInWithPassword right after.
+        //    On confirmation-OFF projects this is a no-op (already signed in).
+        //    On confirmation-ON projects it predictably fails with "Email not
+        //    confirmed" — we catch that and fall through to the inbox view.
         await window.CBV2.auth.signUpWithPassword(
           viewState.email, viewState.password, viewState.fullName
         );
-        viewState.info = "Account created! You can sign in now.";
-        viewState.mode = "signin";
+        let signedIn = false;
+        try {
+          await window.CBV2.auth.signInWithPassword(viewState.email, viewState.password);
+          signedIn = true;
+        } catch (signInErr) {
+          // Most common failure here: "Email not confirmed". Fall through.
+          const msg = (signInErr && signInErr.message) || "";
+          if (!/not\s+confirmed|verify|confirm/i.test(msg)) {
+            // Unexpected failure — surface it. User can still sign in manually
+            // once they receive the confirmation email.
+          }
+        }
+        if (signedIn) {
+          window.location.hash = "#/dashboard";
+        } else {
+          viewState.info = "Account created. Check your inbox for a confirmation email, then sign in.";
+          viewState.mode = "signin";
+        }
       } else if (viewState.mode === "forgot") {
         await window.CBV2.auth.sendPasswordReset(viewState.email);
         viewState.info = "Check your email for a reset link.";

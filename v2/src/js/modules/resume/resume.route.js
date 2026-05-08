@@ -4411,8 +4411,11 @@ Built analytics dashboard used by 3 teams"></textarea>
                 <button class="btn-secondary" type="button" id="export-download-docx" ${view.exportBusy ? "disabled" : ""}>
                   <i class="fa-solid fa-file-word"></i> Download Word
                 </button>
+                <button class="btn-ghost" type="button" id="export-download-txt" title="Plain text — best format for ATS uploads">
+                  <i class="fa-solid fa-file-lines"></i> Plain text (.txt)
+                </button>
               </div>
-              <p class="muted export-tip"><i class="fa-solid fa-circle-info"></i> PDF opens your browser's print dialog — choose "Save as PDF" as the destination.</p>
+              <p class="muted export-tip"><i class="fa-solid fa-circle-info"></i> PDF opens your browser's print dialog — choose "Save as PDF" as the destination. <strong>.txt</strong> is the most reliable format for ATS uploads.</p>
             </aside>
           </div>
         </div>
@@ -4829,6 +4832,9 @@ Built analytics dashboard used by 3 teams"></textarea>
     if (pdfBtn) pdfBtn.addEventListener("click", function () { exportAsPdf(); });
     const docxBtn = document.getElementById("export-download-docx");
     if (docxBtn) docxBtn.addEventListener("click", function () { exportAsDocx(); });
+    // Phase 4: plain-text (.txt) export for ATS uploads.
+    const txtBtn = document.getElementById("export-download-txt");
+    if (txtBtn) txtBtn.addEventListener("click", function () { exportAsTxt(); });
 
     // ESC dismiss
     function onKey(e) {
@@ -4893,6 +4899,29 @@ Built analytics dashboard used by 3 teams"></textarea>
       rerender();
     }
   }
+
+  // Phase 4: plain-text (.txt) export — most reliable format for ATS systems
+  // that re-parse uploaded resumes. Skips the docx/PDF preflight (formatting
+  // doesn't apply to plain text).
+  function exportAsTxt() {
+    const r = currentResume();
+    const ex = exportMod();
+    if (!r || !ex || typeof ex.downloadTxt !== "function") {
+      toast("error", "Plain-text export not available.");
+      return;
+    }
+    try {
+      view.exportError = "";
+      ex.downloadTxt(r, view.exportTemplate);
+      toast("success", "Plain-text resume downloaded — best for ATS uploads.");
+    } catch (err) {
+      view.exportError = (err && err.message) || "Plain-text export failed.";
+      toast("error", view.exportError);
+      rerender();
+    }
+  }
+  // Expose for binding from the export panel.
+  window.CBV2.resume._exportAsTxt = exportAsTxt;
 
   // ---------------------------------------------------------------------------
   // Export

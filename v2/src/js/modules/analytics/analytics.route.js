@@ -630,6 +630,19 @@
     const st = getSt();
     const rows = rates.map(function (r) {
       const width = Math.min(100, r.rate);
+      // Phase 4: confidence chip — small samples make percentages misleading.
+      // Hide rate entirely below 3 (statistical noise), warn from 3-9, OK
+      // from 10+. The "n=N" hint contextualizes every reported rate.
+      const n = r.enteredFrom || 0;
+      const lowSample = n < 10;
+      const tooFew = n < 3;
+      const sampleChip = tooFew
+        ? '<span class="chip rose conv-confidence" title="Fewer than 3 applications passed through this stage — rate is statistical noise.">n=' + n + ' · low data</span>'
+        : lowSample
+        ? '<span class="chip warning conv-confidence" title="Small sample — treat this rate as directional, not predictive.">n=' + n + ' · small sample</span>'
+        : '<span class="chip green conv-confidence" title="Reliable sample size.">n=' + n + '</span>';
+      const rateText = tooFew ? '—' : r.rate + '%';
+      const fillWidth = tooFew ? 0 : width;
       return (
         '<div class="conv-row">' +
           '<span class="conv-label">' +
@@ -637,9 +650,10 @@
             ' <i class="fa-solid fa-arrow-right conv-arrow"></i> ' +
             '<span class="status-dot ' + toneOf(r.to) + '"></span> ' + st(STAGE_LABEL[r.to]) +
           '</span>' +
-          '<div class="conv-track"><span class="conv-fill" style="width:' + width + '%;background:' + STAGE_COLOR[r.to] + '"></span></div>' +
-          '<span class="conv-rate">' + r.rate + '%</span>' +
+          '<div class="conv-track"><span class="conv-fill" style="width:' + fillWidth + '%;background:' + STAGE_COLOR[r.to] + '"></span></div>' +
+          '<span class="conv-rate">' + rateText + '</span>' +
           '<span class="conv-count">' + r.enteredTo + '/' + r.enteredFrom + '</span>' +
+          sampleChip +
         '</div>'
       );
     }).join("");

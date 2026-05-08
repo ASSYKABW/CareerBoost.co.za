@@ -281,23 +281,40 @@
     if (viewState.scoring) {
       scoreBlock = '<p class="ai-meta">Scoring with STAR rubric...</p>';
     } else if (viewState.score) {
-      const strengths = viewState.score.data.strengths
+      const data = viewState.score.data;
+      const strengths = data.strengths
         .map(st)
-        .map(function (s) {
-          return "<li>" + s + "</li>";
-        })
+        .map(function (s) { return "<li>" + s + "</li>"; })
         .join("");
-      const improvements = viewState.score.data.improvements
+      const improvements = data.improvements
         .map(st)
-        .map(function (s) {
-          return "<li>" + s + "</li>";
-        })
+        .map(function (s) { return "<li>" + s + "</li>"; })
         .join("");
+      // Phase 4: STAR sub-score bars. Render only when at least one sub-score
+      // is present (older envelopes without STAR fields fall back to single
+      // overall score, so this is non-breaking).
+      const stars = ["situation", "task", "action", "result"];
+      const hasStar = stars.some(function (k) { return typeof data[k] === "number"; });
+      let starHtml = "";
+      if (hasStar) {
+        starHtml = '<div class="star-bars">' +
+          stars.map(function (key) {
+            const v = typeof data[key] === "number" ? Math.round(data[key]) : 0;
+            const label = key.charAt(0).toUpperCase() + key.slice(1);
+            const tone = v >= 75 ? "green" : v >= 50 ? "warning" : "rose";
+            return (
+              '<div class="star-bar star-bar--' + tone + '">' +
+                '<div class="star-bar-head"><span class="star-letter">' + key.charAt(0).toUpperCase() + '</span><span class="star-name">' + label + '</span><span class="star-value">' + v + '</span></div>' +
+                '<div class="star-bar-track"><i style="width:' + Math.max(2, v) + '%"></i></div>' +
+              '</div>'
+            );
+          }).join("") +
+          '</div>';
+      }
       scoreBlock =
         '<div class="score-panel">' +
-        '<h3 class="ai-headline">Score ' +
-        Math.round(viewState.score.data.score) +
-        "/100</h3>" +
+        '<h3 class="ai-headline">Score ' + Math.round(data.score) + "/100</h3>" +
+        starHtml +
         '<p class="ai-meta">Strengths</p><ul class="task-list">' +
         strengths +
         '</ul><p class="ai-meta">Improvements</p><ul class="task-list">' +

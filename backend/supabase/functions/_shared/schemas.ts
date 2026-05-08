@@ -47,7 +47,14 @@ export const schemas: Record<Skill, Validator> = {
   "interview-coach": (d) =>
     isObj(d) && isArr(d.questions) && isArr(d.feedback),
   "interview-score": (d) =>
-    isObj(d) && isNum(d.score) && isArr(d.strengths) && isArr(d.improvements),
+    isObj(d) && isNum(d.score) && isArr(d.strengths) && isArr(d.improvements) &&
+    // Phase 4: STAR sub-scores are optional for backwards compatibility — old
+    // server responses without them still validate. When present they must be
+    // numeric.
+    (!("situation" in d) || isNum(d.situation)) &&
+    (!("task" in d)      || isNum(d.task)) &&
+    (!("action" in d)    || isNum(d.action)) &&
+    (!("result" in d)    || isNum(d.result)),
   "interview-session-step": (d) =>
     isObj(d) &&
     isStr(d.message) &&

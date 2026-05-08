@@ -24,7 +24,9 @@
     filterPriority: "all",
     focus: "all",
     sort: "attention",
-    search: ""
+    search: "",
+    // Phase 4: bulk-action multi-select.
+    selectedIds: {} // map of appId -> true
   };
 
   function getSt() {
@@ -595,9 +597,13 @@
       return '<span class="pipeline-ready-chip ' + escAttr(chip.tone) + '">' + st(chip.label) + "</span>";
     }).join("");
     const route = primaryRouteFor(app);
+    const checked = viewState.selectedIds[app.id] ? " checked" : "";
     return `
-      <article class="app-card pipeline-app-card" draggable="true" data-app-id="${escAttr(app.id)}" tabindex="0" role="button" aria-label="Open ${escAttr(app.company)} - ${escAttr(app.role)}">
+      <article class="app-card pipeline-app-card${checked ? " is-selected" : ""}" draggable="true" data-app-id="${escAttr(app.id)}" tabindex="0" role="button" aria-label="Open ${escAttr(app.company)} - ${escAttr(app.role)}">
         <div class="app-card-head">
+          <label class="app-card-select" title="Select for bulk actions">
+            <input type="checkbox" data-action="select" data-app-id="${escAttr(app.id)}"${checked} aria-label="Select ${escAttr(app.company)}" />
+          </label>
           <div class="app-card-id">
             ${logo}
             <strong>${st(app.company)}</strong>
@@ -746,6 +752,7 @@
         ${renderPriorityActions(apps)}
         ${renderMomentumStrip(apps, counts)}
         ${renderToolbar()}
+        ${renderBulkActionBar(apps)}
         <section class="pipeline-board-shell">
           <div class="pipeline-section-heading">
             <div>
@@ -761,6 +768,46 @@
         ${renderAddForm()}
       </section>
     `;
+  }
+
+  // Phase 4: floating bulk-action bar. Appears only when ≥1 card is selected.
+  // Lets users move/delete several apps at once instead of card-by-card.
+  function renderBulkActionBar(apps) {
+    const ids = Object.keys(viewState.selectedIds).filter(function (id) {
+      return viewState.selectedIds[id];
+    });
+    if (!ids.length) return "";
+    const st = getSt();
+    // Cull selected IDs that no longer exist (defensive — e.g. after a delete).
+    const liveSet = {};
+    apps.forEach(function (a) { liveSet[a.id] = true; });
+    const live = ids.filter(function (id) { return liveSet[id]; });
+    if (live.length !== ids.length) {
+      ids.forEach(function (id) { if (!liveSet[id]) delete viewState.selectedIds[id]; });
+    }
+    const stageButtons = STAGES.map(function (s) {
+      return (
+        '<button type="button" class="btn-ghost btn-sm bulk-stage" data-bulk-stage="' + escAttr(s.id) + '" title="Move ' + live.length + ' to ' + escAttr(s.label) + '">' +
+          '<i class="fa-solid ' + escAttr(s.icon) + '"></i> ' + st(s.label) +
+        '</button>'
+      );
+    }).join("");
+    return (
+      '<aside class="pipeline-bulkbar" role="toolbar" aria-label="Bulk actions">' +
+        '<div class="pipeline-bulkbar-summary">' +
+          '<strong>' + live.length + '</strong> selected' +
+        '</div>' +
+        '<div class="pipeline-bulkbar-actions">' +
+          '<span class="pipeline-bulkbar-label">Move to:</span>' +
+          stageButtons +
+          '<button type="button" class="btn-ghost btn-sm pipeline-bulkbar-priority" data-bulk-priority="high" title="Set high priority"><i class="fa-solid fa-bolt"></i> High</button>' +
+          '<button type="button" class="btn-ghost btn-sm pipeline-bulkbar-priority" data-bulk-priority="medium" title="Set medium priority"><i class="fa-solid fa-bolt"></i> Medium</button>' +
+          '<button type="button" class="btn-ghost btn-sm pipeline-bulkbar-priority" data-bulk-priority="low" title="Set low priority"><i class="fa-solid fa-bolt"></i> Low</button>' +
+          '<button type="button" class="btn-ghost btn-sm pipeline-bulkbar-delete" data-bulk-delete="1"><i class="fa-solid fa-trash"></i> Delete</button>' +
+          '<button type="button" class="btn-ghost btn-sm pipeline-bulkbar-clear" data-bulk-clear="1"><i class="fa-solid fa-xmark"></i> Clear</button>' +
+        '</div>' +
+      '</aside>'
+    );
   }
 
   function bindDragAndDrop() {
@@ -960,6 +1007,86 @@
     }
   }
 
+  // Phase 4: bulk-action wiring. Per-card checkbox toggles selection state;
+  // the floating bar at the top of the kanban dispatches the chosen action
+  // against every selected app in one batch then re-renders.
+  function bindBulkActions() {
+    document.querySelectorAll('input[data-action="select"][data-app-id]').forEach(function (cb) {
+      cb.addEventListener("click", function (event) {
+        // Stop the click from bubbling to the card-open handler.
+        event.stopPropagation();
+      });
+      cb.addEventListener("change", function () {
+        const id = cb.getAttribute("data-app-id");
+        if (!id) return;
+        if (cb.checked) viewState.selectedIds[id] = true;
+        else delete viewState.selectedIds[id];
+        window.CBV2.renderCurrentRoute();
+      });
+    });
+
+    function selectedAppIds() {
+      return Object.keys(viewState.selectedIds).filter(function (id) {
+        return viewState.selectedIds[id];
+      });
+    }
+
+    document.querySelectorAll("[data-bulk-stage]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const stage = btn.getAttribute("data-bulk-stage");
+        const ids = selectedAppIds();
+        if (!stage || !ids.length) return;
+        ids.forEach(function (id) {
+          window.CBV2.store.updateApplicationStage(id, stage);
+          // Reuse Phase 2 stage automation so bulk moves also schedule events.
+          autoScheduleEventsForStage(id, stage);
+        });
+        if (window.CBV2.toast) window.CBV2.toast.success("Moved " + ids.length + " to " + stage + ".");
+        viewState.selectedIds = {};
+        window.CBV2.renderCurrentRoute();
+      });
+    });
+
+    document.querySelectorAll("[data-bulk-priority]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const pri = btn.getAttribute("data-bulk-priority");
+        const ids = selectedAppIds();
+        if (!pri || !ids.length) return;
+        const store = window.CBV2.store;
+        ids.forEach(function (id) {
+          if (typeof store.updateApplication === "function") {
+            store.updateApplication(id, { priority: pri });
+          }
+        });
+        if (window.CBV2.toast) window.CBV2.toast.success("Set priority " + pri + " on " + ids.length + ".");
+        viewState.selectedIds = {};
+        window.CBV2.renderCurrentRoute();
+      });
+    });
+
+    const deleteBtn = document.querySelector("[data-bulk-delete]");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", function () {
+        const ids = selectedAppIds();
+        if (!ids.length) return;
+        const ok = confirm("Delete " + ids.length + " application" + (ids.length === 1 ? "" : "s") + "? This can't be undone.");
+        if (!ok) return;
+        ids.forEach(function (id) { window.CBV2.store.deleteApplication(id); });
+        if (window.CBV2.toast) window.CBV2.toast.success("Deleted " + ids.length + " application" + (ids.length === 1 ? "" : "s") + ".");
+        viewState.selectedIds = {};
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+
+    const clearBtn = document.querySelector("[data-bulk-clear]");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        viewState.selectedIds = {};
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+  }
+
   window.CBV2.routes.applications = renderView;
   window.CBV2.afterRender.applications = function (params) {
     bindDragAndDrop();
@@ -968,6 +1095,7 @@
     bindRoleHandoffs();
     bindPipelineControls();
     bindAddForm();
+    bindBulkActions();
     if (params && params.add === "1") {
       const wrap = document.getElementById("add-app-form-wrap");
       if (wrap) {

@@ -31,8 +31,44 @@
     resumeSkipped: false,
     boards: ["remotive", "arbeitnow", "jobicy", "muse"],
     busy: false,
-    error: ""
+    error: "",
+    parsing: false,
+    parsedFromFile: ""
   };
+
+  // Phase 4: persist wizard state to localStorage so a tab refresh on Step 2
+  // doesn't wipe Step 1 inputs. Cleared on finish() success.
+  const WIZARD_STATE_KEY = "cbv2_onboarding_wizard_v1";
+  function saveWizardState() {
+    try {
+      const snap = {
+        step: viewState.step,
+        targetRole: viewState.targetRole,
+        location: viewState.location,
+        remotePref: viewState.remotePref,
+        industries: viewState.industries.slice(),
+        resumeText: viewState.resumeText,
+        resumeSkipped: viewState.resumeSkipped,
+        boards: viewState.boards.slice(),
+        savedAt: Date.now()
+      };
+      localStorage.setItem(WIZARD_STATE_KEY, JSON.stringify(snap));
+    } catch (e) { /* ignore */ }
+  }
+  function loadWizardState() {
+    try {
+      const raw = localStorage.getItem(WIZARD_STATE_KEY);
+      if (!raw) return null;
+      const snap = JSON.parse(raw);
+      if (!snap || typeof snap !== "object") return null;
+      // Expire after 7 days — stale onboarding state is a code smell.
+      if (typeof snap.savedAt !== "number" || Date.now() - snap.savedAt > 7 * 86400000) return null;
+      return snap;
+    } catch (e) { return null; }
+  }
+  function clearWizardState() {
+    try { localStorage.removeItem(WIZARD_STATE_KEY); } catch (e) { /* ignore */ }
+  }
 
   function st() { return window.CBV2.sanitizeText; }
   function s(x) { return st()(x); }
@@ -126,13 +162,31 @@
   }
 
   function renderStep2() {
+    const parsedNote = viewState.parsedFromFile
+      ? '<p class="ai-meta ob-parsed-note"><i class="fa-solid fa-circle-check" style="color:#22c55e"></i> Imported from <strong>' + s(viewState.parsedFromFile) + '</strong> — review and edit below if needed.</p>'
+      : "";
+    const parsingNote = viewState.parsing
+      ? '<p class="ai-meta"><i class="fa-solid fa-circle-notch fa-spin"></i> Reading your file…</p>'
+      : "";
     return (
-      '<h2>Paste your current resume.</h2>' +
+      '<h2>Paste or upload your current resume.</h2>' +
       '<p class="welcome-lead">We keep it private — only you see it. The AI uses this as grounding for every tailored resume and cover letter. You can skip and add it later.</p>' +
+
+      // Phase 4: file upload alternative to paste. Routes through the same
+      // resume.parser.js that the Resume Lab uses, so PDF/DOCX/TXT all work.
+      '<div class="ob-upload-row">' +
+        '<label class="btn-secondary ob-upload-btn">' +
+          '<i class="fa-solid fa-arrow-up-from-bracket"></i> Upload PDF or DOCX' +
+          '<input id="ob-resume-file" type="file" accept=".pdf,.docx,.txt,.rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/rtf" hidden />' +
+        '</label>' +
+        '<span class="ai-meta ob-upload-or">or paste below</span>' +
+      '</div>' +
+      parsingNote +
+      parsedNote +
 
       '<label class="ob-field">' +
         '<span>Base resume (plain text)</span>' +
-        '<textarea id="ob-resume" rows="12" placeholder="Paste your resume here, or skip for now.">' + s(viewState.resumeText) + '</textarea>' +
+        '<textarea id="ob-resume" rows="12" placeholder="Paste your resume here, or upload a file above.">' + s(viewState.resumeText) + '</textarea>' +
       '</label>' +
       '<p class="ai-meta"><i class="fa-solid fa-lock"></i> Stored encrypted in your account · never used to train models</p>'
     );
@@ -306,6 +360,8 @@
         window.CBV2.toast.success("You're all set — welcome to CareerBoost!");
       }
 
+      // Phase 4: wizard finished — drop the persisted snapshot.
+      clearWizardState();
       window.location.hash = "#/dashboard";
     } catch (err) {
       viewState.error = (err && err.message) || "Couldn't save your setup. Please try again.";
@@ -319,12 +375,14 @@
     if (viewState.step === 1) {
       if (!validateStep1()) { renderRoute(); return; }
       viewState.step = 2;
+      saveWizardState();
       renderRoute();
       return;
     }
     if (viewState.step === 2) {
       readStep2();
       viewState.step = 3;
+      saveWizardState();
       renderRoute();
       return;
     }
@@ -335,13 +393,16 @@
     if (viewState.step === 1 || viewState.busy) return;
     if (viewState.step === 2) readStep2();
     viewState.step -= 1;
+    saveWizardState();
     renderRoute();
   }
 
   function onSkipResume() {
     viewState.resumeText = "";
     viewState.resumeSkipped = true;
+    viewState.parsedFromFile = "";
     viewState.step = 3;
+    saveWizardState();
     renderRoute();
   }
 
@@ -349,9 +410,16 @@
     const idx = viewState.industries.indexOf(name);
     if (idx >= 0) viewState.industries.splice(idx, 1);
     else {
-      if (viewState.industries.length >= 3) return;
+      if (viewState.industries.length >= 3) {
+        // Phase 4: silent cap → soft toast for clearer feedback.
+        if (window.CBV2.toast && typeof window.CBV2.toast.info === "function") {
+          window.CBV2.toast.info("Pick up to 3 industries — deselect one to swap.");
+        }
+        return;
+      }
       viewState.industries.push(name);
     }
+    saveWizardState();
     renderRoute();
   }
 
@@ -359,7 +427,39 @@
     const idx = viewState.boards.indexOf(id);
     if (idx >= 0) viewState.boards.splice(idx, 1);
     else viewState.boards.push(id);
+    saveWizardState();
     renderRoute();
+  }
+
+  async function onResumeFile(file) {
+    if (!file) return;
+    const parser = window.CBV2 && window.CBV2.resume && window.CBV2.resume.parser;
+    if (!parser || typeof parser.extractText !== "function") {
+      viewState.error = "Resume parser is loading — please paste the text manually.";
+      renderRoute();
+      return;
+    }
+    viewState.parsing = true;
+    viewState.error = "";
+    viewState.parsedFromFile = "";
+    renderRoute();
+    try {
+      const result = await parser.extractText(file);
+      const text = (result && result.text) ? String(result.text).trim() : "";
+      if (!text) {
+        viewState.error = "We couldn't extract any text from that file. Try pasting it manually.";
+      } else {
+        viewState.resumeText = text;
+        viewState.parsedFromFile = file.name || "uploaded file";
+        viewState.resumeSkipped = false;
+        saveWizardState();
+      }
+    } catch (err) {
+      viewState.error = (err && err.message) || "Couldn't read that file.";
+    } finally {
+      viewState.parsing = false;
+      renderRoute();
+    }
   }
 
   function bindHandlers() {
@@ -382,14 +482,40 @@
     });
 
     // Hydrate text field changes on unload so we don't lose input between steps.
+    // Also persist after each input so a refresh on Step 2 doesn't lose Step 1.
     const role = document.getElementById("ob-role");
-    if (role) role.addEventListener("input", function () { viewState.targetRole = role.value; });
+    if (role) role.addEventListener("input", function () {
+      viewState.targetRole = role.value;
+      saveWizardState();
+    });
     const loc = document.getElementById("ob-location");
-    if (loc) loc.addEventListener("input", function () { viewState.location = loc.value; });
+    if (loc) loc.addEventListener("input", function () {
+      viewState.location = loc.value;
+      saveWizardState();
+    });
     const rem = document.getElementById("ob-remote");
-    if (rem) rem.addEventListener("change", function () { viewState.remotePref = rem.value; });
+    if (rem) rem.addEventListener("change", function () {
+      viewState.remotePref = rem.value;
+      saveWizardState();
+    });
     const res = document.getElementById("ob-resume");
-    if (res) res.addEventListener("input", function () { viewState.resumeText = res.value; });
+    if (res) res.addEventListener("input", function () {
+      viewState.resumeText = res.value;
+      // If user types over the parsed file content, drop the "imported from" badge.
+      if (viewState.parsedFromFile) viewState.parsedFromFile = "";
+      saveWizardState();
+    });
+
+    // Phase 4: file upload handler.
+    const fileInput = document.getElementById("ob-resume-file");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        const file = fileInput.files && fileInput.files[0];
+        onResumeFile(file);
+        // Reset so the same file can be re-uploaded if needed.
+        try { fileInput.value = ""; } catch (e) { /* ignore */ }
+      });
+    }
 
     // Enter on step 1 role input advances.
     if (role) {
@@ -406,7 +532,25 @@
   }
 
   // Pre-hydrate from any existing profile (so re-entering edits don't wipe).
+  // Phase 4: also restore any in-progress wizard state from localStorage —
+  // a tab refresh on Step 2 used to wipe Step 1; now it doesn't.
   async function hydrateFromProfile() {
+    // Step 1: restore wizard state IF there's anything saved (this takes
+    // priority over server-side preferences since it represents the user's
+    // most recent edit).
+    const wizard = loadWizardState();
+    if (wizard) {
+      if (typeof wizard.step === "number") viewState.step = wizard.step;
+      if (typeof wizard.targetRole === "string") viewState.targetRole = wizard.targetRole;
+      if (typeof wizard.location === "string") viewState.location = wizard.location;
+      if (typeof wizard.remotePref === "string") viewState.remotePref = wizard.remotePref;
+      if (Array.isArray(wizard.industries)) viewState.industries = wizard.industries.slice(0, 3);
+      if (typeof wizard.resumeText === "string") viewState.resumeText = wizard.resumeText;
+      if (typeof wizard.resumeSkipped === "boolean") viewState.resumeSkipped = wizard.resumeSkipped;
+      if (Array.isArray(wizard.boards) && wizard.boards.length) viewState.boards = wizard.boards;
+    }
+    // Step 2: fill in any blanks from the server-side profile (so a returning
+    // user without a wizard snapshot still sees their preferences populated).
     try {
       const p = await fetchProfile();
       if (p && p.preferences) {
@@ -416,12 +560,18 @@
         const firstRole = roleProfile && Array.isArray(roleProfile.targetTitles) && roleProfile.targetTitles[0]
           ? roleProfile.targetTitles[0]
           : "";
-        if (pref.targetRole || firstRole) viewState.targetRole = pref.targetRole || firstRole;
-        if (pref.location || (jp && jp.location)) viewState.location = pref.location || jp.location;
-        if (pref.remote) viewState.remotePref = pref.remote;
-        else if (jp && typeof jp.remoteOnly === "boolean") viewState.remotePref = jp.remoteOnly ? "remote" : "any";
-        if (Array.isArray(pref.industries)) viewState.industries = pref.industries.slice(0, 3);
-        if (Array.isArray(pref.boards) && pref.boards.length) viewState.boards = pref.boards;
+        if (!viewState.targetRole && (pref.targetRole || firstRole)) viewState.targetRole = pref.targetRole || firstRole;
+        if (!viewState.location && (pref.location || (jp && jp.location))) viewState.location = pref.location || jp.location;
+        if (viewState.remotePref === "any" && pref.remote) viewState.remotePref = pref.remote;
+        else if (viewState.remotePref === "any" && jp && typeof jp.remoteOnly === "boolean") {
+          viewState.remotePref = jp.remoteOnly ? "remote" : "any";
+        }
+        if (!viewState.industries.length && Array.isArray(pref.industries)) {
+          viewState.industries = pref.industries.slice(0, 3);
+        }
+        if (Array.isArray(pref.boards) && pref.boards.length && !wizard) {
+          viewState.boards = pref.boards;
+        }
       }
     } catch (e) { /* ignore */ }
     renderRoute();

@@ -35,11 +35,18 @@
       return Boolean(data && Array.isArray(data.questions) && Array.isArray(data.feedback));
     },
     "interview-score": function (data) {
+      // Phase 4: STAR sub-scores (situation/task/action/result) are optional —
+      // backwards compatible with old server envelopes that don't ship them.
+      const isOptNum = function (v) { return v == null || typeof v === "number"; };
       return Boolean(
         data &&
           typeof data.score === "number" &&
           Array.isArray(data.strengths) &&
-          Array.isArray(data.improvements)
+          Array.isArray(data.improvements) &&
+          isOptNum(data.situation) &&
+          isOptNum(data.task) &&
+          isOptNum(data.action) &&
+          isOptNum(data.result)
       );
     },
     "interview-session-step": function (data) {
