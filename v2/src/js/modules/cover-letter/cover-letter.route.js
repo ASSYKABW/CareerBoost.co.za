@@ -799,6 +799,21 @@
       if (typeof ai.runSkill !== "function") {
         throw new Error("AI orchestrator not available.");
       }
+      // Phase 2: chain jd-analyze → cover-letter-generate when a JD is provided.
+      // The structured analysis (requiredSkills, keywords, responsibilities) gets
+      // injected as `jdAnalyzed` so the cover-letter prompt can echo the JD's
+      // exact priority terms instead of inferring from raw text. The
+      // server-side response cache makes the jd-analyze call free on repeats.
+      if (jobDescription && jobDescription.trim().length > 80) {
+        try {
+          const analysis = await ai.runSkill("jd-analyze", { jd: jobDescription.slice(0, 6000) });
+          if (analysis && analysis.data) {
+            input.jdAnalyzed = analysis.data;
+          }
+        } catch (e) {
+          // Non-fatal — proceed without structured JD analysis.
+        }
+      }
       const result = await ai.runSkill("cover-letter-generate", input);
       if (result && result.data && typeof result.data.body === "string") {
         result.data.body = normalizeDraftLength(result.data.subject, result.data.body, input);

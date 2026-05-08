@@ -1069,22 +1069,47 @@
     const desc = snippet(job.descriptionText, 140);
     const ri = job.roleIntent;
     const reasons = ri && Array.isArray(ri.reasons) ? ri.reasons.filter(Boolean) : [];
-    const explainHtml =
-      isSearchExplainabilityOn() && reasons.length
-        ? '<details class="job-search-fit-details">' +
-          '<summary class="muted">' +
-          st("Why this fit score?") +
-          "</summary>" +
-          '<ul class="job-search-fit-reasons">' +
-          reasons
-            .slice(0, 8)
-            .map(function (r) {
-              return "<li>" + st(r) + "</li>";
-            })
-            .join("") +
-          "</ul>" +
-          "</details>"
-        : "";
+    // Phase 2: AI-driven fit explanation (when an AI score is attached to
+    // this job). Falls back to the regex `roleIntent.reasons` when no AI
+    // score has arrived yet.
+    const ai = job.aiScore;
+    const aiHasScore = ai && typeof ai.score === "number";
+    const aiReasons = ai && Array.isArray(ai.reasons) ? ai.reasons.filter(Boolean) : [];
+    const aiMissing = ai && Array.isArray(ai.missingSkills) ? ai.missingSkills.filter(Boolean) : [];
+    const explainHtml = aiHasScore
+      ? '<details class="job-search-fit-details job-search-fit-details--ai" open>' +
+        '<summary class="muted"><i class="fa-solid fa-robot" aria-hidden="true"></i> ' +
+        st("AI fit · " + ai.score + "/100") +
+        (ai.fitSummary ? " · " + st(ai.fitSummary) : "") +
+        "</summary>" +
+        (aiReasons.length
+          ? '<p class="job-search-fit-label muted">Strengths</p><ul class="job-search-fit-reasons">' +
+            aiReasons.slice(0, 4).map(function (r) { return "<li>" + st(r) + "</li>"; }).join("") +
+            "</ul>"
+          : "") +
+        (aiMissing.length
+          ? '<p class="job-search-fit-label muted">Gaps to address</p><ul class="job-search-fit-reasons">' +
+            aiMissing.slice(0, 4).map(function (r) { return "<li>" + st(r) + "</li>"; }).join("") +
+            "</ul>"
+          : "") +
+        "</details>"
+      : isSearchExplainabilityOn() && reasons.length
+      ? '<details class="job-search-fit-details">' +
+        '<summary class="muted">' +
+        st("Why this fit score?") +
+        "</summary>" +
+        '<ul class="job-search-fit-reasons">' +
+        reasons.slice(0, 8).map(function (r) { return "<li>" + st(r) + "</li>"; }).join("") +
+        "</ul>" +
+        "</details>"
+      : "";
+
+    // AI score chip — replaces (or augments) the regex score chip when available.
+    const aiChipHtml = aiHasScore
+      ? '<span class="chip violet job-search-ai-chip" title="AI match score against your resume"><i class="fa-solid fa-robot" aria-hidden="true"></i> AI ' +
+        st(String(ai.score)) +
+        "</span>"
+      : "";
     const warning = sourceWarningText(job);
     const sourceWarningHtml =
       warning
@@ -1107,7 +1132,8 @@
         "</p>" +
       "</div>" +
       '<div class="job-search-job-card__chips">' +
-      (score != null
+      aiChipHtml +
+      (score != null && !aiHasScore
         ? '<span class="chip ' + chip.cls + '" title="Role targeting score">' + st(String(score)) + " · " + st(chip.text) + "</span>"
         : "") +
       remoteChip +
@@ -1147,6 +1173,11 @@
       '"><i class="fa-solid fa-briefcase" aria-hidden="true"></i> ' +
       (inPipeline ? "In pipeline" : "Pipeline") +
       "</button>" +
+      // Phase 2: Apply-with-AI runs the 4-step workflow already built in
+      // CBJobs.runApplyWorkflow (save → tailor resume → cover letter → interview prep).
+      '<button type="button" class="btn-primary btn-sm" data-apply-workflow="1" data-job-id="' +
+      st(job.id || "") +
+      '"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Apply with AI</button>' +
       "</div>" +
       "</article>"
     );
@@ -1214,6 +1245,129 @@
     const mount = document.getElementById("job-search-results-mount");
     if (!mount) return;
     mount.innerHTML = renderResultsMountInner(getSt());
+  }
+
+  // Phase 2: AI re-rank — runs against the top N visible jobs after each
+  // search completes. Non-blocking: results appear progressively as each
+  // job-match-score call returns. We only attempt this when:
+  //   - CBJobs.scoreJobs is available (job.matcher.js loaded)
+  //   - The user has a non-empty resume in store
+  //   - The backend AI orchestrator is active
+  // On any failure we silently continue with the regex-only ranking.
+  let aiRerankInFlight = false;
+  function triggerAiRerankAfterSearch() {
+    if (aiRerankInFlight) return;
+    if (!window.CBJobs || typeof window.CBJobs.scoreJobs !== "function") return;
+    if (typeof window.CBJobs.hasResume === "function" && !window.CBJobs.hasResume()) return;
+    const jobs = (lastSearchView && lastSearchView.jobs) || [];
+    if (!jobs.length) return;
+
+    const session = lastSearchView; // Capture by reference so a later search invalidates this one.
+    aiRerankInFlight = true;
+
+    // Per-card live update — rerender only the card whose AI score arrived.
+    function updateOneCard(jobId) {
+      const card = document.querySelector('.job-search-job-card[data-job-id="' + jobId + '"]');
+      if (!card) return;
+      const job = (session.jobs || []).find(function (j) { return j && j.id === jobId; });
+      if (!job) return;
+      try {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = renderJobCard(job, getSt());
+        const fresh = wrapper.firstElementChild;
+        if (fresh) card.replaceWith(fresh);
+      } catch (e) { /* ignore — full repaint will heal */ }
+    }
+
+    window.CBJobs.scoreJobs(jobs, {
+      topN: 10,
+      onProgress: function (result) {
+        if (!result || !result.jobId || result.error) return;
+        if (lastSearchView !== session) return; // user re-searched in the meantime
+        const job = (session.jobs || []).find(function (j) { return j && j.id === result.jobId; });
+        if (!job) return;
+        job.aiScore = {
+          score: typeof result.score === "number" ? result.score : null,
+          fitSummary: result.fitSummary || "",
+          reasons: Array.isArray(result.reasons) ? result.reasons : [],
+          missingSkills: Array.isArray(result.missingSkills) ? result.missingSkills : []
+        };
+        updateOneCard(job.id);
+      }
+    }).then(function (summary) {
+      aiRerankInFlight = false;
+      if (lastSearchView !== session) return;
+      // After all scores arrive, re-sort: AI score (when present) > regex score.
+      const scored = (session.jobs || []).slice().sort(function (a, b) {
+        const aiA = a.aiScore && typeof a.aiScore.score === "number" ? a.aiScore.score : null;
+        const aiB = b.aiScore && typeof b.aiScore.score === "number" ? b.aiScore.score : null;
+        if (aiA != null && aiB != null) return aiB - aiA;
+        if (aiA != null) return -1;
+        if (aiB != null) return 1;
+        return 0;
+      });
+      session.jobs = scored;
+      repaintJobSearchResults();
+      if (summary && summary.scored && window.CBV2.toast) {
+        window.CBV2.toast.info("AI ranked top " + summary.scored + " roles to your resume.");
+      }
+    }).catch(function () {
+      aiRerankInFlight = false;
+    });
+  }
+
+  // Phase 2: Apply-with-AI — runs CBJobs.runApplyWorkflow (save → tailor →
+  // cover → interview prep). Updates the button label per step so the user
+  // sees real progress, then opens the drawer for the saved application.
+  async function runApplyWithAi(job, button) {
+    if (!window.CBJobs || typeof window.CBJobs.runApplyWorkflow !== "function") {
+      if (window.CBV2.toast) window.CBV2.toast.error("AI workflow service not loaded.");
+      return;
+    }
+    const originalLabel = button.innerHTML;
+    button.disabled = true;
+    let savedApp = null;
+    let stepCount = 0;
+    let succeeded = 0;
+    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Working…';
+
+    try {
+      const js = (window.CBV2.store && window.CBV2.store.getJobSearchState && window.CBV2.store.getJobSearchState()) || {};
+      const result = await window.CBJobs.runApplyWorkflow(job, {
+        roleProfile: js.roleProfile || null,
+        stopOnError: false,
+        onStep: function (info) {
+          if (!info || !info.step) return;
+          stepCount += 1;
+          if (info.status === "running") {
+            button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> ' + info.step.label + "…";
+          } else if (info.status === "success") {
+            succeeded += 1;
+            if (info.step.id === "save" && info.data) savedApp = info.data;
+          } else if (info.status === "failed") {
+            // Surface step failures in the toast at the end; keep the workflow going.
+          }
+        }
+      });
+      if (window.CBV2.toast) {
+        const failed = stepCount - succeeded;
+        if (failed === 0) {
+          window.CBV2.toast.success("Apply with AI · saved + resume tailored + cover drafted + interview prep ready.");
+        } else {
+          window.CBV2.toast.info("Apply with AI · " + succeeded + "/" + stepCount + " steps completed.");
+        }
+      }
+      // Open the drawer on the saved application so the user sees results.
+      const appId = (savedApp && savedApp.id) || (result && result.results && result.results.save && result.results.save.id);
+      if (appId && window.CBV2.drawer && typeof window.CBV2.drawer.openApplication === "function") {
+        window.CBV2.drawer.openApplication(appId);
+      }
+      repaintJobSearchResults();
+    } catch (err) {
+      if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Apply workflow failed.");
+      button.disabled = false;
+      button.innerHTML = originalLabel;
+    }
   }
 
   function resortCurrentResultsFromSortControl() {
@@ -1748,6 +1902,10 @@
         if (window.CBV2.toast) {
           window.CBV2.toast.success(total === 0 ? "Search complete · no matches" : "Search complete · " + total + " matches");
         }
+        // Phase 2: kick off AI re-rank on the top results — non-blocking. The
+        // initial page is already rendered; AI scores trickle in over the next
+        // few seconds and re-paint individual cards.
+        triggerAiRerankAfterSearch();
       })
       .catch(function (err) {
         const msg = err && err.message ? err.message : "Search failed";
@@ -1822,6 +1980,17 @@
         } catch (err) {
           if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Could not add.");
         }
+        return;
+      }
+
+      // Phase 2: Apply-with-AI button — runs the 4-step workflow.
+      const applyBtn = e.target && e.target.closest ? e.target.closest("[data-apply-workflow]") : null;
+      if (applyBtn && !applyBtn.disabled) {
+        const id = applyBtn.getAttribute("data-job-id");
+        if (!id) return;
+        const job = (lastSearchView.jobs || []).find(function (j) { return j && j.id === id; });
+        if (!job) return;
+        runApplyWithAi(job, applyBtn);
         return;
       }
 

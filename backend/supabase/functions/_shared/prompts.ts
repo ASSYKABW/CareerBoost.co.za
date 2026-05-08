@@ -128,6 +128,24 @@ export const prompts: Record<Skill, PromptSpec> = {
       const strengths = pickList(input, ["strengths", "highlights", "skills"]);
       const why = pick(input, ["why", "motivation", "about"]);
       const candidateBg = pick(input, ["candidate", "background", "resume"]);
+      const jd = pick(input, ["jobDescription", "jd", "jobPosting"]);
+      // Phase 2: structured JD analysis from a chained jd-analyze call.
+      // When present, list the JD's actual priority keywords + required
+      // skills + top responsibilities so the cover letter weaves them in.
+      const jdAnalyzed = (input && typeof input === "object" && (input as Record<string, unknown>).jdAnalyzed) as Record<string, unknown> | undefined;
+      let jdAnalysisBlock = "";
+      if (jdAnalyzed && typeof jdAnalyzed === "object") {
+        const reqSkills = Array.isArray(jdAnalyzed.requiredSkills) ? jdAnalyzed.requiredSkills.slice(0, 10).join(", ") : "";
+        const keywords = Array.isArray(jdAnalyzed.keywords) ? jdAnalyzed.keywords.slice(0, 12).join(", ") : "";
+        const resp = Array.isArray(jdAnalyzed.responsibilities) ? jdAnalyzed.responsibilities.slice(0, 5).join(" · ") : "";
+        if (reqSkills || keywords || resp) {
+          jdAnalysisBlock =
+            "\n\nSTRUCTURED JD ANALYSIS (weave these terms into the letter where they honestly fit the candidate):" +
+            (reqSkills ? "\n- Required skills: " + reqSkills : "") +
+            (keywords  ? "\n- ATS keywords:    " + keywords : "") +
+            (resp      ? "\n- Key responsibilities: " + resp : "");
+        }
+      }
       return (
         "COMPANY: " + (company || "Not specified") +
         "\nROLE: " + (role || "Not specified") +
@@ -137,6 +155,8 @@ export const prompts: Record<Skill, PromptSpec> = {
         (rewriteInstruction ? "\nREWRITE INSTRUCTION: " + rewriteInstruction : "") +
         (strengths ? "\nKEY STRENGTHS: " + strengths : "") +
         (why ? "\nWHY THIS COMPANY: " + why : "") +
+        (jd ? "\n\nJOB DESCRIPTION (full text):\n" + jd.slice(0, 6000) : "") +
+        jdAnalysisBlock +
         (prev ? "\n\nPREVIOUS DRAFT (for context only; do not copy phrases):\n" + prev : "") +
         (candidateBg ? "\n\nCANDIDATE BACKGROUND:\n" + candidateBg : "") +
         aiContextBlock(input) +
@@ -153,16 +173,24 @@ export const prompts: Record<Skill, PromptSpec> = {
       ' Schema: { "questions": string[], "feedback": string[] }' +
       " Produce 6-8 questions and 4-6 feedback tips. Bias questions toward " +
       "the requested stage (screen = warm-up + motivation, first = mixed " +
-      "behavioral + role-specific, final = scenario + leadership).",
+      "behavioral + role-specific, final = scenario + leadership). " +
+      "When a JOB DESCRIPTION is provided, MAKE the questions JD-specific — " +
+      "name systems/tools/responsibilities the posting emphasizes (e.g. " +
+      "\"the JD mentions on-call rotation; how have you handled X?\"). " +
+      "Avoid generic catch-alls when a JD is present.",
     userTemplate: (input) => {
       const role = pick(input, ["role", "targetRole"]);
       const stage = pick(input, ["stage"]) || "first";
       const focus = pick(input, ["focus", "focusAreas", "areas"]);
       const background = pick(input, ["background", "candidate", "resume"]);
+      const jd = pick(input, ["jobDescription", "jd", "description"]);
+      const company = pick(input, ["company", "companyName"]);
       return (
         "ROLE: " + (role || "Not specified") +
+        (company ? "\nCOMPANY: " + company : "") +
         "\nINTERVIEW STAGE: " + stage +
         (focus ? "\nFOCUS AREAS: " + focus : "") +
+        (jd ? "\n\nJOB DESCRIPTION (use this to make questions specific to the role):\n" + jd.slice(0, 6000) : "") +
         (background ? "\n\nCANDIDATE BACKGROUND:\n" + background : "") +
         aiContextBlock(input) +
         "\n\nReturn the JSON now."

@@ -2690,6 +2690,28 @@
   line-height: 1.45;
 }
 
+/* Phase 2: AI-driven fit explanation — distinguish from regex-only block. */
+.job-search-fit-details--ai {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(176, 107, 255, 0.18);
+  background: rgba(176, 107, 255, 0.06);
+}
+.job-search-fit-details--ai summary {
+  font-weight: 600;
+  color: #d7cdff;
+}
+.job-search-fit-label {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.job-search-ai-chip {
+  font-weight: 700;
+}
+
 .job-search-history-workspace {
   max-width: min(920px, 100%);
 }

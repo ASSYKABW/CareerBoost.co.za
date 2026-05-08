@@ -802,6 +802,21 @@
         '<p class="ai-error">' + viewState.error + "</p>";
       return;
     }
+    // Phase 2: pipe JD + candidate background into drill mode so questions
+    // reflect the actual posting (e.g. "the JD emphasizes observability —
+    // they'll likely ask about debugging a production outage"). Falls back
+    // gracefully when the mock metadata hasn't been filled in yet.
+    const m = viewState.mockMeta || {};
+    if (m.jd && String(m.jd).trim()) {
+      input.jobDescription = String(m.jd).trim().slice(0, 6000);
+    }
+    if (m.company && !input.company) {
+      input.company = String(m.company).trim();
+    }
+    const background = buildCandidateBackground(true, 3000);
+    if (background) {
+      input.background = background;
+    }
     viewState.busy = true;
     viewState.error = "";
     viewState.questions = null;

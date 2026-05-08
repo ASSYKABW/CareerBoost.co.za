@@ -164,35 +164,99 @@
     return clamp(score, 24, 98);
   }
 
+  // Phase 2: stage automation. When an app moves into `interview` or `applied`
+  // we auto-create a calendar event so the user sees the next action without
+  // touching the calendar themselves. Idempotent — skips if an equivalent
+  // event already exists for this app within ±2 weeks.
+  function localDayKey(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const day = String(dt.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+  function hasUpcomingEventForApp(appId, type) {
+    const store = window.CBV2 && window.CBV2.store;
+    if (!store || typeof store.getEventsForApplication !== "function") return false;
+    const events = store.getEventsForApplication(appId) || [];
+    const today = localDayKey(new Date());
+    return events.some(function (e) {
+      if (!e || e.appId !== appId) return false;
+      if (type && e.type !== type) return false;
+      // Future or today's event still counts — don't double-schedule.
+      return e.date && e.date >= today;
+    });
+  }
+  function autoScheduleEventsForStage(appId, stage) {
+    const store = window.CBV2 && window.CBV2.store;
+    if (!store || typeof store.addEvent !== "function") return;
+    const apps = (typeof store.getApplications === "function" && store.getApplications()) || [];
+    const app = apps.find(function (a) { return a.id === appId; });
+    if (!app) return;
+
+    const today = new Date();
+    if (stage === "interview" && !hasUpcomingEventForApp(appId, "interview-prep")) {
+      const prep = new Date(today.getTime() + 3 * 86400000);
+      store.addEvent({
+        date: localDayKey(prep),
+        type: "interview-prep",
+        title: "Prep · " + (app.company || "interview"),
+        appId: appId,
+        notes: "Auto-scheduled when this application moved to Interview. Use the Interview module to drill mock questions and review the JD."
+      });
+      if (window.CBV2.toast) window.CBV2.toast.info("Interview prep scheduled in 3 days.");
+    } else if (stage === "applied" && !hasUpcomingEventForApp(appId, "follow-up")) {
+      const fu = new Date(today.getTime() + 7 * 86400000);
+      store.addEvent({
+        date: localDayKey(fu),
+        type: "follow-up",
+        title: "Follow up · " + (app.company || "application"),
+        appId: appId,
+        notes: "Auto-scheduled when you moved this app to Applied. Send a polite check-in if you haven't heard back."
+      });
+      if (window.CBV2.toast) window.CBV2.toast.info("Follow-up scheduled in 7 days.");
+    }
+  }
+
+  // Phase 2: real readiness — drives chips from applicationCommand.build()
+  // so users see at a glance which materials are ready / partial / missing
+  // for each application instead of static stage-keyed labels. Falls back to
+  // the legacy stage-keyed chips when the command service isn't available.
   function readinessChips(app) {
+    const cmd = window.CBV2 && window.CBV2.applicationCommand;
+    if (cmd && typeof cmd.build === "function") {
+      try {
+        const built = cmd.build(app);
+        if (built && Array.isArray(built.materials)) {
+          // Skip "source" — it doesn't drive user action like the other 4 do.
+          return built.materials
+            .filter(function (m) { return m && m.id && m.id !== "source"; })
+            .map(function (m) {
+              const tone = m.status === "ready"
+                ? "green"
+                : m.status === "partial"
+                ? "warning"
+                : "rose";
+              const label = m.label + (m.status === "ready" ? " ✓" : m.status === "partial" ? " ~" : " ·");
+              return { label: label, tone: tone };
+            });
+        }
+      } catch (e) { /* fall through to legacy chips */ }
+    }
+    // Legacy fallback (service not loaded).
     if (app.stage === "saved") {
-      return [
-        { label: "Resume needed", tone: "warning" },
-        { label: "Apply path", tone: "cyan" }
-      ];
+      return [{ label: "Resume needed", tone: "warning" }, { label: "Apply path", tone: "cyan" }];
     }
     if (app.stage === "applied") {
-      return [
-        { label: "Materials sent", tone: "green" },
-        { label: "Follow-up watch", tone: "blue" }
-      ];
+      return [{ label: "Materials sent", tone: "green" }, { label: "Follow-up watch", tone: "blue" }];
     }
     if (app.stage === "interview") {
-      return [
-        { label: "Prep required", tone: "warning" },
-        { label: "Story bank", tone: "violet" }
-      ];
+      return [{ label: "Prep required", tone: "warning" }, { label: "Story bank", tone: "violet" }];
     }
     if (app.stage === "offer") {
-      return [
-        { label: "Decision window", tone: "green" },
-        { label: "Negotiation", tone: "blue" }
-      ];
+      return [{ label: "Decision window", tone: "green" }, { label: "Negotiation", tone: "blue" }];
     }
-    return [
-      { label: "Archive", tone: "rose" },
-      { label: "Learnings", tone: "cyan" }
-    ];
+    return [{ label: "Archive", tone: "rose" }, { label: "Learnings", tone: "cyan" }];
   }
 
   function primaryRouteFor(app) {
@@ -727,6 +791,10 @@
         const stage = zone.getAttribute("data-dropzone");
         if (id && stage) {
           window.CBV2.store.updateApplicationStage(id, stage);
+          // Phase 2: stage automation — auto-create interview prep / follow-up
+          // events when the app moves into the relevant stage. Idempotent:
+          // skips if an equivalent event already exists for this app.
+          autoScheduleEventsForStage(id, stage);
           window.CBV2.renderCurrentRoute();
         }
       });
