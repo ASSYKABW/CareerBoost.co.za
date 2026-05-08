@@ -1,0 +1,216 @@
+/* =============================================================================
+ * Phase 5 - Extracted global chrome
+ * Toasts, shortcut sheet, topbar search, status pills, and sidebar help styles
+ * were moved out of the oversized phase1.css bundle so shared app chrome has
+ * its own maintenance surface.
+ * ========================================================================== */
+
+.app-shell select,
+#app select {
+  /* Force a clear dropdown affordance across module-specific overrides. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 10' fill='none'><path d='M2 2.25 L8 8 L14 2.25' stroke='%23dfe7ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>") !important;
+  background-position: calc(100% - 16px) 50% !important;
+  background-size: 14px 10px !important;
+  background-repeat: no-repeat !important;
+  padding-right: 2.35rem !important;
+}
+
+.toast-host {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-12);
+  background: rgba(15, 23, 38, 0.94);
+  color: var(--color-text);
+  border: 1px solid rgba(107, 125, 255, 0.32);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+  font-size: var(--font-size-14);
+  transform: translateY(-6px);
+  opacity: 0;
+  transition: transform 180ms ease, opacity 180ms ease;
+  pointer-events: auto;
+  min-width: 240px;
+}
+
+.toast.is-visible { transform: translateY(0); opacity: 1; }
+.toast.is-leaving { opacity: 0; transform: translateY(-6px); }
+.toast i.fa-solid { margin-top: 2px; font-size: 15px; }
+.toast .toast-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.toast .toast-body strong { font-size: var(--font-size-12); text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); }
+
+.toast .toast-close {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.toast .toast-close:hover { color: var(--color-text); background: rgba(255, 255, 255, 0.05); }
+.toast--success { border-color: rgba(34, 197, 94, 0.45); }
+.toast--success i { color: #4ade80; }
+.toast--warning { border-color: rgba(245, 158, 11, 0.45); }
+.toast--warning i { color: #fbbf24; }
+.toast--error { border-color: rgba(244, 63, 94, 0.55); }
+.toast--error i { color: #fb7185; }
+.toast--info i { color: var(--color-primary); }
+
+.shortcut-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 15, 0.72);
+  backdrop-filter: blur(6px);
+  z-index: 9998;
+  padding: 24px;
+  animation: fadeIn 140ms ease;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.shortcut-card {
+  width: min(520px, 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 38, 0.98), rgba(11, 17, 30, 0.95));
+  border: 1px solid rgba(107, 125, 255, 0.35);
+  border-radius: var(--radius-16);
+  padding: 24px;
+  box-shadow: var(--shadow-lg), 0 0 40px rgba(32, 227, 255, 0.12);
+}
+
+.shortcut-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.shortcut-head h2 { margin: 0; font-size: var(--font-size-20); }
+
+.shortcut-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.shortcut-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-14);
+  color: var(--color-text);
+}
+
+.shortcut-keys { display: inline-flex; gap: 4px; align-items: center; }
+.kbd-plus { color: var(--color-text-muted); font-size: var(--font-size-12); }
+
+kbd,
+.kbd-inline {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-text);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4) inset;
+}
+
+.kbd-inline { margin-left: auto; }
+
+.topbar-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 560px;
+}
+
+.topbar-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.topbar-search { padding-left: 38px !important; padding-right: 40px !important; }
+
+.topbar-search-kbd {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.status-pill-slot { display: inline-flex; align-items: center; }
+
+.status-pill {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.28rem 0.72rem;
+  font-weight: 600;
+  font-size: var(--font-size-12);
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.status-pill:hover { box-shadow: 0 0 0 3px rgba(32, 227, 255, 0.12); }
+
+.status-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.status-pill.green .status-pill-dot { color: #22c55e; }
+.status-pill.warning .status-pill-dot { color: #f59e0b; }
+.status-pill.rose .status-pill-dot { color: #f43f5e; }
+.status-pill.cyan .status-pill-dot { color: var(--color-primary); }
+.status-pill.violet .status-pill-dot { color: #8b96ff; }
+
+.sidebar { display: flex; flex-direction: column; }
+.sidebar > .brand,
+.sidebar > .nav-group { flex: none; }
+.sidebar-footer { margin-top: auto; padding-top: var(--space-12); }
+
+.sidebar-help {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.sidebar-help .kbd-inline { margin-left: auto; }

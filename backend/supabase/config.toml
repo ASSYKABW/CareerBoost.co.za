@@ -1,0 +1,85 @@
+# Supabase CLI project config
+# Docs: https://supabase.com/docs/guides/cli/config
+
+project_id = "careerboost"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5500",
+  "https://your-production-domain.example"
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+# OAuth providers are configured in the Supabase Dashboard
+# (Authentication -> Providers). Keep them disabled in this file so that
+# `supabase link` / `db push` don't require env vars locally. To test OAuth
+# against a local `supabase start` stack, enable these blocks and set
+# AUTH_GOOGLE_CLIENT_ID / AUTH_GOOGLE_SECRET etc. in your shell.
+#
+# [auth.external.google]
+# enabled = true
+# client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
+# secret = "env(AUTH_GOOGLE_SECRET)"
+# redirect_uri = ""
+# skip_nonce_check = false
+#
+# [auth.external.linkedin_oidc]
+# enabled = true
+# client_id = "env(AUTH_LINKEDIN_CLIENT_ID)"
+# secret = "env(AUTH_LINKEDIN_SECRET)"
+# redirect_uri = ""
+
+# verify_jwt = false: the platform's JWT gateway is bypassed. The function
+# itself calls `/auth/v1/user` via `getAuthedUser()` to validate the token.
+# This is required for projects using the new asymmetric JWT signing keys
+# (ES256), which the platform verifier doesn't yet support.
+[functions.ai-run]
+verify_jwt = false
+
+[functions.jobs-search]
+verify_jwt = false
+
+[functions.job-import]
+verify_jwt = false
+
+[functions.external-search]
+verify_jwt = false
+
+[functions.company-intel-search]
+verify_jwt = false

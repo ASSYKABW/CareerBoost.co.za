@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CareerBoost Extension Options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <p class="eyebrow">Account</p>
+        <h1>Connect CareerBoost</h1>
+        <p class="muted">
+          Sign in with your CareerBoost account. The extension saves a job only when you click
+          <strong>Save to CareerBoost</strong> on the listing page.
+        </p>
+
+        <form id="login-form" class="form">
+          <label>
+            Email
+            <input id="email" type="email" autocomplete="username" />
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" autocomplete="current-password" />
+          </label>
+          <div class="actions">
+            <button type="submit" class="primary">Sign in</button>
+            <button type="button" id="sign-out" class="ghost">Sign out</button>
+          </div>
+        </form>
+        <p id="status" class="status" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">CareerBoost</p>
+        <h2>Save behavior</h2>
+        <p class="muted">
+          Choose where captured jobs should go. Developer connection details are already configured for normal users.
+        </p>
+
+        <form id="config-form" class="form">
+          <label>
+            Save target
+            <select id="target">
+              <option value="pipeline">Pipeline</option>
+              <option value="saved_jobs">Saved jobs</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+
+          <details class="developer-config">
+            <summary>Developer connection</summary>
+            <p class="muted small">
+              Operator-only values for local testing or a different CareerBoost backend. Candidates should not need to change these.
+            </p>
+            <label>
+              Supabase URL
+              <input id="supabase-url" type="url" autocomplete="off" />
+            </label>
+            <label>
+              Supabase anon key
+              <input id="supabase-anon" type="password" autocomplete="off" />
+            </label>
+            <label>
+              Functions URL
+              <input id="functions-url" type="url" autocomplete="off" />
+            </label>
+          </details>
+
+          <button type="submit" class="secondary">Save settings</button>
+        </form>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

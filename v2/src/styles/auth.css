@@ -1,0 +1,257 @@
+/* Auth page + user menu + boot splash */
+
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(90, 96, 255, 0.18), transparent 60%),
+    radial-gradient(1000px 500px at 90% 80%, rgba(34, 211, 238, 0.15), transparent 60%),
+    linear-gradient(180deg, #06070d 0%, #090b14 100%);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 36px 32px;
+  border-radius: 20px;
+  background: rgba(15, 17, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(90, 96, 255, 0.12) inset;
+  backdrop-filter: blur(18px);
+}
+
+.auth-brand {
+  margin-bottom: 22px;
+  color: #f5f6fb;
+  display: inline-flex;
+  align-items: center;
+}
+.auth-brand .cb-logo-mark { width: 36px; height: 36px; }
+.auth-brand .cb-logo-wordmark { font-size: 32px; }
+.auth-brand .cb-logo-wordmark span { color: #6bd7ff; }
+.auth-brand .cb-logo-tagline {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.34em;
+  color: #7484a8;
+}
+
+.auth-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #f5f6fb;
+}
+.auth-subtitle {
+  font-size: 14px;
+  color: #9aa1b2;
+  margin: 0 0 22px;
+  line-height: 1.55;
+}
+
+.auth-oauth {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.oauth-btn {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  font-weight: 600;
+}
+.oauth-btn i { font-size: 16px; }
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 14px;
+  color: #6a7185;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+.auth-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #9aa1b2;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.auth-form input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f6fb;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.auth-form input:focus {
+  outline: none;
+  border-color: #6bd7ff;
+  box-shadow: 0 0 0 3px rgba(107, 215, 255, 0.18);
+}
+
+.auth-submit-row {
+  margin-top: 6px;
+}
+.auth-submit-row .btn-primary {
+  width: 100%;
+  justify-content: center;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.auth-switch {
+  margin: 16px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: #9aa1b2;
+}
+.auth-switch a {
+  color: #6bd7ff;
+  text-decoration: none;
+  font-weight: 600;
+}
+.auth-switch a:hover { text-decoration: underline; }
+
+.auth-legal {
+  margin: 20px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: #6a7185;
+}
+
+/* Boot splash shown while we hydrate the remote store */
+.boot-splash {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #06070d;
+}
+.boot-splash-card {
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(15, 17, 26, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+  color: #cfd3df;
+}
+.boot-splash-card .auth-brand { margin-bottom: 14px; }
+.boot-splash-card .auth-brand .cb-logo-wordmark { font-size: 26px; }
+.boot-splash-card p { margin: 0; font-size: 14px; }
+.boot-splash-card i { margin-right: 8px; color: #6bd7ff; }
+
+/* User chip in the topbar */
+.user-chip {
+  position: relative;
+  margin-left: 8px;
+}
+.user-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e6e9f2;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.user-chip-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(107, 215, 255, 0.35);
+}
+/* Legacy avatar selector kept so any non-rich chip still renders, but the
+   new .avatar (with --sm/--md/--lg modifiers) in phase1.css takes precedence. */
+.user-chip-btn .avatar:not([class*="avatar--"]) {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #5a60ff 0%, #22d3ee 100%);
+  color: #06070d;
+}
+.user-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(15, 17, 26, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  display: grid;
+  gap: 2px;
+  z-index: 50;
+}
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #cfd3df;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s;
+}
+.user-menu-item:hover { background: rgba(255, 255, 255, 0.06); }
+.user-menu-item i { width: 14px; color: #8b92a6; }
+
+/* Small helpers used by the new settings section */
+.ai-notice.rose {
+  border-color: rgba(244, 63, 94, 0.3);
+  background: rgba(244, 63, 94, 0.08);
+  color: #ffb4c0;
+}
+.ai-notice.warning {
+  border-color: rgba(250, 204, 21, 0.3);
+  background: rgba(250, 204, 21, 0.08);
+  color: #fde68a;
+}
+.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }

@@ -1,0 +1,911 @@
+(function () {
+  window.CBV2 = window.CBV2 || {};
+  window.CBV2.routes = window.CBV2.routes || {};
+  window.CBV2.afterRender = window.CBV2.afterRender || {};
+
+  const STAGES = [
+    { id: "saved", label: "Saved", tone: "cyan", icon: "fa-bookmark", sla: 5 },
+    { id: "applied", label: "Applied", tone: "violet", icon: "fa-paper-plane", sla: 7 },
+    { id: "interview", label: "Interview", tone: "blue", icon: "fa-comments", sla: 3 },
+    { id: "offer", label: "Offer", tone: "green", icon: "fa-handshake", sla: 3 },
+    { id: "rejected", label: "Closed", tone: "rose", icon: "fa-circle-xmark", sla: 0 }
+  ];
+
+  const PRIORITIES = ["low", "medium", "high"];
+
+  const PRIORITY_META = {
+    low: { label: "Low", tone: "cyan", weight: 1 },
+    medium: { label: "Medium", tone: "violet", weight: 2 },
+    high: { label: "High", tone: "warning", weight: 3 }
+  };
+
+  const viewState = {
+    filterStage: "all",
+    filterPriority: "all",
+    focus: "all",
+    sort: "attention",
+    search: ""
+  };
+
+  function getSt() {
+    return window.CBV2.sanitizeText || function (s) { return String(s == null ? "" : s); };
+  }
+
+  function escAttr(input) {
+    return String(input == null ? "" : input)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "")
+      .replace(/>/g, "");
+  }
+
+  function stageMeta(stageId) {
+    return STAGES.find(function (s) { return s.id === stageId; }) || STAGES[0];
+  }
+
+  function priorityMeta(priority) {
+    return PRIORITY_META[PRIORITIES.indexOf(priority) >= 0 ? priority : "low"];
+  }
+
+  function todayStart() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function parseDate(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function daysSince(value) {
+    const d = parseDate(value);
+    if (!d) return null;
+    return Math.max(0, Math.round((todayStart().getTime() - d.getTime()) / 86400000));
+  }
+
+  function latestStageAt(app) {
+    const history = Array.isArray(app.stageHistory) ? app.stageHistory.slice() : [];
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      if (history[i] && history[i].stage === app.stage) {
+        return history[i].at || app.appliedAt || "";
+      }
+    }
+    return app.appliedAt || "";
+  }
+
+  function stageAge(app) {
+    return daysSince(latestStageAt(app));
+  }
+
+  function formatAge(days) {
+    if (days == null) return "No date";
+    if (days === 0) return "Today";
+    if (days === 1) return "1 day";
+    return days + " days";
+  }
+
+  function clamp(num, min, max) {
+    return Math.min(max, Math.max(min, num));
+  }
+
+  function countByStage(apps) {
+    const counts = {};
+    STAGES.forEach(function (s) {
+      counts[s.id] = 0;
+    });
+    apps.forEach(function (a) {
+      if (counts[a.stage] != null) {
+        counts[a.stage] += 1;
+      }
+    });
+    return counts;
+  }
+
+  function isClosed(app) {
+    return app.stage === "rejected";
+  }
+
+  function defaultNextAction(app) {
+    const stage = app.stage || "saved";
+    if (stage === "saved") return "Tailor resume and decide whether to apply.";
+    if (stage === "applied") return "Watch for response signal and plan a follow-up.";
+    if (stage === "interview") return "Build interview stories and practice out loud.";
+    if (stage === "offer") return "Review terms, timeline, and negotiation points.";
+    if (stage === "rejected") return "Capture learnings and archive the opportunity.";
+    return "Open details and define the next move.";
+  }
+
+  function nextActionText(app) {
+    const text = String(app.nextAction || "").trim();
+    return text || defaultNextAction(app);
+  }
+
+  function dueInfo(app) {
+    if (isClosed(app)) {
+      return { level: "closed", label: "Closed", tone: "rose", icon: "fa-circle-check", score: 0 };
+    }
+    const meta = stageMeta(app.stage);
+    const age = stageAge(app);
+    const priorityWeight = priorityMeta(app.priority).weight;
+    if (age == null) {
+      return { level: "unknown", label: "Add date", tone: "warning", icon: "fa-calendar-plus", score: 1 + priorityWeight };
+    }
+    if (age >= meta.sla + 4) {
+      return { level: "overdue", label: "Stale " + age + "d", tone: "rose", icon: "fa-triangle-exclamation", score: 6 + priorityWeight };
+    }
+    if (age >= meta.sla) {
+      return { level: "due", label: "Action due", tone: "warning", icon: "fa-bolt", score: 4 + priorityWeight };
+    }
+    if (meta.sla - age <= 2) {
+      return { level: "soon", label: "Due soon", tone: "blue", icon: "fa-clock", score: 2 + priorityWeight };
+    }
+    return { level: "ok", label: "On track", tone: "green", icon: "fa-check", score: priorityWeight };
+  }
+
+  function signalScore(app) {
+    const stageBase = {
+      saved: 58,
+      applied: 66,
+      interview: 82,
+      offer: 92,
+      rejected: 34
+    };
+    const age = stageAge(app);
+    const due = dueInfo(app);
+    const p = priorityMeta(app.priority).weight;
+    let score = (stageBase[app.stage] || 58) + (p - 2) * 6;
+    if (due.level === "ok" || due.level === "soon") score += 3;
+    if (due.level === "overdue") score -= 8;
+    if (age != null && age <= 2 && app.stage !== "rejected") score += 4;
+    return clamp(score, 24, 98);
+  }
+
+  function readinessChips(app) {
+    if (app.stage === "saved") {
+      return [
+        { label: "Resume needed", tone: "warning" },
+        { label: "Apply path", tone: "cyan" }
+      ];
+    }
+    if (app.stage === "applied") {
+      return [
+        { label: "Materials sent", tone: "green" },
+        { label: "Follow-up watch", tone: "blue" }
+      ];
+    }
+    if (app.stage === "interview") {
+      return [
+        { label: "Prep required", tone: "warning" },
+        { label: "Story bank", tone: "violet" }
+      ];
+    }
+    if (app.stage === "offer") {
+      return [
+        { label: "Decision window", tone: "green" },
+        { label: "Negotiation", tone: "blue" }
+      ];
+    }
+    return [
+      { label: "Archive", tone: "rose" },
+      { label: "Learnings", tone: "cyan" }
+    ];
+  }
+
+  function primaryRouteFor(app) {
+    if (app.stage === "saved") {
+      return { href: "#/resume", label: "Tailor resume", icon: "fa-file-lines" };
+    }
+    if (app.stage === "interview") {
+      return { href: "#/interview", label: "Prep interview", icon: "fa-comments" };
+    }
+    if (app.stage === "applied") {
+      return { href: "#/cover-letter", label: "Draft follow-up", icon: "fa-envelope-open-text" };
+    }
+    if (app.stage === "offer") {
+      return { href: "#/applications", label: "Review offer", icon: "fa-handshake" };
+    }
+    return { href: "#/applications", label: "Review notes", icon: "fa-clipboard-check" };
+  }
+
+  function destinationForRoute(href) {
+    const h = String(href || "");
+    if (h.indexOf("cover-letter") >= 0) return "cover";
+    if (h.indexOf("interview") >= 0) return "interview";
+    if (h.indexOf("resume") >= 0) return "resume";
+    return "active";
+  }
+
+  function hasFilters() {
+    return viewState.filterStage !== "all" ||
+      viewState.filterPriority !== "all" ||
+      viewState.focus !== "all" ||
+      viewState.search.trim() !== "";
+  }
+
+  function matchesFocus(app) {
+    if (viewState.focus === "all") return true;
+    if (viewState.focus === "attention") {
+      const due = dueInfo(app);
+      return due.level === "overdue" || due.level === "due" || due.level === "soon";
+    }
+    if (viewState.focus === "active") return !isClosed(app);
+    if (viewState.focus === "interviews") return app.stage === "interview";
+    if (viewState.focus === "high") return app.priority === "high";
+    return true;
+  }
+
+  function filterApplications(apps) {
+    const q = viewState.search.trim().toLowerCase();
+    return apps.filter(function (app) {
+      if (viewState.filterStage !== "all" && app.stage !== viewState.filterStage) return false;
+      if (viewState.filterPriority !== "all" && app.priority !== viewState.filterPriority) return false;
+      if (!matchesFocus(app)) return false;
+      if (!q) return true;
+      const haystack = [
+        app.company,
+        app.role,
+        app.nextAction,
+        app.notes
+      ].join(" ").toLowerCase();
+      return haystack.indexOf(q) >= 0;
+    });
+  }
+
+  function sortApplications(apps) {
+    const stageOrder = STAGES.reduce(function (acc, stage, index) {
+      acc[stage.id] = index;
+      return acc;
+    }, {});
+    return apps.slice().sort(function (a, b) {
+      if (viewState.sort === "company") {
+        return String(a.company || "").localeCompare(String(b.company || ""));
+      }
+      if (viewState.sort === "newest") {
+        return (parseDate(b.appliedAt) || 0) - (parseDate(a.appliedAt) || 0);
+      }
+      if (viewState.sort === "oldest") {
+        return (parseDate(a.appliedAt) || 0) - (parseDate(b.appliedAt) || 0);
+      }
+      const bScore = dueInfo(b).score * 10 + priorityMeta(b.priority).weight * 4 + signalScore(b) / 10;
+      const aScore = dueInfo(a).score * 10 + priorityMeta(a.priority).weight * 4 + signalScore(a) / 10;
+      if (bScore !== aScore) return bScore - aScore;
+      return (stageOrder[a.stage] || 0) - (stageOrder[b.stage] || 0);
+    });
+  }
+
+  function pipelineHealth(apps) {
+    const active = apps.filter(function (a) { return !isClosed(a); });
+    if (!active.length) return 0;
+    const due = active.filter(function (a) {
+      const level = dueInfo(a).level;
+      return level === "overdue" || level === "due";
+    }).length;
+    const soon = active.filter(function (a) { return dueInfo(a).level === "soon"; }).length;
+    const interviews = active.filter(function (a) { return a.stage === "interview"; }).length;
+    const offers = active.filter(function (a) { return a.stage === "offer"; }).length;
+    return clamp(84 - due * 12 - soon * 5 + interviews * 4 + offers * 5, 38, 96);
+  }
+
+  function buildPriorityActions(apps) {
+    const active = apps.filter(function (app) { return !isClosed(app); });
+    const ranked = active.map(function (app) {
+      const due = dueInfo(app);
+      const route = primaryRouteFor(app);
+      let title = "Move " + (app.company || "this role") + " forward";
+      let icon = "fa-bolt";
+      let cta = "Open role";
+      let href = "";
+      let opensApp = true;
+      if (app.stage === "saved") {
+        title = "Convert saved role into an application";
+        icon = "fa-file-lines";
+        cta = route.label;
+        href = route.href;
+        opensApp = false;
+      } else if (app.stage === "interview") {
+        title = "Prepare interview pack";
+        icon = "fa-comments";
+        cta = route.label;
+        href = route.href;
+        opensApp = false;
+      } else if (app.stage === "offer") {
+        title = "Protect the offer window";
+        icon = "fa-handshake";
+      } else if (due.level === "overdue" || due.level === "due") {
+        title = "Resolve the next action";
+      } else if (app.priority === "high") {
+        title = "Keep high-priority role warm";
+      }
+      return {
+        app: app,
+        rankScore: due.score * 12 + priorityMeta(app.priority).weight * 8 + signalScore(app) / 4,
+        title: title,
+        icon: icon,
+        cta: cta,
+        href: href,
+        opensApp: opensApp,
+        detail: nextActionText(app),
+        due: due
+      };
+    }).sort(function (a, b) { return b.rankScore - a.rankScore; });
+
+    return ranked.slice(0, 4);
+  }
+
+  function renderCommandCenter(apps, counts) {
+    const st = getSt();
+    const active = apps.filter(function (a) { return !isClosed(a); });
+    const dueNow = active.filter(function (a) {
+      const level = dueInfo(a).level;
+      return level === "overdue" || level === "due";
+    }).length;
+    const interviews = counts.interview || 0;
+    const health = pipelineHealth(apps);
+    const healthCopy = health >= 82
+      ? "Your pipeline has strong movement. Keep the next actions clean."
+      : health >= 64
+        ? "The pipeline is active, but a few roles need attention."
+        : "Your pipeline needs sharper next actions and follow-through.";
+
+    return `
+      <section class="pipeline-command-center">
+        <div class="pipeline-command-copy">
+          <p class="eyebrow">Pipeline command center</p>
+          <h1 class="page-title">Turn every opportunity into a clear next move.</h1>
+          <p class="page-subtitle">Track roles, see what is stuck, and move the highest-value applications forward before momentum fades.</p>
+          <div class="pipeline-command-actions">
+            <button class="btn-primary js-open-add-app" type="button"><i class="fa-solid fa-plus"></i> Add application</button>
+            <a class="btn-secondary" href="#/job-search"><i class="fa-solid fa-magnifying-glass"></i> Find roles</a>
+            <a class="btn-secondary" href="#/analytics"><i class="fa-solid fa-chart-line"></i> View analytics</a>
+          </div>
+        </div>
+        <aside class="pipeline-score-panel" aria-label="Pipeline health">
+          <div class="pipeline-score-ring" style="--pipeline-score: ${health}">
+            <strong>${health}</strong>
+            <span>Health</span>
+          </div>
+          <div class="pipeline-score-copy">
+            <span class="chip ${dueNow ? "warning" : "green"}"><i class="fa-solid ${dueNow ? "fa-bolt" : "fa-check"}"></i> ${dueNow ? st(dueNow + " due") : "Clear"}</span>
+            <h2>${st(healthCopy)}</h2>
+            <p>${active.length} active role${active.length === 1 ? "" : "s"} across ${interviews} interview stage${interviews === 1 ? "" : "s"}.</p>
+          </div>
+          <div class="pipeline-score-mini">
+            <span><strong>${active.length}</strong><small>Active</small></span>
+            <span><strong>${dueNow}</strong><small>Due now</small></span>
+            <span><strong>${counts.offer || 0}</strong><small>Offers</small></span>
+          </div>
+        </aside>
+      </section>
+    `;
+  }
+
+  function renderPriorityActions(apps) {
+    const st = getSt();
+    const actions = buildPriorityActions(apps);
+    const cards = actions.length ? actions.map(function (item, index) {
+      const app = item.app;
+      const route = primaryRouteFor(app);
+      const ctaIcon = item.opensApp ? "fa-arrow-up-right-from-square" : route.icon;
+      const shell = item.opensApp
+        ? '<button class="pipeline-action-card" type="button" data-action="open" data-app-id="' + escAttr(app.id) + '">'
+        : '<a class="pipeline-action-card" href="' + escAttr(item.href || route.href) + '">';
+      const closeShell = item.opensApp ? "</button>" : "</a>";
+      return (
+        shell +
+          '<span class="pipeline-action-rank">0' + (index + 1) + "</span>" +
+          '<i class="fa-solid ' + escAttr(item.icon) + '"></i>' +
+          '<div class="pipeline-action-copy">' +
+            '<span class="chip ' + escAttr(item.due.tone) + '"><i class="fa-solid ' + escAttr(item.due.icon) + '"></i> ' + st(item.due.label) + "</span>" +
+            "<strong>" + st(item.title) + "</strong>" +
+            "<small>" + st(app.company || "Company") + " - " + st(app.role || "Role") + "</small>" +
+            "<p>" + st(item.detail) + "</p>" +
+          "</div>" +
+          '<span class="pipeline-action-cta">' + st(item.cta) + ' <i class="fa-solid ' + escAttr(ctaIcon) + '"></i></span>' +
+        closeShell
+      );
+    }).join("") : `
+      <article class="pipeline-action-card pipeline-action-card--empty">
+        <i class="fa-solid fa-circle-check"></i>
+        <div class="pipeline-action-copy">
+          <span class="chip green">No urgent work</span>
+          <strong>Your active roles are organized.</strong>
+          <p>Add a new application or review closed roles when you are ready.</p>
+        </div>
+      </article>`;
+
+    return `
+      <section class="pipeline-action-board">
+        <div class="pipeline-section-heading">
+          <div>
+            <p class="eyebrow">Today</p>
+            <h2>Priority moves</h2>
+          </div>
+          <p class="ai-meta">Ranked by stage age, priority, and pipeline signal.</p>
+        </div>
+        <div class="pipeline-action-grid">${cards}</div>
+      </section>
+    `;
+  }
+
+  function renderMomentumStrip(apps, counts) {
+    const st = getSt();
+    const maxCount = Math.max(1, ...STAGES.map(function (s) { return counts[s.id] || 0; }));
+    const cards = STAGES.map(function (stage) {
+      const stageApps = apps.filter(function (a) { return a.stage === stage.id; });
+      const ages = stageApps.map(stageAge).filter(function (d) { return d != null; });
+      const avgAge = ages.length ? Math.round(ages.reduce(function (sum, d) { return sum + d; }, 0) / ages.length) : null;
+      const dueCount = stageApps.filter(function (app) {
+        const level = dueInfo(app).level;
+        return level === "overdue" || level === "due";
+      }).length;
+      const pct = Math.max(6, Math.round(((counts[stage.id] || 0) / maxCount) * 100));
+      return `
+        <article class="pipeline-stage-metric">
+          <div>
+            <span class="chip ${stage.tone}"><i class="fa-solid ${stage.icon}"></i> ${st(stage.label)}</span>
+            <strong>${counts[stage.id] || 0}</strong>
+          </div>
+          <div class="pipeline-stage-bar"><i style="width:${pct}%"></i></div>
+          <small>${avgAge == null ? "No age data" : "Avg " + formatAge(avgAge)}${dueCount ? " - " + dueCount + " due" : ""}</small>
+        </article>
+      `;
+    }).join("");
+
+    return `
+      <section class="pipeline-momentum-strip" aria-label="Pipeline stage momentum">
+        ${cards}
+      </section>
+    `;
+  }
+
+  function renderToolbar() {
+    const st = getSt();
+    const stageButtons = [
+      { id: "all", label: "All stages" }
+    ].concat(STAGES.map(function (stage) {
+      return { id: stage.id, label: stage.label };
+    })).map(function (item) {
+      return '<button type="button" class="chip-btn ' + (viewState.filterStage === item.id ? "is-active" : "") + '" data-pipeline-stage-filter="' + escAttr(item.id) + '">' + st(item.label) + "</button>";
+    }).join("");
+
+    const focusButtons = [
+      { id: "all", label: "All" },
+      { id: "attention", label: "Needs action" },
+      { id: "active", label: "Active" },
+      { id: "interviews", label: "Interviews" },
+      { id: "high", label: "High priority" }
+    ].map(function (item) {
+      return '<button type="button" class="chip-btn ' + (viewState.focus === item.id ? "is-active" : "") + '" data-pipeline-focus="' + escAttr(item.id) + '">' + st(item.label) + "</button>";
+    }).join("");
+
+    return `
+      <section class="pipeline-toolbar" aria-label="Pipeline controls">
+        <form class="pipeline-search" id="pipeline-search-form">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input id="pipeline-search-input" type="search" value="${escAttr(viewState.search)}" placeholder="Search company, role, notes, or next action" />
+          <button class="btn-secondary" type="submit">Search</button>
+        </form>
+        <div class="pipeline-toolbar-row">
+          <div class="pipeline-filter-group" aria-label="Filter by stage">${stageButtons}</div>
+          <div class="pipeline-selects">
+            <label>
+              <span>Priority</span>
+              <select id="pipeline-priority-filter">
+                <option value="all"${viewState.filterPriority === "all" ? " selected" : ""}>All</option>
+                ${PRIORITIES.map(function (p) {
+                  return '<option value="' + p + '"' + (viewState.filterPriority === p ? " selected" : "") + ">" + st(priorityMeta(p).label) + "</option>";
+                }).join("")}
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select id="pipeline-sort">
+                <option value="attention"${viewState.sort === "attention" ? " selected" : ""}>Attention first</option>
+                <option value="newest"${viewState.sort === "newest" ? " selected" : ""}>Newest first</option>
+                <option value="oldest"${viewState.sort === "oldest" ? " selected" : ""}>Oldest first</option>
+                <option value="company"${viewState.sort === "company" ? " selected" : ""}>Company A-Z</option>
+              </select>
+            </label>
+            <button class="btn-ghost" id="pipeline-clear-filters" type="button"${hasFilters() ? "" : " disabled"}>Clear</button>
+          </div>
+        </div>
+        <div class="pipeline-filter-group pipeline-filter-group--focus" aria-label="Focus filter">${focusButtons}</div>
+      </section>
+    `;
+  }
+
+  function renderCard(app) {
+    const st = getSt();
+    const priority = priorityMeta(app.priority);
+    const due = dueInfo(app);
+    const age = stageAge(app);
+    const score = signalScore(app);
+    const logo = (window.CBV2.logos && window.CBV2.logos.badge)
+      ? window.CBV2.logos.badge(app.company, "sm")
+      : "";
+    const chips = readinessChips(app).map(function (chip) {
+      return '<span class="pipeline-ready-chip ' + escAttr(chip.tone) + '">' + st(chip.label) + "</span>";
+    }).join("");
+    const route = primaryRouteFor(app);
+    return `
+      <article class="app-card pipeline-app-card" draggable="true" data-app-id="${escAttr(app.id)}" tabindex="0" role="button" aria-label="Open ${escAttr(app.company)} - ${escAttr(app.role)}">
+        <div class="app-card-head">
+          <div class="app-card-id">
+            ${logo}
+            <strong>${st(app.company)}</strong>
+          </div>
+          <span class="chip ${priority.tone}">${st(priority.label)}</span>
+        </div>
+        <p class="app-role">${st(app.role)}</p>
+        <div class="pipeline-card-meta">
+          <span><i class="fa-solid fa-hourglass-half"></i> ${st(formatAge(age))} in stage</span>
+          <span><i class="fa-solid fa-calendar"></i> ${st(app.appliedAt || "No date")}</span>
+        </div>
+        <div class="pipeline-card-action">
+          <span class="chip ${due.tone}"><i class="fa-solid ${due.icon}"></i> ${st(due.label)}</span>
+          <p>${st(nextActionText(app))}</p>
+        </div>
+        <div class="pipeline-card-signal">
+          <span>${score}% signal</span>
+          <i style="width:${score}%"></i>
+        </div>
+        <div class="pipeline-ready-row">${chips}</div>
+        <div class="app-card-actions">
+          <a class="btn-ghost pipeline-card-route" href="${escAttr(route.href)}" data-action="route" data-app-id="${escAttr(app.id)}" data-role-handoff="${escAttr(destinationForRoute(route.href))}" aria-label="${escAttr(route.label)}">
+            <i class="fa-solid ${escAttr(route.icon)}"></i>
+          </a>
+          <button class="btn-ghost" data-action="open" data-app-id="${escAttr(app.id)}" type="button" aria-label="Open details">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
+          <button class="btn-ghost" data-action="delete" data-app-id="${escAttr(app.id)}" type="button" aria-label="Delete">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderColumn(stage, filteredApps, allApps) {
+    const st = getSt();
+    const stageAll = allApps.filter(function (a) { return a.stage === stage.id; });
+    const visible = filteredApps.filter(function (a) { return a.stage === stage.id; });
+    const ages = stageAll.map(stageAge).filter(function (d) { return d != null; });
+    const avgAge = ages.length ? Math.round(ages.reduce(function (sum, d) { return sum + d; }, 0) / ages.length) : null;
+    const dueCount = stageAll.filter(function (app) {
+      const level = dueInfo(app).level;
+      return level === "overdue" || level === "due";
+    }).length;
+    const cards = visible.map(renderCard).join("") ||
+      '<p class="pipeline-drop-empty">' + (hasFilters() ? "No matching applications here" : "Drop applications here") + "</p>";
+    return `
+      <section class="kanban-col pipeline-kanban-col" data-stage="${escAttr(stage.id)}">
+        <header class="kanban-col-head">
+          <div>
+            <span class="chip ${stage.tone}"><i class="fa-solid ${stage.icon}"></i> ${st(stage.label)}</span>
+            <small>${avgAge == null ? "No age data" : "Avg " + formatAge(avgAge)}${dueCount ? " - " + dueCount + " due" : ""}</small>
+          </div>
+          <span class="count">${visible.length}${visible.length !== stageAll.length ? "/" + stageAll.length : ""}</span>
+        </header>
+        <div class="kanban-col-body" data-dropzone="${escAttr(stage.id)}">
+          ${cards}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderEmptyState() {
+    return `
+      <section class="pipeline-empty-wrap">
+        <div class="empty-state empty-state--pipeline">
+          <div class="empty-state-head">
+            <div class="empty-state-icon"><i class="fa-solid fa-list-check"></i></div>
+            <div>
+              <h3>Build a job-search pipeline that tells you what to do next.</h3>
+              <p>Add a saved role, an application, or an interview. CareerBoost will start tracking stage age, follow-up risk, and next-best actions.</p>
+            </div>
+          </div>
+          <div class="empty-state-actions empty-state-actions--pipeline">
+            <button class="btn-primary js-open-add-app" type="button"><i class="fa-solid fa-plus"></i> Add first application</button>
+            <a class="btn-secondary" href="#/job-search"><i class="fa-solid fa-magnifying-glass"></i> Import from Job Search</a>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderAddForm() {
+    return `
+      <section class="card panel-lg pipeline-add-form" id="add-app-form-wrap" hidden>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">New opportunity</p>
+            <h2>Add Application</h2>
+          </div>
+          <button class="btn-ghost" id="close-add-app" type="button"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="add-app-form" class="form-grid">
+          <label>Company<input name="company" required /></label>
+          <label>Role<input name="role" required /></label>
+          <label>Stage
+            <select name="stage">
+              ${STAGES.map(function (s) {
+                return '<option value="' + s.id + '">' + s.label + "</option>";
+              }).join("")}
+            </select>
+          </label>
+          <label>Priority
+            <select name="priority">
+              ${PRIORITIES.map(function (p) {
+                return '<option value="' + p + '">' + priorityMeta(p).label + "</option>";
+              }).join("")}
+            </select>
+          </label>
+          <label>Applied Date<input type="date" name="appliedAt" /></label>
+          <label class="form-row-full">Next Action<input name="nextAction" placeholder="Follow up, tailor resume, prep interview..." /></label>
+          <label class="form-row-full">Notes<textarea name="notes" rows="2"></textarea></label>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit">Save Application</button>
+          </div>
+        </form>
+      </section>
+    `;
+  }
+
+  function renderView() {
+    const apps = window.CBV2.store.getApplications();
+    const counts = countByStage(apps);
+    const filteredApps = sortApplications(filterApplications(apps));
+    const boardStages = viewState.filterStage === "all"
+      ? STAGES
+      : STAGES.filter(function (s) { return s.id === viewState.filterStage; });
+    const columns = boardStages.map(function (s) {
+      return renderColumn(s, filteredApps, apps);
+    }).join("");
+
+    if (!apps.length) {
+      return `
+        <section class="page-container applications-page applications-command-page">
+          ${renderCommandCenter(apps, counts)}
+          ${renderEmptyState()}
+          ${renderAddForm()}
+        </section>
+      `;
+    }
+
+    return `
+      <section class="page-container applications-page applications-command-page">
+        ${renderCommandCenter(apps, counts)}
+        ${renderPriorityActions(apps)}
+        ${renderMomentumStrip(apps, counts)}
+        ${renderToolbar()}
+        <section class="pipeline-board-shell">
+          <div class="pipeline-section-heading">
+            <div>
+              <p class="eyebrow">Board</p>
+              <h2>Application flow</h2>
+            </div>
+            <p class="ai-meta">${filteredApps.length} visible of ${apps.length} total</p>
+          </div>
+          <section class="kanban pipeline-kanban" id="kanban-board">
+            ${columns}
+          </section>
+        </section>
+        ${renderAddForm()}
+      </section>
+    `;
+  }
+
+  function bindDragAndDrop() {
+    const cards = document.querySelectorAll(".app-card[data-app-id]");
+    cards.forEach(function (card) {
+      card.addEventListener("dragstart", function (event) {
+        event.dataTransfer.setData("text/plain", card.getAttribute("data-app-id"));
+        card.classList.add("dragging");
+      });
+      card.addEventListener("dragend", function () {
+        card.classList.remove("dragging");
+      });
+    });
+
+    const dropzones = document.querySelectorAll("[data-dropzone]");
+    dropzones.forEach(function (zone) {
+      zone.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        zone.classList.add("drop-hover");
+      });
+      zone.addEventListener("dragleave", function () {
+        zone.classList.remove("drop-hover");
+      });
+      zone.addEventListener("drop", function (event) {
+        event.preventDefault();
+        zone.classList.remove("drop-hover");
+        const id = event.dataTransfer.getData("text/plain");
+        const stage = zone.getAttribute("data-dropzone");
+        if (id && stage) {
+          window.CBV2.store.updateApplicationStage(id, stage);
+          window.CBV2.renderCurrentRoute();
+        }
+      });
+    });
+  }
+
+  function bindDelete() {
+    const buttons = document.querySelectorAll('[data-action="delete"][data-app-id]');
+    buttons.forEach(function (btn) {
+      btn.addEventListener("click", function (event) {
+        event.stopPropagation();
+        const id = btn.getAttribute("data-app-id");
+        if (confirm("Delete this application?")) {
+          window.CBV2.store.deleteApplication(id);
+          window.CBV2.renderCurrentRoute();
+        }
+      });
+    });
+  }
+
+  function bindCardOpen() {
+    const cards = document.querySelectorAll(".app-card[data-app-id]");
+    cards.forEach(function (card) {
+      const id = card.getAttribute("data-app-id");
+      card.addEventListener("click", function (event) {
+        if (event.target.closest("[data-action]")) return;
+        if (card.classList.contains("dragging")) return;
+        if (window.CBV2.drawer) window.CBV2.drawer.openApplication(id);
+      });
+      card.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (window.CBV2.drawer) window.CBV2.drawer.openApplication(id);
+        }
+      });
+    });
+
+    const openButtons = document.querySelectorAll('[data-action="open"][data-app-id]');
+    openButtons.forEach(function (btn) {
+      btn.addEventListener("click", function (event) {
+        event.stopPropagation();
+        const id = btn.getAttribute("data-app-id");
+        if (window.CBV2.drawer) window.CBV2.drawer.openApplication(id);
+      });
+    });
+  }
+
+  function bindRoleHandoffs() {
+    const store = window.CBV2.store;
+    const svc = window.CBV2.roleContext;
+    if (!svc || typeof svc.useApplication !== "function") return;
+    document.querySelectorAll('[data-action="route"][data-app-id]').forEach(function (link) {
+      link.addEventListener("click", function (event) {
+        event.stopPropagation();
+        const id = link.getAttribute("data-app-id");
+        const destination = link.getAttribute("data-role-handoff") || "active";
+        const app = typeof store.getApplicationById === "function"
+          ? store.getApplicationById(id)
+          : (store.getApplications() || []).find(function (x) { return x.id === id; });
+        if (app) {
+          svc.useApplication(app, { destination: destination, origin: "pipeline-card" });
+        }
+      });
+    });
+  }
+
+  function bindPipelineControls() {
+    const rerender = function () {
+      window.CBV2.renderCurrentRoute();
+    };
+
+    document.querySelectorAll("[data-pipeline-stage-filter]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        viewState.filterStage = btn.getAttribute("data-pipeline-stage-filter") || "all";
+        rerender();
+      });
+    });
+
+    document.querySelectorAll("[data-pipeline-focus]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        viewState.focus = btn.getAttribute("data-pipeline-focus") || "all";
+        rerender();
+      });
+    });
+
+    const priority = document.getElementById("pipeline-priority-filter");
+    if (priority) {
+      priority.addEventListener("change", function () {
+        viewState.filterPriority = priority.value || "all";
+        rerender();
+      });
+    }
+
+    const sort = document.getElementById("pipeline-sort");
+    if (sort) {
+      sort.addEventListener("change", function () {
+        viewState.sort = sort.value || "attention";
+        rerender();
+      });
+    }
+
+    const form = document.getElementById("pipeline-search-form");
+    const input = document.getElementById("pipeline-search-input");
+    if (form && input) {
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        viewState.search = input.value || "";
+        rerender();
+      });
+    }
+
+    const clear = document.getElementById("pipeline-clear-filters");
+    if (clear) {
+      clear.addEventListener("click", function () {
+        viewState.filterStage = "all";
+        viewState.filterPriority = "all";
+        viewState.focus = "all";
+        viewState.search = "";
+        rerender();
+      });
+    }
+  }
+
+  function bindAddForm() {
+    const openBtns = document.querySelectorAll(".js-open-add-app");
+    const closeBtn = document.getElementById("close-add-app");
+    const wrap = document.getElementById("add-app-form-wrap");
+    const form = document.getElementById("add-app-form");
+
+    if (openBtns.length && wrap) {
+      openBtns.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          wrap.hidden = false;
+          wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    }
+    if (closeBtn && wrap) {
+      closeBtn.addEventListener("click", function () {
+        wrap.hidden = true;
+      });
+    }
+    if (form) {
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        const fd = new FormData(form);
+        const newApp = {
+          id: window.CBV2.createId("app"),
+          company: String(fd.get("company") || "").trim(),
+          role: String(fd.get("role") || "").trim(),
+          stage: String(fd.get("stage") || "saved"),
+          priority: String(fd.get("priority") || "medium"),
+          appliedAt: String(fd.get("appliedAt") || ""),
+          nextAction: String(fd.get("nextAction") || ""),
+          notes: String(fd.get("notes") || "")
+        };
+        if (!newApp.company || !newApp.role) {
+          return;
+        }
+        window.CBV2.store.upsertApplication(newApp);
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+  }
+
+  window.CBV2.routes.applications = renderView;
+  window.CBV2.afterRender.applications = function (params) {
+    bindDragAndDrop();
+    bindDelete();
+    bindCardOpen();
+    bindRoleHandoffs();
+    bindPipelineControls();
+    bindAddForm();
+    if (params && params.add === "1") {
+      const wrap = document.getElementById("add-app-form-wrap");
+      if (wrap) {
+        wrap.hidden = false;
+        wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  };
+})();

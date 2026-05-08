@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareerBoost — Your AI Job-Search Command Center</title>
+  <meta name="description" content="Land better roles faster with CareerBoost: a clear AI-assisted workflow for resume tailoring, applications, follow-ups, and interview prep." />
+  <meta name="theme-color" content="#05070f" />
+  <meta name="robots" content="index, follow" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CareerBoost — Your AI Job-Search Command Center" />
+  <meta name="twitter:description" content="A professional AI-assisted workflow to plan, tailor, apply, and prep with confidence." />
+  <meta property="og:title" content="CareerBoost — Your AI Job-Search Command Center" />
+  <meta property="og:description" content="A professional AI-assisted workflow to plan, tailor, apply, and prep with confidence." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CareerBoost" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+
+  <link rel="stylesheet" href="./src/styles/tokens.css" />
+  <link rel="stylesheet" href="./src/styles/base.css" />
+  <link rel="stylesheet" href="./src/styles/layout.css" />
+  <link rel="stylesheet" href="./src/styles/modules.css" />
+  <link rel="stylesheet" href="./src/styles/auth.css" />
+  <link rel="stylesheet" href="./src/styles/phase1.css" />
+  <link rel="stylesheet" href="./src/styles/design-system.css" />
+  <link rel="stylesheet" href="./src/styles/phase5-cleanup.css" />
+</head>
+<body>
+  <div id="app">
+    <section class="page-container">
+      <h1 class="page-title">Loading Dashboard V2...</h1>
+      <p class="page-subtitle">If this stays visible, JavaScript failed to load.</p>
+    </section>
+  </div>
+
+  <!-- Supabase SDK (loaded before config/auth scripts). No-op when backend is not configured. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+
+  <script src="./src/js/app/config.js"></script>
+  <script src="./src/js/auth/auth.service.js"></script>
+  <script src="./src/js/app/profile.js"></script>
+
+  <script src="./src/js/ai/ai.schemas.js"></script>
+  <script src="./src/js/ai/ai.providers.js"></script>
+  <script src="./src/js/ai/ai.telemetry.js"></script>
+  <script src="./src/js/ai/ai.orchestrator.js"></script>
+  <script src="./src/js/app/state.js"></script>
+  <script src="./src/js/app/store.js"></script>
+  <script src="./src/js/app/store.remote.js"></script>
+  <script src="./src/js/app/utils/strings.js"></script>
+  <script src="./src/js/app/utils/download.js"></script>
+  <script src="./src/js/app/shared/loading.js"></script>
+  <script src="./src/js/app/shared/placeholder-view.js"></script>
+  <script src="./src/js/app/shared/toast.js"></script>
+  <script src="./src/js/app/shortcuts.js"></script>
+  <script src="./src/js/components/brand-kit.js"></script>
+  <script src="./src/js/components/app-shell.js"></script>
+  <script src="./src/js/components/global-search.js"></script>
+  <script src="./src/js/components/status-pill.js"></script>
+  <script src="./src/js/components/logos.js"></script>
+  <script src="./src/js/components/ui-kit.js"></script>
+  <script src="./src/js/services/jobs/job.notes.js"></script>
+  <script src="./src/js/components/app-drawer.js"></script>
+  <script src="./src/js/components/command-palette.js"></script>
+
+  <script src="./src/js/services/jobs/job.normalize.js"></script>
+  <script src="./src/js/services/jobs/job.providers.custom.js"></script>
+  <script src="./src/js/services/jobs/job.intent.js"></script>
+  <script src="./src/js/services/jobs/job.search.js"></script>
+  <script src="./src/js/services/jobs/job.matcher.js"></script>
+  <script src="./src/js/services/jobs/job.workflow.js"></script>
+  <script src="./src/js/services/candidate/candidate.intelligence.js"></script>
+  <script src="./src/js/services/candidate/role.context.js"></script>
+  <script src="./src/js/services/candidate/application.command-center.js"></script>
+  <script src="./src/js/services/candidate/product.intelligence.js"></script>
+
+  <script src="./src/js/auth/auth.route.js"></script>
+  <script src="./src/js/marketing/welcome.route.js"></script>
+  <script src="./src/js/modules/onboarding/onboarding.route.js"></script>
+  <script src="./src/js/modules/dashboard/dashboard.route.js"></script>
+  <script src="./src/js/modules/job-search/job-search.shared.js"></script>
+  <script src="./src/js/modules/job-search/job-search.route.js"></script>
+  <script src="./src/js/modules/applications/applications.route.js"></script>
+  <script src="./src/js/modules/calendar/calendar.route.js"></script>
+  <script src="./src/js/modules/resume/resume.model.js"></script>
+  <script src="./src/js/modules/resume/resume.parser.js"></script>
+  <script src="./src/js/modules/resume/resume.templates.js"></script>
+  <script src="./src/js/modules/resume/resume.docx.js"></script>
+  <script src="./src/js/modules/resume/resume.export.js"></script>
+  <script src="./src/js/modules/resume/resume.quality.js"></script>
+  <script src="./src/js/modules/resume/resume.route.js"></script>
+  <script src="./src/js/modules/cover-letter/cover-letter.route.js"></script>
+  <script src="./src/js/services/interview/company-intel.service.js"></script>
+  <script src="./src/js/modules/interview/interview.route.js"></script>
+  <script src="./src/js/modules/analytics/analytics.shared.js"></script>
+  <script src="./src/js/modules/analytics/analytics.route.js"></script>
+  <script src="./src/js/modules/settings/settings.meta.js"></script>
+  <script src="./src/js/modules/settings/settings.route.js"></script>
+  <script src="./src/js/app/router.js"></script>
+  <script src="./src/js/app/bootstrap.js"></script>
+</body>
+</html>

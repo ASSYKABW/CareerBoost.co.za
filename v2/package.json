@@ -1,0 +1,11 @@
+{
+  "name": "careerboost-v2",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run-all.mjs",
+    "test:browser": "node tests/run-all.mjs --browser",
+    "test:visual": "node tests/run-all.mjs --visual",
+    "test:visual:update": "node tests/run-all.mjs --update-visual",
+    "test:all": "node tests/run-all.mjs --all"
+  }
+}
