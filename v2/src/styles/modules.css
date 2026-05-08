@@ -320,6 +320,27 @@
   font-size: var(--font-size-12);
 }
 
+/* Phase 1: streaming typing indicator while interview-session-step is being
+ * streamed token-by-token. Keeps the bubble visible immediately so the user
+ * sees an interviewer is "typing" instead of waiting on a blank spinner. */
+.mock-msg-body[data-streaming-bubble="1"] {
+  position: relative;
+  white-space: pre-wrap;
+}
+.mock-typing {
+  display: inline-block;
+  letter-spacing: 0.15em;
+  animation: mock-typing-blink 1.2s steps(3, end) infinite;
+  opacity: 0.7;
+}
+@keyframes mock-typing-blink {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mock-typing { animation: none; }
+}
+
 .mock-debrief {
   margin-top: var(--space-16);
   padding-top: var(--space-12);

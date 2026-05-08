@@ -1045,8 +1045,103 @@
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Streaming consumer (Phase 1) — SSE reader for `interview-session-step`.
+  // Backend emits events: meta, delta, done, error, warn.
+  // Caller passes { onMeta, onDelta, onDone, onError } and gets progressive
+  // tokens for the typing-indicator UX. Falls back to runSkill if backend is
+  // not active or streaming fails.
+  // -------------------------------------------------------------------------
+  async function runSkillStream(payload, callbacks) {
+    callbacks = callbacks || {};
+    if (!isBackendActive()) {
+      throw new Error("Streaming requires an active backend session.");
+    }
+    const endpoint = resolveAiEndpoint();
+    const authHeaders = await resolveAuthHeaders();
+    if (!endpoint || !authHeaders) {
+      throw new Error("Streaming requires backend + signed-in user.");
+    }
+
+    const body = Object.assign({}, payload, { stream: true });
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: Object.assign(
+        {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
+        authHeaders
+      ),
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const detail = await parseErrorBody(response);
+      throw new Error("AI " + response.status + ": " + detail);
+    }
+    if (!response.body) {
+      throw new Error("Streaming not supported by browser/runtime.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalEnvelope = null;
+    let aborted = false;
+
+    function dispatch(eventName, data) {
+      try {
+        if (eventName === "meta" && callbacks.onMeta) callbacks.onMeta(data);
+        else if (eventName === "delta" && callbacks.onDelta) callbacks.onDelta(data);
+        else if (eventName === "warn" && callbacks.onWarn) callbacks.onWarn(data);
+        else if (eventName === "done") {
+          finalEnvelope = data;
+          if (callbacks.onDone) callbacks.onDone(data);
+        } else if (eventName === "error") {
+          aborted = true;
+          if (callbacks.onError) callbacks.onError(data);
+        }
+      } catch (e) { /* user callback error must not break the stream */ }
+    }
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const block = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const lines = block.split("\n");
+        let eventName = "message";
+        let dataPayload = "";
+        for (const line of lines) {
+          if (line.startsWith("event:")) eventName = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataPayload += line.slice(5).trim();
+        }
+        if (!dataPayload) continue;
+        let parsed;
+        try { parsed = JSON.parse(dataPayload); }
+        catch (e) { continue; }
+        dispatch(eventName, parsed);
+        if (eventName === "done" || eventName === "error") {
+          // Backend closed the stream.
+          break;
+        }
+      }
+      if (aborted) break;
+    }
+
+    if (!finalEnvelope) {
+      throw new Error("Stream ended without a `done` event.");
+    }
+    return finalEnvelope;
+  }
+
   window.CBAI = window.CBAI || {};
   Object.defineProperty(window.CBAI, "providers", {
     get: function () { return window.__CBAI_providers; }
   });
+  window.CBAI.runSkillStream = runSkillStream;
 })();

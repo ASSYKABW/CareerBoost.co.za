@@ -5,11 +5,19 @@
 // happens to send. The client ships several historical field names
 // (targetRole | role | job, resume | background, etc.) and we resolve
 // whichever is present so the model always gets rich context.
+//
+// Phase 1: `system` is renamed to `systemStable` to make caching semantics
+// explicit. The block is identical across requests so Anthropic's prompt cache
+// (5-min TTL) marks it as ephemeral and bills cached reads at 10% of base
+// input price. `outputSchema` + `toolName` enable tool-use / structured-output
+// modes for skills with complex nested schemas.
 
 import type { Skill } from "./schemas.ts";
 
 interface PromptSpec {
-  system: string;
+  /** Cacheable persona/rules/schema block. Identical across requests. */
+  systemStable: string;
+  /** Per-request user content (data + question). */
   userTemplate: (input: unknown) => string;
 }
 
@@ -63,7 +71,7 @@ const JSON_ONLY =
 
 export const prompts: Record<Skill, PromptSpec> = {
   "resume-tailor": {
-    system:
+    systemStable:
       "You are a senior career coach and ATS specialist. Given a candidate's " +
       "resume and a target role, produce a tailored summary, a keyword list " +
       "optimized for ATS, and 5-8 achievement bullets in STAR format " +
@@ -99,7 +107,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "cover-letter-generate": {
-    system:
+    systemStable:
       "You are an expert cover-letter writer. Write a concise, confident, " +
       "specific cover letter tailored to the provided role, company, and " +
       "candidate highlights. Avoid clichés and generic filler. Match the " +
@@ -138,7 +146,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "interview-coach": {
-    system:
+    systemStable:
       "You are a staff-level interview coach. Generate likely interview " +
       "questions tailored to the role, interview stage, and focus areas, " +
       "plus actionable STAR-format coaching tips." + JSON_ONLY +
@@ -163,7 +171,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "interview-score": {
-    system:
+    systemStable:
       "You are an interview assessor. Score the candidate's answer on " +
       "clarity, structure (STAR), evidence, and measurable impact. Be fair " +
       "but honest." + JSON_ONLY +
@@ -183,7 +191,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "interview-session-step": {
-    system:
+    systemStable:
       "You are a hiring manager conducting a realistic mock job interview via text. " +
       "Speak as the interviewer only: concise, natural, professional, one voice. " +
       "Use the JOB (if any) and STAGE to calibrate difficulty. " +
@@ -257,7 +265,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "interview-session-debrief": {
-    system:
+    systemStable:
       "You are an expert interview coach debriefing a completed mock interview transcript. " +
       "Be direct and constructive. Do not invent events that are not in the transcript. " +
       "Score holistically: structure, clarity, evidence, relevance, seniority signal." +
@@ -292,7 +300,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "interview-intel-pack": {
-    system:
+    systemStable:
       "You create an interview-preparation briefing from noisy web snippets. " +
       "Facts must be tethered to real URLs supplied in SEARCH HITS. " +
       "If a takeaway is speculative or anecdotal and not anchored to specific text in a hit's snippet/title/URL pairing, route it into `unverifiedThemes` rather than citedInsights." +
@@ -327,7 +335,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "application-insight": {
-    system:
+    systemStable:
       "You are a job search strategist. Given the user's recent pipeline " +
       "activity, produce a focused headline and 3-5 recommendations for the " +
       "week ahead. Be specific and actionable — name stages, days, and " +
@@ -340,7 +348,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "job-match-score": {
-    system:
+    systemStable:
       "You compare a resume against a job posting and return a match score." +
       JSON_ONLY +
       ' Schema: { "score": number (0-100), "fitSummary": string, ' +
@@ -361,7 +369,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "query-parse": {
-    system:
+    systemStable:
       "You convert a natural-language job-search query into structured JSON " +
       "filters." + JSON_ONLY +
       ' Schema: { "keywords": string[], "remote": boolean, ' +
@@ -377,7 +385,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "followup-email": {
-    system:
+    systemStable:
       "You write concise, professional follow-up emails for job applicants. " +
       "The candidate is following up on an application, interview, or recruiter " +
       "conversation. Respect the stated tone and purpose. Be polite and " +
@@ -424,7 +432,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "jd-analyze": {
-    system:
+    systemStable:
       "You are an expert technical recruiter. Parse the following job " +
       "description into structured, factual fields. Do not invent " +
       "requirements the posting doesn't state. Prefer the exact wording " +
@@ -456,7 +464,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "tailor-plan": {
-    system:
+    systemStable:
       "You are a senior career coach producing a TAILORING PLAN that aligns a " +
       "candidate's resume with a specific job description. Never fabricate " +
       "experience, titles, or numbers that aren't supported by the resume. " +
@@ -523,7 +531,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "resume-critique": {
-    system:
+    systemStable:
       "You are a senior technical recruiter and career coach reviewing a " +
       "candidate's resume. Your goal is a rigorous, honest, specific " +
       "critique that helps the candidate land interviews. Never invent " +
@@ -594,7 +602,7 @@ export const prompts: Record<Skill, PromptSpec> = {
   },
 
   "resume-parse": {
-    system:
+    systemStable:
       "You are a CV/resume parser. Given raw text extracted from a PDF or Word " +
       "document, extract the candidate's information into a strictly-typed " +
       "JSON object. Never invent information that is not clearly in the input. " +

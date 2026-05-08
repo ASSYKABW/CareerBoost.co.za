@@ -564,6 +564,12 @@
           entry.phase && entry.speaker === "interviewer"
             ? '<span class="chip cyan mock-phase">' + st(entry.phase) + "</span>"
             : "";
+        // Streaming bubble gets a stable selector so partial-render token
+        // updates don't have to repaint the whole transcript.
+        const streamingAttr = entry.streaming ? ' data-streaming-bubble="1"' : "";
+        const bodyText = entry.streaming && !entry.text
+          ? '<span class="mock-typing">…</span>'
+          : formatMockParagraphs(entry.text, st);
         return (
           '<div class="' +
           cls +
@@ -572,8 +578,8 @@
           st(who) +
           "</strong> " +
           phaseChip +
-          '</div><div class="mock-msg-body">' +
-          formatMockParagraphs(entry.text, st) +
+          '</div><div class="mock-msg-body"' + streamingAttr + ">" +
+          bodyText +
           "</div></div>"
         );
       })
@@ -961,10 +967,25 @@
     }
   }
 
-  async function runInterviewStep(payload) {
+  async function runInterviewStep(payload, streamCallbacks) {
     const ai = window.CBAI || {};
     if (typeof ai.runSkill !== "function") {
       throw new Error("AI orchestrator not available.");
+    }
+    // Phase 1: prefer streaming for the mock interview turn-by-turn UX so the
+    // first token shows in ~100ms instead of waiting 4-8s for the full reply.
+    if (streamCallbacks && typeof ai.runSkillStreamed === "function") {
+      try {
+        return await ai.runSkillStreamed("interview-session-step", payload, streamCallbacks);
+      } catch (err) {
+        // Streaming-specific failure (network, SSE parse) → fall back to blocking.
+        // Do NOT swallow auth/4xx errors — those should still surface.
+        const msg = err && err.message ? String(err.message) : "";
+        if (/401|403|429|5\d\d/.test(msg)) {
+          throw err;
+        }
+        // Continue to blocking fallback below.
+      }
     }
     return ai.runSkill("interview-session-step", payload);
   }
@@ -984,18 +1005,28 @@
     viewState.mockEarlyEnd = false;
     viewState.mockDebrief = null;
     window.CBV2.renderCurrentRoute();
+    // Pre-create an in-progress interviewer bubble that streaming deltas will fill.
+    const streamingBubble = {
+      speaker: "interviewer",
+      text: "",
+      phase: "warmup",
+      streaming: true
+    };
+    viewState.mockTranscript.push(streamingBubble);
+    const streamCallbacks = createStreamCallbacks(streamingBubble);
     try {
       const env = await runInterviewStep(
         Object.assign({}, intelStepPayloadBase(), {
           openingInit: true,
           turnIndex: 0
-        })
+        }),
+        streamCallbacks
       );
-      viewState.mockTranscript.push({
-        speaker: "interviewer",
-        text: env.data.message,
-        phase: env.data.phase
-      });
+      // Replace the streaming bubble's text with the validated final message
+      // (handles both streamed + fallback-blocking paths).
+      streamingBubble.text = env.data.message;
+      streamingBubble.phase = env.data.phase;
+      streamingBubble.streaming = false;
       viewState.mockInterviewerTurns = 1;
       if (env.data.isComplete) {
         viewState.mockSessionClosed = true;
@@ -1003,6 +1034,9 @@
         return;
       }
     } catch (err) {
+      // Drop the empty in-progress bubble so users don't see a ghost row.
+      const idx = viewState.mockTranscript.indexOf(streamingBubble);
+      if (idx !== -1) viewState.mockTranscript.splice(idx, 1);
       viewState.mockError = err && err.message ? String(err.message) : "Interview step failed.";
     } finally {
       viewState.mockBusy = false;
@@ -1010,6 +1044,43 @@
       window.CBV2.renderCurrentRoute();
       scrollMockTranscript();
     }
+  }
+
+  // Build callbacks for the SSE stream. Mutates the provided bubble in-place
+  // so the existing render path picks up tokens as they arrive.
+  function createStreamCallbacks(bubble) {
+    let frame = null;
+    function scheduleRender() {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(function () {
+        frame = null;
+        // Render only the active streaming row, not the whole route, to keep
+        // typing-indicator latency low.
+        const node = document.querySelector('[data-streaming-bubble="1"]');
+        if (node) {
+          node.textContent = bubble.text;
+          scrollMockTranscript();
+        } else {
+          // Fallback to full re-render if the partial node isn't mounted.
+          window.CBV2.renderCurrentRoute();
+        }
+      });
+    }
+    return {
+      onMeta: function () { /* could surface model name */ },
+      onDelta: function (data) {
+        if (!data || typeof data.text !== "string") return;
+        bubble.text += data.text;
+        scheduleRender();
+      },
+      onWarn: function () { /* schema warnings come AFTER stream — non-fatal */ },
+      onError: function (data) {
+        bubble.streaming = false;
+        viewState.mockError = (data && data.message) ? data.message : "Stream failed.";
+        window.CBV2.renderCurrentRoute();
+      },
+      onDone: function () { bubble.streaming = false; }
+    };
   }
 
   async function submitMockReply() {
@@ -1039,21 +1110,30 @@
     }
     viewState.mockBusy = true;
     viewState.mockError = "";
+    // Streaming bubble for the next interviewer turn.
+    const streamingBubble = {
+      speaker: "interviewer",
+      text: "",
+      phase: "behavioral",
+      streaming: true
+    };
+    viewState.mockTranscript.push(streamingBubble);
     window.CBV2.renderCurrentRoute();
 
+    const streamCallbacks = createStreamCallbacks(streamingBubble);
     try {
       const env = await runInterviewStep(
         Object.assign({}, intelStepPayloadBase(), {
           openingInit: false,
-          transcript: viewState.mockTranscript,
+          // Send transcript without the in-progress empty interviewer bubble.
+          transcript: viewState.mockTranscript.filter(function (m) { return !m.streaming; }),
           turnIndex: viewState.mockInterviewerTurns
-        })
+        }),
+        streamCallbacks
       );
-      viewState.mockTranscript.push({
-        speaker: "interviewer",
-        text: env.data.message,
-        phase: env.data.phase
-      });
+      streamingBubble.text = env.data.message;
+      streamingBubble.phase = env.data.phase;
+      streamingBubble.streaming = false;
       viewState.mockInterviewerTurns += 1;
 
       if (env.data.isComplete) {
@@ -1068,6 +1148,8 @@
         return;
       }
     } catch (err) {
+      const idx = viewState.mockTranscript.indexOf(streamingBubble);
+      if (idx !== -1) viewState.mockTranscript.splice(idx, 1);
       viewState.mockError = err && err.message ? String(err.message) : "Interview step failed.";
     } finally {
       viewState.mockBusy = false;

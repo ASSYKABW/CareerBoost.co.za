@@ -1,11 +1,29 @@
 // Provider-agnostic LLM adapter. Supports Gemini (Google AI), OpenAI,
-// Anthropic, and Groq. Swap providers by setting LLM_PROVIDER in the function env.
+// Anthropic, and Groq.
+//
+// Phase 1 additions:
+//   - Structured system blocks (`systemStable` + `systemDynamic`) so Anthropic
+//     prompt caching can mark the stable persona+schema+rules block as
+//     ephemeral-cacheable. Cuts input cost ~70% on long-form skills.
+//   - Tool-use mode for Anthropic (forces strict JSON via tool schema).
+//   - JSON-schema strict mode for OpenAI (response_format).
+//   - Cache-token usage captured into LLMCallOutput.
+//   - Streaming pass-through for SSE-capable callers (Anthropic only).
 
 export type LLMProvider = "gemini" | "openai" | "anthropic" | "groq";
 
 export interface LLMCallInput {
-  system: string;
+  /** Stable, prompt-cacheable system block (persona, schema, rules). */
+  systemStable: string;
+  /** Per-request dynamic system content (rarely-changing context). */
+  systemDynamic?: string;
+  /** User turn (the actual query / inputs / data). */
   user: string;
+  /** Optional structured-output JSON schema (Draft-7-style object). */
+  outputSchema?: Record<string, unknown>;
+  /** When provided, forces tool-use / structured outputs where supported. */
+  toolName?: string;
+  /** Per-call model override. */
   model?: string;
   temperature?: number;
   maxTokens?: number;
@@ -18,6 +36,8 @@ export interface LLMCallOutput {
   provider: LLMProvider;
   inputTokens?: number;
   outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationTokens?: number;
   latencyMs: number;
 }
 
@@ -29,14 +49,47 @@ function abortAfter(ms: number): { signal: AbortSignal; cancel: () => void } {
   return { signal: ctrl.signal, cancel: () => clearTimeout(t) };
 }
 
+function combineSystem(i: LLMCallInput): string {
+  const stable = (i.systemStable || "").trim();
+  const dynamic = (i.systemDynamic || "").trim();
+  return dynamic ? stable + "\n\n" + dynamic : stable;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI
+// ---------------------------------------------------------------------------
 async function callOpenAI(i: LLMCallInput): Promise<LLMCallOutput> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
-  const model = i.model || Deno.env.get("LLM_MODEL") || "gpt-4.1";
+  const model = i.model || Deno.env.get("LLM_MODEL") || "gpt-4o-mini";
 
   const { signal, cancel } = abortAfter(i.timeoutMs ?? TIMEOUT_MS);
   const started = Date.now();
   try {
+    const body: Record<string, unknown> = {
+      model,
+      temperature: i.temperature ?? 0.4,
+      messages: [
+        { role: "system", content: combineSystem(i) },
+        { role: "user", content: i.user },
+      ],
+    };
+    if (i.maxTokens) body.max_tokens = i.maxTokens;
+
+    if (i.outputSchema && i.toolName) {
+      // OpenAI strict JSON-schema mode (eliminates extractJson failures).
+      body.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: i.toolName,
+          strict: true,
+          schema: i.outputSchema,
+        },
+      };
+    } else {
+      body.response_format = { type: "json_object" };
+    }
+
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       signal,
@@ -44,28 +97,22 @@ async function callOpenAI(i: LLMCallInput): Promise<LLMCallOutput> {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        temperature: i.temperature ?? 0.4,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: i.system },
-          { role: "user", content: i.user },
-        ],
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`OpenAI ${res.status}: ${body.slice(0, 400)}`);
+      const txt = await res.text();
+      throw new Error(`OpenAI ${res.status}: ${txt.slice(0, 400)}`);
     }
     const data = await res.json();
     const text = data?.choices?.[0]?.message?.content ?? "";
+    const usage = data?.usage ?? {};
     return {
       text,
       model,
       provider: "openai",
-      inputTokens: data?.usage?.prompt_tokens,
-      outputTokens: data?.usage?.completion_tokens,
+      inputTokens: usage.prompt_tokens,
+      outputTokens: usage.completion_tokens,
+      cachedInputTokens: usage.prompt_tokens_details?.cached_tokens,
       latencyMs: Date.now() - started,
     };
   } finally {
@@ -73,6 +120,9 @@ async function callOpenAI(i: LLMCallInput): Promise<LLMCallOutput> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Gemini
+// ---------------------------------------------------------------------------
 async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
@@ -91,30 +141,29 @@ async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
     }`;
 
   try {
+    const generationConfig: Record<string, unknown> = {
+      temperature: i.temperature ?? 0.4,
+      maxOutputTokens: Math.min(i.maxTokens ?? 2048, 8192),
+      responseMimeType: "application/json",
+    };
+    if (i.outputSchema) {
+      // Gemini supports OpenAPI subset for responseSchema.
+      generationConfig.responseSchema = i.outputSchema;
+    }
+
     const res = await fetch(url, {
       method: "POST",
       signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: i.system }],
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: i.user }],
-          },
-        ],
-        generationConfig: {
-          temperature: i.temperature ?? 0.4,
-          maxOutputTokens: Math.min(i.maxTokens ?? 2048, 8192),
-          responseMimeType: "application/json",
-        },
+        systemInstruction: { parts: [{ text: combineSystem(i) }] },
+        contents: [{ role: "user", parts: [{ text: i.user }] }],
+        generationConfig,
       }),
     });
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Gemini ${res.status}: ${body.slice(0, 400)}`);
+      const txt = await res.text();
+      throw new Error(`Gemini ${res.status}: ${txt.slice(0, 400)}`);
     }
     const data = await res.json() as Record<string, unknown>;
     const candidates = Array.isArray(data?.candidates) ? data.candidates as Record<string, unknown>[] : [];
@@ -132,8 +181,9 @@ async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
       model: model.replace(/^models\//, ""),
       provider: "gemini",
       inputTokens: typeof usage?.promptTokenCount === "number" ? usage.promptTokenCount : undefined,
-      outputTokens: typeof usage?.candidatesTokenCount === "number"
-        ? usage.candidatesTokenCount
+      outputTokens: typeof usage?.candidatesTokenCount === "number" ? usage.candidatesTokenCount : undefined,
+      cachedInputTokens: typeof usage?.cachedContentTokenCount === "number"
+        ? usage.cachedContentTokenCount
         : undefined,
       latencyMs: Date.now() - started,
     };
@@ -142,13 +192,68 @@ async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Anthropic (with prompt caching + tool use)
+// ---------------------------------------------------------------------------
 async function callAnthropic(i: LLMCallInput): Promise<LLMCallOutput> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-  const model = i.model || Deno.env.get("LLM_MODEL") || "claude-3-5-haiku-latest";
+  const model = i.model || Deno.env.get("LLM_MODEL") || "claude-haiku-4-5";
 
   const { signal, cancel } = abortAfter(i.timeoutMs ?? TIMEOUT_MS);
   const started = Date.now();
+
+  // System is an ARRAY of typed text blocks. The stable block is marked
+  // cache_control: ephemeral so subsequent calls within ~5 minutes pay 10%
+  // input price. Long-form skills (resume tailor/critique, interview debrief)
+  // see the largest savings.
+  const systemBlocks: Array<Record<string, unknown>> = [];
+  const stable = (i.systemStable || "").trim();
+  const dynamic = (i.systemDynamic || "").trim();
+  if (stable) {
+    systemBlocks.push({
+      type: "text",
+      text: stable,
+      cache_control: { type: "ephemeral" },
+    });
+  }
+  if (dynamic) {
+    systemBlocks.push({ type: "text", text: dynamic });
+  }
+
+  const body: Record<string, unknown> = {
+    model,
+    max_tokens: i.maxTokens ?? 1200,
+    temperature: i.temperature ?? 0.4,
+    system: systemBlocks,
+    messages: [{ role: "user", content: i.user }],
+  };
+
+  if (i.outputSchema && i.toolName) {
+    // Tool-use mode: model is forced to call the tool, which guarantees
+    // strict-shape JSON in tool_use.input. Eliminates JSON-extraction failures.
+    body.tools = [
+      {
+        name: i.toolName,
+        description: "Emit the structured response for this skill.",
+        input_schema: i.outputSchema,
+      },
+    ];
+    body.tool_choice = { type: "tool", name: i.toolName };
+  } else {
+    // Free-form text fallback — older skills that don't ship a schema yet.
+    // Append a no-fence instruction to the dynamic block.
+    if (systemBlocks.length === 0) {
+      systemBlocks.push({ type: "text", text: "Return ONLY a JSON object." });
+    } else {
+      systemBlocks[systemBlocks.length - 1] = {
+        ...systemBlocks[systemBlocks.length - 1],
+        text: ((systemBlocks[systemBlocks.length - 1] as { text: string }).text +
+          "\n\nReturn ONLY a JSON object — no markdown, no commentary."),
+      };
+    }
+  }
+
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -156,29 +261,44 @@ async function callAnthropic(i: LLMCallInput): Promise<LLMCallOutput> {
       headers: {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        // Prompt caching has been generally available since 2024-08, but the
+        // beta header keeps the response shape predictable on older accounts.
+        "anthropic-beta": "prompt-caching-2024-07-31",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: i.maxTokens ?? 1200,
-        temperature: i.temperature ?? 0.4,
-        system: i.system + "\n\nReturn ONLY valid JSON.",
-        messages: [{ role: "user", content: i.user }],
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Anthropic ${res.status}: ${body.slice(0, 400)}`);
+      const txt = await res.text();
+      throw new Error(`Anthropic ${res.status}: ${txt.slice(0, 400)}`);
     }
     const data = await res.json();
     const blocks = Array.isArray(data?.content) ? data.content : [];
-    const text = blocks.map((b: any) => b?.text ?? "").join("");
+
+    // Extract tool_use input (preferred) or text content.
+    let text = "";
+    if (i.toolName) {
+      const tool = blocks.find((b: { type?: string }) => b?.type === "tool_use");
+      if (tool && (tool as { input?: unknown }).input) {
+        text = JSON.stringify((tool as { input: unknown }).input);
+      }
+    }
+    if (!text) {
+      text = blocks
+        .filter((b: { type?: string }) => b?.type === "text" || !b?.type)
+        .map((b: { text?: string }) => b?.text ?? "")
+        .join("");
+    }
+
+    const usage = data?.usage ?? {};
     return {
       text,
       model,
       provider: "anthropic",
-      inputTokens: data?.usage?.input_tokens,
-      outputTokens: data?.usage?.output_tokens,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cachedInputTokens: usage.cache_read_input_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens,
       latencyMs: Date.now() - started,
     };
   } finally {
@@ -186,11 +306,119 @@ async function callAnthropic(i: LLMCallInput): Promise<LLMCallOutput> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Anthropic streaming (SSE pass-through)
+// ---------------------------------------------------------------------------
+export interface StreamEvent {
+  type: "delta" | "stop";
+  text?: string;
+  /** Final usage info; only present on the "stop" event. */
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cachedInputTokens?: number;
+    cacheCreationTokens?: number;
+  };
+  model?: string;
+}
+
+/**
+ * Streams an Anthropic completion as discrete `delta` events ending in `stop`.
+ * NOTE: streaming + tool-use are mutually compatible but tool-use streams emit
+ * input_json_delta events (partial JSON). For the streaming-first skill
+ * (interview-session-step) we use plain text mode so progressive rendering
+ * "just works" and we parse the final text once on stop.
+ */
+export async function* streamAnthropic(i: LLMCallInput): AsyncGenerator<StreamEvent, void, unknown> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
+  const model = i.model || Deno.env.get("LLM_MODEL") || "claude-sonnet-4-5";
+
+  const systemBlocks: Array<Record<string, unknown>> = [];
+  const stable = (i.systemStable || "").trim();
+  const dynamic = (i.systemDynamic || "").trim();
+  if (stable) {
+    systemBlocks.push({ type: "text", text: stable, cache_control: { type: "ephemeral" } });
+  }
+  if (dynamic) {
+    systemBlocks.push({ type: "text", text: dynamic });
+  }
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "prompt-caching-2024-07-31",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: i.maxTokens ?? 1600,
+      temperature: i.temperature ?? 0.4,
+      system: systemBlocks,
+      messages: [{ role: "user", content: i.user }],
+      stream: true,
+    }),
+  });
+  if (!res.ok || !res.body) {
+    const txt = await res.text();
+    throw new Error(`Anthropic stream ${res.status}: ${txt.slice(0, 400)}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let usage: StreamEvent["usage"] | undefined;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const dataLine = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (!dataLine) continue;
+      const payload = dataLine.slice(6).trim();
+      if (!payload || payload === "[DONE]") continue;
+
+      try {
+        const evt = JSON.parse(payload);
+        if (evt.type === "content_block_delta") {
+          const delta = evt?.delta;
+          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            yield { type: "delta", text: delta.text };
+          }
+        } else if (evt.type === "message_delta" && evt.usage) {
+          usage = {
+            outputTokens: evt.usage.output_tokens,
+          };
+        } else if (evt.type === "message_start" && evt.message?.usage) {
+          usage = {
+            ...usage,
+            inputTokens: evt.message.usage.input_tokens,
+            cachedInputTokens: evt.message.usage.cache_read_input_tokens,
+            cacheCreationTokens: evt.message.usage.cache_creation_input_tokens,
+          };
+        }
+      } catch {
+        // Ignore malformed lines.
+      }
+    }
+  }
+
+  yield { type: "stop", usage, model };
+}
+
+// ---------------------------------------------------------------------------
+// Groq
+// ---------------------------------------------------------------------------
 async function callGroq(i: LLMCallInput): Promise<LLMCallOutput> {
   const apiKey = Deno.env.get("GROQ_API_KEY");
   if (!apiKey) throw new Error("GROQ_API_KEY is not set");
-  // Groq deprecated llama-3.1-70b-versatile in early 2025. llama-3.3-70b-versatile
-  // is the drop-in replacement (same size class, same JSON support).
   const model = i.model || Deno.env.get("LLM_MODEL") || "llama-3.3-70b-versatile";
 
   const { signal, cancel } = abortAfter(i.timeoutMs ?? TIMEOUT_MS);
@@ -208,23 +436,24 @@ async function callGroq(i: LLMCallInput): Promise<LLMCallOutput> {
         temperature: i.temperature ?? 0.4,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: i.system },
+          { role: "system", content: combineSystem(i) },
           { role: "user", content: i.user },
         ],
       }),
     });
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Groq ${res.status}: ${body.slice(0, 400)}`);
+      const txt = await res.text();
+      throw new Error(`Groq ${res.status}: ${txt.slice(0, 400)}`);
     }
     const data = await res.json();
     const text = data?.choices?.[0]?.message?.content ?? "";
+    const usage = data?.usage ?? {};
     return {
       text,
       model,
       provider: "groq",
-      inputTokens: data?.usage?.prompt_tokens,
-      outputTokens: data?.usage?.completion_tokens,
+      inputTokens: usage.prompt_tokens,
+      outputTokens: usage.completion_tokens,
       latencyMs: Date.now() - started,
     };
   } finally {
@@ -232,10 +461,10 @@ async function callGroq(i: LLMCallInput): Promise<LLMCallOutput> {
   }
 }
 
-export function callProvider(
-  provider: LLMProvider,
-  i: LLMCallInput,
-): Promise<LLMCallOutput> {
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+export function callProvider(provider: LLMProvider, i: LLMCallInput): Promise<LLMCallOutput> {
   switch (provider) {
     case "gemini":    return callGemini(i);
     case "openai":    return callOpenAI(i);
@@ -257,7 +486,7 @@ export function providerHasKey(provider: LLMProvider): boolean {
 
 const DEFAULT_PROVIDER_ORDER: LLMProvider[] = ["gemini", "openai", "groq", "anthropic"];
 
-// Legacy single-provider entry point (kept for backwards compatibility).
+// Legacy entrypoint kept for any external callers.
 export async function callLLM(i: LLMCallInput): Promise<LLMCallOutput> {
   const explicit = (Deno.env.get("LLM_PROVIDER") || "").trim() as LLMProvider;
   if (explicit && DEFAULT_PROVIDER_ORDER.includes(explicit) && providerHasKey(explicit)) {
@@ -269,7 +498,8 @@ export async function callLLM(i: LLMCallInput): Promise<LLMCallOutput> {
   throw new Error("No LLM API key configured (GEMINI_API_KEY, OPENAI_API_KEY, etc.)");
 }
 
-// Best-effort JSON extractor (strips code fences, grabs the first {...} block).
+// Best-effort JSON extractor for free-form text outputs (used as fallback when
+// tool-use mode is unavailable). Strips code fences, grabs the first {...} block.
 export function extractJson<T = unknown>(raw: string): T {
   if (!raw) throw new Error("Empty model output.");
   const cleaned = raw

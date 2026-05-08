@@ -179,6 +179,43 @@
     throw lastError || new Error("All AI providers failed");
   }
 
+  // Streaming variant — currently supports only `interview-session-step`.
+  // Builds the same __aiContext as runSkill, then invokes the SSE consumer
+  // exposed on window.CBAI.runSkillStream. Caller provides per-token callbacks
+  // for the typing-indicator UX.
+  async function runSkillStream(skill, input, callbacks) {
+    if (skill !== "interview-session-step") {
+      throw new Error("Streaming is currently only available for interview-session-step.");
+    }
+    const streamFn = window.CBAI && window.CBAI.runSkillStream;
+    if (typeof streamFn !== "function") {
+      throw new Error("Streaming consumer not available.");
+    }
+    const schemas = (window.CBAI && window.CBAI.schemas) || {};
+    const promptVersions = (window.CBAI && window.CBAI.promptVersions) || {};
+    const schemaValidator = schemas[skill];
+    if (!schemaValidator) {
+      throw new Error("Unknown AI skill: " + skill);
+    }
+
+    const requestId = createRequestId();
+    const aiContext = buildAiContext(skill, input || {});
+    const enhancedInput = aiContext
+      ? Object.assign({}, input || {}, { __aiContext: aiContext })
+      : (input || {});
+    const payload = {
+      requestId: requestId,
+      skill: skill,
+      promptVersion: promptVersions[skill] || "unknown",
+      input: enhancedInput
+    };
+    return streamFn(payload, callbacks);
+  }
+
   window.CBAI = window.CBAI || {};
   window.CBAI.runSkill = runSkill;
+  // NOTE: ai.providers.js sets window.CBAI.runSkillStream first; assigning
+  // here would shadow it. We expose the orchestrator wrapper under a different
+  // name so both layers remain accessible.
+  window.CBAI.runSkillStreamed = runSkillStream;
 })();
