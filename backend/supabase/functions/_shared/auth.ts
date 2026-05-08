@@ -1,11 +1,68 @@
 // Extract the authenticated user from a Supabase JWT on the incoming request.
 // We use the service-role client only to *read* the user; we never return
 // service-role tokens to the caller.
+//
+// Phase 3: in-memory JWT verification cache.
+// `client.auth.getUser(token)` does a network round-trip to Supabase Auth on
+// every call (~100-200ms). For an Edge Function instance handling rapid calls
+// from the same user (e.g. interview mock turn-by-turn, repeated AI requests),
+// this is a meaningful fraction of total latency. We cache the {user_id, email}
+// keyed on the JWT's signature segment with a TTL bounded by the JWT's `exp`
+// claim — so an expired token is never served from cache.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 export interface AuthedUser {
   id: string;
   email: string | null;
+}
+
+interface CachedAuth {
+  user: AuthedUser;
+  /** Wall-clock expiry (ms since epoch). Hard upper bound on cache validity. */
+  expiresAt: number;
+}
+
+// Per-isolate cache. Edge Functions share an isolate per warm instance, so the
+// same user hammering the AI from one tab benefits across calls. Capped to
+// avoid unbounded memory in long-lived isolates (Supabase rotates them
+// aggressively but defensive is cheap).
+const AUTH_CACHE = new Map<string, CachedAuth>();
+const AUTH_CACHE_MAX = 256;
+// Absolute floor on TTL even when the JWT itself expires later. A 5-min
+// ceiling means a session revocation on the Auth server propagates within
+// 5 minutes worst-case (rotated tokens hit the cache fresh).
+const AUTH_CACHE_MAX_TTL_MS = 5 * 60 * 1000;
+
+function decodeJwtExpMs(token: string): number {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return 0;
+    // Base64url decode the payload.
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+    const json = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof json.exp === "number" ? json.exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function cacheKeyFor(token: string): string {
+  // Use the signature segment as the key — it's unique per token and
+  // (unlike sha256) requires no async work.
+  const parts = token.split(".");
+  return parts.length === 3 ? parts[2] : token;
+}
+
+function pruneCacheIfFull(): void {
+  if (AUTH_CACHE.size < AUTH_CACHE_MAX) return;
+  // Drop the 32 oldest entries by insertion order (Map preserves insertion).
+  const it = AUTH_CACHE.keys();
+  for (let i = 0; i < 32; i++) {
+    const next = it.next();
+    if (next.done) break;
+    AUTH_CACHE.delete(next.value);
+  }
 }
 
 export async function getAuthedUser(req: Request): Promise<AuthedUser> {
@@ -26,6 +83,17 @@ export async function getAuthedUser(req: Request): Promise<AuthedUser> {
     throw new Error("Received anon key, not a user session token. Please sign in.");
   }
 
+  // ---- Cache lookup ----
+  const key = cacheKeyFor(token);
+  const cached = AUTH_CACHE.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.user;
+  }
+  if (cached) {
+    AUTH_CACHE.delete(key); // expired; clean up
+  }
+
+  // ---- Cache miss → verify with Supabase Auth ----
   const client = createClient(supabaseUrl, supabaseAnon, {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
@@ -38,7 +106,20 @@ export async function getAuthedUser(req: Request): Promise<AuthedUser> {
     throw new Error("No user attached to this token.");
   }
 
-  return { id: data.user.id, email: data.user.email ?? null };
+  const user: AuthedUser = { id: data.user.id, email: data.user.email ?? null };
+
+  // Compute TTL: min(jwt.exp, now + 5min). Skip cache if exp is invalid/past.
+  const expMs = decodeJwtExpMs(token);
+  const now = Date.now();
+  const expiresAt = expMs > now
+    ? Math.min(expMs, now + AUTH_CACHE_MAX_TTL_MS)
+    : 0;
+  if (expiresAt > now + 5_000) {
+    pruneCacheIfFull();
+    AUTH_CACHE.set(key, { user, expiresAt });
+  }
+
+  return user;
 }
 
 export function getServiceClient() {

@@ -272,11 +272,63 @@
     }
   }
 
-  function persist(data) {
+  // Phase 3: debounced persist. Drag-drop on a 200-app pipeline, rapid form
+  // edits, and chat-style interview transcripts all hit persist() many times
+  // per second. Each call re-serializes the ENTIRE store to JSON and writes
+  // to localStorage (~40KB+ for active users). Debouncing batches bursts
+  // into a single trailing write.
+  //
+  // Flushed synchronously on `pagehide` / `beforeunload` so unsaved bursts
+  // aren't lost when the user closes the tab. Falls back to synchronous
+  // persist when running in a sandboxed environment without setTimeout
+  // (the vm-context unit-test runner).
+  const HAS_TIMERS = typeof setTimeout === "function" && typeof clearTimeout === "function";
+  let persistTimer = null;
+  let persistPending = null;
+  const PERSIST_DEBOUNCE_MS = 200;
+
+  function persistNow(data) {
     try {
       localStorage.setItem(KEY, JSON.stringify(data));
     } catch (error) {
-      // ignore
+      // ignore (quota / privacy mode)
+    }
+  }
+
+  function persist(data) {
+    if (!HAS_TIMERS) {
+      persistNow(data);
+      return;
+    }
+    persistPending = data;
+    if (persistTimer != null) return;
+    persistTimer = setTimeout(function () {
+      persistTimer = null;
+      const snap = persistPending;
+      persistPending = null;
+      if (snap) persistNow(snap);
+    }, PERSIST_DEBOUNCE_MS);
+  }
+
+  function flushPersist() {
+    if (persistTimer != null) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    if (persistPending) {
+      persistNow(persistPending);
+      persistPending = null;
+    }
+  }
+
+  // Survive tab close / mobile backgrounding without losing pending writes.
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("pagehide", flushPersist);
+    window.addEventListener("beforeunload", flushPersist);
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") flushPersist();
+      });
     }
   }
 

@@ -2,8 +2,13 @@
 // Tier A only: in-app listings come from documented feeds/APIs or approved
 // sources. LinkedIn/Indeed remain handoff/import workflows unless official
 // partner access is configured elsewhere.
+//
+// Phase 3: Adzuna fan-out (up to 8 country requests per query) is now cached
+// at the Edge layer with a 15-minute TTL keyed on (query + filters). Repeat
+// searches within that window skip the upstream HTTP fan-out entirely.
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
+import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 
 interface Filters {
   remoteOnly?: boolean;
@@ -630,7 +635,9 @@ function adzunaCountries(region: string): string[] {
   return (ADZUNA_COUNTRIES[region] || ADZUNA_COUNTRIES.global).slice(0, 8);
 }
 
-async function runAdzuna(body: Body): Promise<CanonicalJobOut[]> {
+const ADZUNA_CACHE_TTL_SECONDS = 15 * 60; // 15 min
+
+async function runAdzunaUncached(body: Body): Promise<CanonicalJobOut[]> {
   const appId = safeString(Deno.env.get("ADZUNA_APP_ID"));
   const appKey = safeString(Deno.env.get("ADZUNA_APP_KEY"));
   if (!appId || !appKey) throw new Error("ADZUNA_APP_ID or ADZUNA_APP_KEY is not configured.");
@@ -677,6 +684,34 @@ async function runAdzuna(body: Body): Promise<CanonicalJobOut[]> {
   });
   const nested = await Promise.all(pages);
   return nested.flat();
+}
+
+// Cache wrapper for Adzuna. Cache key = (query + filters that change results).
+// `searchRegion` matters because it determines which countries we fan out to;
+// `remoteOnly` and `postedWithinDays` change Adzuna's filter params; `location`
+// changes the `where` parameter. Other body fields (sort, jobType client-side
+// filters) don't change the upstream call so they're excluded from the key.
+async function runAdzuna(body: Body): Promise<CanonicalJobOut[]> {
+  const filters: Filters = body.filters || {};
+  const cacheParts = {
+    q: safeString(body.query || queryTerms(body).join(" ")).toLowerCase().trim(),
+    region: safeString(filters.searchRegion || "global").toLowerCase(),
+    remoteOnly: !!filters.remoteOnly,
+    location: safeString(filters.location).toLowerCase().trim(),
+    postedWithinDays: Number(filters.postedWithinDays) || 0,
+  };
+  const cacheKey = await buildKvKey(cacheParts);
+  const cached = await readKvCache<CanonicalJobOut[]>("adzuna", cacheKey);
+  if (cached.payload) {
+    return cached.payload;
+  }
+  const fresh = await runAdzunaUncached(body);
+  // Don't cache empty result sets — they're often a transient upstream blip,
+  // and re-trying soon is cheap (one user-initiated re-search).
+  if (fresh.length > 0) {
+    writeKvCache("adzuna", cacheKey, fresh, ADZUNA_CACHE_TTL_SECONDS).catch(() => {});
+  }
+  return fresh;
 }
 
 async function runSource(

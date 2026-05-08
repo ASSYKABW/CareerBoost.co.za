@@ -15,6 +15,42 @@
   const listeners = { change: [] };
   let current = null;
 
+  // Phase 3: localStorage cache so a page refresh doesn't trigger a Supabase
+  // round-trip before the topbar/avatar can render. Cache is keyed on
+  // user_id so multi-user environments (rare for this app, but defensive)
+  // never mix profiles. TTL is 30 minutes — short enough that plan/avatar
+  // changes from another tab propagate quickly via a background refresh.
+  const CACHE_KEY = "cbv2_profile_cache_v1";
+  const CACHE_TTL_MS = 30 * 60 * 1000;
+
+  function readCache(userId) {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const wrap = JSON.parse(raw);
+      if (!wrap || wrap.user_id !== userId) return null;
+      if (typeof wrap.cachedAt !== "number") return null;
+      if (Date.now() - wrap.cachedAt > CACHE_TTL_MS) return null;
+      return wrap.profile || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeCache(userId, profile) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        user_id: userId,
+        cachedAt: Date.now(),
+        profile: profile
+      }));
+    } catch (e) { /* quota / privacy mode */ }
+  }
+
+  function clearCache() {
+    try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }
+  }
+
   function emit(event, payload) {
     (listeners[event] || []).forEach(function (fn) {
       try { fn(payload); } catch (e) { /* ignore */ }
@@ -40,48 +76,75 @@
     return (window.CBV2.auth && window.CBV2.auth.getUser()) || null;
   }
 
+  // In-flight coalescing: if N callers ask for profile.load() concurrently
+  // (dashboard + topbar + sidebar mounting at the same time) we share a
+  // single Supabase request instead of issuing N parallel ones.
+  let inFlight = null;
+
   async function load() {
-    const client = getClient();
-    const user = getUser();
-    if (!client || !user) {
-      current = null;
-      emit("change", current);
-      return null;
-    }
-    try {
-      const { data, error } = await client
-        .from("profiles")
-        .select("user_id, full_name, headline, avatar_url, locale, plan, onboarding_completed, preferences")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) {
-        console.warn("[profile] load failed:", error.message);
+    if (inFlight) return inFlight;
+    inFlight = (async function loadOnce() {
+      const client = getClient();
+      const user = getUser();
+      if (!client || !user) {
         current = null;
-      } else if (!data) {
-        const seed = {
-          user_id: user.id,
-          full_name: ((user.user_metadata && user.user_metadata.full_name) || "").trim()
-        };
-        const created = await client
-          .from("profiles")
-          .upsert(seed, { onConflict: "user_id" })
-          .select("user_id, full_name, headline, avatar_url, locale, plan, onboarding_completed, preferences")
-          .maybeSingle();
-        if (created.error) {
-          console.warn("[profile] seed failed:", created.error.message);
-          current = null;
-        } else {
-          current = created.data || seed;
-        }
-      } else {
-        current = data || null;
+        clearCache();
+        emit("change", current);
+        return null;
       }
-    } catch (e) {
-      console.warn("[profile] load threw:", e);
-      current = null;
+
+      // First read: try the localStorage cache. If hit, emit IMMEDIATELY so
+      // the UI renders without waiting for the network. We still kick off a
+      // background refresh below so the cache stays fresh.
+      const cached = readCache(user.id);
+      if (cached && !current) {
+        current = cached;
+        emit("change", current);
+      }
+
+      try {
+        const { data, error } = await client
+          .from("profiles")
+          .select("user_id, full_name, headline, avatar_url, locale, plan, onboarding_completed, preferences")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (error) {
+          console.warn("[profile] load failed:", error.message);
+          // Keep cached `current` if we had one; otherwise null.
+          if (!current) current = null;
+        } else if (!data) {
+          const seed = {
+            user_id: user.id,
+            full_name: ((user.user_metadata && user.user_metadata.full_name) || "").trim()
+          };
+          const created = await client
+            .from("profiles")
+            .upsert(seed, { onConflict: "user_id" })
+            .select("user_id, full_name, headline, avatar_url, locale, plan, onboarding_completed, preferences")
+            .maybeSingle();
+          if (created.error) {
+            console.warn("[profile] seed failed:", created.error.message);
+            current = null;
+          } else {
+            current = created.data || seed;
+            writeCache(user.id, current);
+          }
+        } else {
+          current = data || null;
+          if (current) writeCache(user.id, current);
+        }
+      } catch (e) {
+        console.warn("[profile] load threw:", e);
+        if (!current) current = null;
+      }
+      emit("change", current);
+      return current;
+    })();
+    try {
+      return await inFlight;
+    } finally {
+      inFlight = null;
     }
-    emit("change", current);
-    return current;
   }
 
   function normalizePatch(patch) {
@@ -107,12 +170,14 @@
       .maybeSingle();
     if (error) throw error;
     current = data || Object.assign({}, current || {}, safePatch || {});
+    if (current && current.user_id) writeCache(current.user_id, current);
     emit("change", current);
     return current;
   }
 
   function clear() {
     current = null;
+    clearCache();
     emit("change", current);
   }
 

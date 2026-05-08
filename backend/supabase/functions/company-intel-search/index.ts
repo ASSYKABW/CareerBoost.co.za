@@ -3,10 +3,17 @@
 // Uses Google Custom Search (same secrets as external-search: GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX).
 //
 // Body: { company: string; role?: string }
-// Response: { ok: true, hits: Hit[], queries: string[], warnings?: string[] }
+// Response: { ok: true, hits: Hit[], queries: string[], cacheHit?: boolean, warnings?: string[] }
+//
+// Phase 3 changes:
+//   - 7 CSE queries now run in PARALLEL (was sequential, 7 × ~600ms = 4.2s).
+//   - Full response cached in kv_cache (namespace=cse) for 24h. Two users
+//     asking about the same company within 24h cost ONE Google CSE bill.
+//   - Cache key includes role since queries differ when role is set.
 
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
+import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 
 interface Hit {
   title: string;
@@ -21,9 +28,16 @@ interface CseItem {
   snippet?: string;
 }
 
+interface CachedResponse {
+  hits: Hit[];
+  queries: string[];
+  warnings: string[];
+}
+
 const CSE_TIMEOUT_MS = 12_000;
 const MAX_TOTAL_HITS = 36;
 const RESULTS_PER_QUERY = 8;
+const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 function getCseCredentials(): { key: string; cx: string } | null {
   const key = String(Deno.env.get("GOOGLE_CSE_API_KEY") || "").trim();
@@ -35,7 +49,7 @@ function getCseCredentials(): { key: string; cx: string } | null {
 async function fetchGoogleCse(
   q: string,
   creds: { key: string; cx: string },
-): Promise<{ items: CseItem[]; error?: string }> {
+): Promise<{ items: CseItem[]; query: string; error?: string }> {
   const maxQ = 1750;
   const query = q.length > maxQ ? q.slice(0, maxQ) : q;
   const u = new URL("https://www.googleapis.com/customsearch/v1");
@@ -52,15 +66,15 @@ async function fetchGoogleCse(
     if (!res.ok) {
       const errObj = json?.error as { message?: string } | undefined;
       const msg = errObj?.message || `HTTP ${res.status}`;
-      return { items: [], error: msg };
+      return { items: [], query: q, error: msg };
     }
     const items = Array.isArray(json.items) ? json.items as CseItem[] : [];
-    return { items };
+    return { items, query: q };
   } catch (e) {
     const msg = (e as Error).name === "AbortError"
       ? "Google CSE request timed out"
       : String((e as Error).message || e);
-    return { items: [], error: msg };
+    return { items: [], query: q, error: msg };
   } finally {
     clearTimeout(timer);
   }
@@ -102,6 +116,11 @@ function normalizeUrlKey(link: string): string {
   }
 }
 
+/** Normalize cache-key inputs so capitalization / whitespace don't fragment. */
+function cacheNormalize(s: string): string {
+  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
@@ -126,6 +145,25 @@ Deno.serve(async (req) => {
   }
   const role = String(body.role || "").trim();
 
+  // ---- Cache lookup (24h TTL on cse namespace) ----
+  const cacheKey = await buildKvKey({
+    company: cacheNormalize(company),
+    role: cacheNormalize(role),
+  });
+  const cached = await readKvCache<CachedResponse>("cse", cacheKey);
+  if (cached.payload) {
+    return jsonResponse({
+      ok: true,
+      company,
+      role: role || null,
+      queries: cached.payload.queries,
+      hits: cached.payload.hits,
+      warnings: cached.payload.warnings,
+      cacheHit: true,
+      cacheAgeSeconds: cached.ageSeconds,
+    }, { headers: { "X-Cache": "HIT" } });
+  }
+
   const creds = getCseCredentials();
   if (!creds) {
     return errorResponse(
@@ -139,11 +177,16 @@ Deno.serve(async (req) => {
   const seen = new Set<string>();
   const hits: Hit[] = [];
 
-  for (let i = 0; i < queries.length; i++) {
-    const q = queries[i];
-    const res = await fetchGoogleCse(q, creds);
+  // Phase 3: parallel fan-out. ~7 queries × 600ms each → ~600ms total wall-clock.
+  // Order is preserved (Promise.all maintains positional results) so dedupe
+  // priority is identical to the old sequential behavior.
+  const results = await Promise.all(
+    queries.map((q) => fetchGoogleCse(q, creds)),
+  );
+
+  for (const res of results) {
     if (res.error) {
-      warnings.push(`Query failed (${q.slice(0, 48)}…): ${res.error}`);
+      warnings.push(`Query failed (${res.query.slice(0, 48)}…): ${res.error}`);
       continue;
     }
     for (const item of res.items) {
@@ -154,7 +197,7 @@ Deno.serve(async (req) => {
       const key = normalizeUrlKey(url);
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      hits.push({ title: title || url, url, snippet: snippet.slice(0, 600), query: q });
+      hits.push({ title: title || url, url, snippet: snippet.slice(0, 600), query: res.query });
       if (hits.length >= MAX_TOTAL_HITS) break;
     }
     if (hits.length >= MAX_TOTAL_HITS) break;
@@ -164,6 +207,14 @@ Deno.serve(async (req) => {
     warnings.push("No search results returned — try a different company phrase.");
   }
 
+  // Cache the full result set (fire-and-forget). Skip caching obviously broken
+  // states (zero hits + all queries errored) so transient outages don't poison.
+  const allErrored = warnings.length > 0 && hits.length === 0;
+  if (!allErrored) {
+    writeKvCache("cse", cacheKey, { hits, queries, warnings }, CACHE_TTL_SECONDS)
+      .catch(() => {});
+  }
+
   return jsonResponse({
     ok: true,
     company,
@@ -171,5 +222,6 @@ Deno.serve(async (req) => {
     queries,
     hits,
     warnings,
-  });
+    cacheHit: false,
+  }, { headers: { "X-Cache": "MISS" } });
 });
