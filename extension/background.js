@@ -113,12 +113,19 @@ async function ensureAccessToken() {
   try {
     data = await authRequest(cfg, "refresh_token", { refresh_token: cfg.refreshToken });
   } catch (err) {
+    // Phase 6 fix: any failure of the refresh-token grant means the saved
+    // session is no longer valid. The previous regex only matched specific
+    // error strings ("refresh token", "jwt", etc.) and missed Supabase's
+    // bare 4xx responses (which surface as 'Auth failed (401)' from
+    // authRequest()). Conservative move: treat ALL refresh-grant failures
+    // as "expired session, force reconnect" — there's no other realistic
+    // reason this endpoint fails in normal operation.
+    await clearSession();
     const msg = (err && err.message) || "";
-    if (/refresh token|invalid.*token|token.*not found|jwt/i.test(msg)) {
-      await clearSession();
-      throw new Error("CareerBoost needs to reconnect. Open extension options and sign in again.");
-    }
-    throw err;
+    const detail = /^auth failed|^http \d/i.test(msg) ? "" : (": " + msg);
+    throw new Error(
+      "CareerBoost session expired — open extension options to sign in again." + detail,
+    );
   }
   await persistSession(cfg, data, cfg.email);
   cfg = await getConfig();

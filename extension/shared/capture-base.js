@@ -155,7 +155,10 @@
         if (!response || !response.ok) {
           const msg = response && response.error ? response.error : "Could not save this job.";
           setStatus(msg, "error");
-          if (/not connected|sign in|session|refresh token|reconnect/i.test(msg)) {
+          // Phase 6 fix: open the options page on any auth-shaped failure so
+          // the user is one click away from re-signing in. Previously
+          // "Auth failed (401)" silently failed without prompting.
+          if (/not connected|sign in|session|refresh token|reconnect|expired|auth failed|401|403/i.test(msg)) {
             sendMessage({ type: "CB_OPEN_OPTIONS" });
           }
           return;
