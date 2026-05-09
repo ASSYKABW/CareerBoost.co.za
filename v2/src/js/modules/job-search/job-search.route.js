@@ -222,7 +222,22 @@
     };
   }
 
-  restoreLastSearchView();
+  // Phase 4.5: don't auto-restore the previous search on page load. Users
+  // were finding the form pre-filled and a stale results list every time
+  // they refreshed or signed back in — confusing and slow. Now:
+  //   - Page refresh / sign-in / new tab → form blank, no results shown
+  //   - In-tab navigation away and back → in-memory `lastSearchView`
+  //     survives the route swap, so results stay during the same session
+  //   - Saved/bookmarked jobs (separate store) are unaffected
+  // Purge any stale persisted snapshots so they don't bloat localStorage.
+  clearPersistedLastSearchView();
+  // Also wipe the persisted lastQuery so the keyword input starts blank.
+  try {
+    const _store = window.CBV2 && window.CBV2.store;
+    if (_store && typeof _store.setJobSearchState === "function") {
+      _store.setJobSearchState({ lastQuery: "" });
+    }
+  } catch (e) { /* ignore */ }
   publishJobSearchMemory();
 
   function getSt() {
@@ -1391,7 +1406,11 @@
   }
 
   window.CBV2.routes["job-search"] = function () {
-    restoreLastSearchView();
+    // Phase 4.5: removed restoreLastSearchView() — auto-restore happened on
+    // every navigation here, which made refresh/sign-in always show stale
+    // results. The in-memory `lastSearchView` still preserves results during
+    // the same session via the module-scoped variable, so navigating away
+    // and back inside one tab keeps the current search visible.
     const st = getSt();
     const params = (window.CBV2.getRouteParams && window.CBV2.getRouteParams()) || {};
     const savedTab = isSavedTabParams(params);
@@ -1412,7 +1431,12 @@
       st(String(savedCount)) +
       " saved</span>";
 
-    let q = typeof js.lastQuery === "string" ? js.lastQuery : "";
+    // Phase 4.5: keyword input starts blank on each session. Only pre-fill
+    // when the user explicitly asks for it — via ?rerunq=... (re-run a recent
+    // search) or ?ss=... (open a saved search). The persisted js.lastQuery
+    // is still written by other features (resume tailor uses it as context),
+    // but we don't pull it into the form here anymore.
+    let q = "";
     if (params.rerunq) {
       const rq = String(params.rerunq || "").trim();
       if (rq) q = rq;
