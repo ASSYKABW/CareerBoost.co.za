@@ -1,12 +1,17 @@
 {
   "manifest_version": 3,
   "name": "CareerBoost Job Capture",
-  "description": "Save LinkedIn jobs directly into your CareerBoost pipeline.",
-  "version": "0.1.0",
+  "description": "Save jobs from LinkedIn, Indeed, Greenhouse and Lever directly into your CareerBoost pipeline.",
+  "version": "0.2.0",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://www.linkedin.com/jobs/*",
     "https://*.linkedin.com/jobs/*",
+    "https://*.indeed.com/*",
+    "https://boards.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://*.greenhouse.io/*",
+    "https://jobs.lever.co/*",
     "https://*.supabase.co/*",
     "https://*.functions.supabase.co/*"
   ],
@@ -16,8 +21,30 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/jobs/*", "https://*.linkedin.com/jobs/*"],
-      "js": ["linkedin.content.js"],
-      "css": ["linkedin.content.css"],
+      "js": ["shared/json-ld-job.js", "shared/capture-base.js", "linkedin.content.js"],
+      "css": ["capture.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.indeed.com/*"],
+      "js": ["shared/json-ld-job.js", "shared/capture-base.js", "indeed.content.js"],
+      "css": ["capture.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://*.greenhouse.io/*"
+      ],
+      "js": ["shared/json-ld-job.js", "shared/capture-base.js", "greenhouse.content.js"],
+      "css": ["capture.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://jobs.lever.co/*"],
+      "js": ["shared/json-ld-job.js", "shared/capture-base.js", "lever.content.js"],
+      "css": ["capture.css"],
       "run_at": "document_idle"
     }
   ],

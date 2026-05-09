@@ -1,3 +1,15 @@
+// CareerBoost extension background service worker.
+//
+// Phase 6 changes:
+//   1. CB_IMPORT_JOB now accepts an optional `vendor` field (linkedin |
+//      indeed | greenhouse | lever) and an optional `diagnostics` blob
+//      from the content-script extractor. Both are forwarded to /job-import
+//      so the backend can rollup per-vendor + detect when an adapter starts
+//      returning weak data (e.g. JSON-LD broke, falling back to selectors).
+//   2. Save-status badge — a subtle green dot when signed in + connected,
+//      red when reconnect needed. Updated on session change + on each
+//      successful/failed save.
+
 const DEFAULT_CONFIG = {
   supabaseUrl: "https://kddffkhwpbngiupfmcse.supabase.co",
   supabaseAnon:
@@ -58,6 +70,8 @@ async function persistSession(cfg, data, email) {
     refreshToken: String(data.refresh_token || cfg.refreshToken || ""),
     expiresAt: Date.now() + Math.max(60, expiresIn - 60) * 1000
   });
+  // Phase 6: refresh the badge whenever connection state changes.
+  await refreshBadge();
 }
 
 async function signIn(email, password) {
@@ -74,6 +88,7 @@ async function signOut() {
     refreshToken: "",
     expiresAt: 0
   });
+  await refreshBadge();
   return { ok: true };
 }
 
@@ -83,6 +98,7 @@ async function clearSession() {
     refreshToken: "",
     expiresAt: 0
   });
+  await refreshBadge();
 }
 
 async function ensureAccessToken() {
@@ -110,15 +126,35 @@ async function ensureAccessToken() {
   return cfg.accessToken;
 }
 
-async function postJobImport(job, pageUrl) {
+// ---------- Phase 6: vendor allowlist + telemetry pass-through ----------
+const KNOWN_VENDORS = ["linkedin", "indeed", "greenhouse", "lever"];
+
+function sanitizeVendor(raw) {
+  const v = String(raw || "").toLowerCase().trim();
+  return KNOWN_VENDORS.indexOf(v) >= 0 ? v : "linkedin"; // default for legacy callers
+}
+
+function sanitizeDiagnostics(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  // Whitelist only the fields we expect — keep the body small and prevent
+  // extension-side bugs from spamming the backend with arbitrary blobs.
+  const out = {};
+  ["extractor", "titleLen", "descriptionLen", "hadJsonLd", "reason"].forEach((k) => {
+    if (k in raw) out[k] = raw[k];
+  });
+  return out;
+}
+
+async function postJobImport(job, pageUrl, vendor, diagnostics) {
   const cfg = await getConfig();
   const token = await ensureAccessToken();
   const body = {
-    vendor: "linkedin",
+    vendor: sanitizeVendor(vendor),
     captureMethod: "extension",
     target: cfg.target || "pipeline",
     pageUrl,
-    job
+    job,
+    diagnostics: sanitizeDiagnostics(diagnostics)
   };
   const res = await fetch(`${cfg.functionsUrl}/job-import`, {
     method: "POST",
@@ -153,6 +189,52 @@ async function getStatus() {
   };
 }
 
+// ---------- Phase 6: status badge ----------
+//
+// Subtle dot on the extension icon that reflects connection state at a
+// glance. Three states:
+//   - green dot  → connected, ready to capture
+//   - red dot    → needs reconnect (refresh token gone)
+//   - no badge   → not signed in yet (treat as neutral, avoid alarm color)
+//
+// Updated on session change + on each save attempt (success/failure).
+async function refreshBadge() {
+  try {
+    const cfg = await getConfig();
+    const hasFreshAccess = !!cfg.accessToken && Number(cfg.expiresAt || 0) > Date.now() + 30_000;
+    const connected = !!cfg.refreshToken || hasFreshAccess;
+    if (!cfg.refreshToken && !cfg.accessToken) {
+      // Not signed in — clear the badge.
+      await chrome.action.setBadgeText({ text: "" });
+      await chrome.action.setTitle({ title: "CareerBoost — sign in to enable capture" });
+      return;
+    }
+    if (connected) {
+      await chrome.action.setBadgeBackgroundColor({ color: "#22c55e" }); // green
+      await chrome.action.setBadgeText({ text: "●" });
+      await chrome.action.setTitle({ title: "CareerBoost — connected as " + (cfg.email || "you") });
+    } else {
+      await chrome.action.setBadgeBackgroundColor({ color: "#ef4855" }); // red
+      await chrome.action.setBadgeText({ text: "!" });
+      await chrome.action.setTitle({ title: "CareerBoost — reconnect needed" });
+    }
+  } catch (_e) {
+    // chrome.action may not exist in older contexts; safe to ignore.
+  }
+}
+
+async function flashBadge(success) {
+  // Brief 1.5s flash to confirm the save action was processed.
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: success ? "#22c55e" : "#ef4855" });
+    await chrome.action.setBadgeText({ text: success ? "✓" : "x" });
+    setTimeout(() => { refreshBadge(); }, 1500);
+  } catch (_e) { /* ignore */ }
+}
+
+// Refresh badge once on service-worker boot.
+refreshBadge();
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     const type = message && message.type;
@@ -164,8 +246,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (type === "CB_SIGN_IN") return signIn(message.email || "", message.password || "");
     if (type === "CB_SIGN_OUT") return signOut();
     if (type === "CB_IMPORT_JOB") {
-      const data = await postJobImport(message.job || {}, message.pageUrl || "");
-      return { ok: true, data };
+      try {
+        const data = await postJobImport(
+          message.job || {},
+          message.pageUrl || "",
+          message.vendor,
+          message.diagnostics
+        );
+        flashBadge(true);
+        return { ok: true, data };
+      } catch (err) {
+        flashBadge(false);
+        throw err;
+      }
     }
     if (type === "CB_OPEN_OPTIONS") {
       chrome.runtime.openOptionsPage();

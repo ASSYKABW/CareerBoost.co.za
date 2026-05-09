@@ -1,24 +1,43 @@
 # CareerBoost Job Capture extension
 
-Chrome extension MVP for Tier C job capture.
+Chrome extension for Tier C job capture across major job boards and ATS
+platforms.
 
-It adds a floating circular **CB** button to the top-right area of LinkedIn job
-pages. When the user clicks the button, the extension reads the visible job
-details, shows a preview, and sends the job to:
+Adds a floating circular **CB** button to the top-right of supported job
+pages. When the user clicks the button, the extension reads the job
+details (preferring schema.org JSON-LD where available, falling back to
+DOM selectors), shows a preview modal, and sends the job to:
 
 `POST /functions/v1/job-import`
 
 The default target is `pipeline`, so the backend creates or updates a
 CareerBoost Pipeline application.
 
+## Supported sites
+
+| Vendor | URL pattern | Extraction |
+|--------|------------|------------|
+| LinkedIn | `linkedin.com/jobs/view/*`, `currentJobId=*` | JSON-LD → CSS selectors |
+| Indeed | `indeed.com/viewjob?jk=*`, `?vjk=*` | JSON-LD → CSS selectors |
+| Greenhouse | `boards.greenhouse.io/*`, `*.greenhouse.io/jobs/*` | JSON-LD → CSS selectors |
+| Lever | `jobs.lever.co/{company}/{id}` | JSON-LD → `data-qa` selectors |
+
+The extension's icon shows a small badge: green dot when connected, red
+when reconnect is needed, and a brief ✓/x flash on each save attempt.
+
 ## Files
 
-- `manifest.json` - Chrome extension manifest v3
-- `background.js` - auth/session handling and calls to `job-import`
-- `linkedin.content.js` - LinkedIn page adapter and preview modal
-- `linkedin.content.css` - injected LinkedIn UI styling
-- `options.html/js/css` - connect the extension to CareerBoost
-- `popup.html/js/css` - quick connection status
+- `manifest.json` — Chrome extension manifest v3
+- `background.js` — auth/session, job-import calls, vendor allowlist, badge
+- `shared/json-ld-job.js` — JSON-LD JobPosting parser shared by all vendors
+- `shared/capture-base.js` — button injection + preview modal + telemetry
+- `linkedin.content.js` — LinkedIn page adapter
+- `indeed.content.js` — Indeed page adapter
+- `greenhouse.content.js` — Greenhouse page adapter
+- `lever.content.js` — Lever page adapter
+- `capture.css` — shared injected UI styling (vendor-neutral)
+- `options.html/js/css` — connect the extension to CareerBoost
+- `popup.html/js/css` — quick connection status
 
 ## Install locally
 

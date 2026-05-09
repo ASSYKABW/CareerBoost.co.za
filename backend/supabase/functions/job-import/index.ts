@@ -47,6 +47,17 @@ interface ImportBody {
   target?: "saved_jobs" | "pipeline" | "both";
   pageUrl?: string;
   job?: JobPayload;
+  // Phase 6: extension-side extraction diagnostics. Used for adapter health
+  // monitoring — when an extractor falls back from "json-ld" to "selectors"
+  // or returns a thin titleLen, we surface that to ai_usage so we can spot
+  // breakage before users complain.
+  diagnostics?: {
+    extractor?: string;     // "json-ld" | "selectors" | "manual"
+    titleLen?: number;
+    descriptionLen?: number;
+    hadJsonLd?: boolean;
+    reason?: string;
+  };
 }
 
 function isNonEmptyString(v: unknown): v is string {
@@ -69,6 +80,7 @@ function vendorLabel(vendor: string): string {
   const v = vendor.toLowerCase().trim();
   const map: Record<string, string> = {
     linkedin: "LinkedIn",
+    indeed: "Indeed",
     glassdoor: "Glassdoor",
     monster: "Monster",
     wellfound: "Wellfound",
@@ -253,6 +265,30 @@ Deno.serve(async (req) => {
       return errorResponse("Failed to save to pipeline: " + result.error.message, 500);
     }
     application = result.data;
+  }
+
+  // Phase 6: extension extraction telemetry. Fire-and-forget log into
+  // ai_usage so we get a per-vendor + per-extractor rollup. When a vendor
+  // adapter starts falling back from json-ld → selectors (or returning a
+  // suspiciously short title/description), we'll see it in the dashboard
+  // before users complain.
+  if (body.diagnostics) {
+    try {
+      const diag = body.diagnostics;
+      await getServiceClient().from("ai_usage").insert({
+        user_id: user.id,
+        request_id: crypto.randomUUID(),
+        skill: "job-import",
+        provider: "extension",
+        model: vendor + "/" + (diag.extractor || "unknown"),
+        prompt_version: "extension@v0.2.0",
+        status: "success",
+        latency_ms: 0,
+        input_tokens: typeof diag.titleLen === "number" ? diag.titleLen : null,
+        output_tokens: typeof diag.descriptionLen === "number" ? diag.descriptionLen : null,
+        cost_usd: 0,
+      });
+    } catch { /* telemetry must not break the request */ }
   }
 
   return jsonResponse({
