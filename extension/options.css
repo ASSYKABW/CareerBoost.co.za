@@ -159,3 +159,55 @@ button {
     padding: 28px 0;
   }
 }
+
+/* Phase 6.5: Google sign-in button + divider */
+.oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 16px;
+  margin: 4px 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.oauth-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.oauth-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.oauth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.oauth-btn svg {
+  flex-shrink: 0;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 14px;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}

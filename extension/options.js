@@ -76,9 +76,34 @@ document.addEventListener("DOMContentLoaded", async () => {
       setStatus(response.error || "Sign in failed.", "error");
       return;
     }
-    setStatus("Signed in. You can now save LinkedIn jobs.", "success");
+    setStatus("Signed in. You can now save jobs.", "success");
     await refresh();
   });
+
+  // Phase 6.5: Google OAuth via chrome.identity.launchWebAuthFlow.
+  // Opens a Chrome-managed popup, lets the user sign in with Google,
+  // then captures the redirect tokens. No password storage.
+  const googleBtn = $("oauth-google");
+  if (googleBtn) {
+    googleBtn.addEventListener("click", async () => {
+      setStatus("Opening Google sign-in...", "");
+      googleBtn.disabled = true;
+      try {
+        const response = await sendMessage({
+          type: "CB_SIGN_IN_OAUTH",
+          provider: "google"
+        });
+        if (!response.ok) {
+          setStatus(response.error || "Google sign-in failed.", "error");
+          return;
+        }
+        setStatus("Signed in with Google. You can now save jobs.", "success");
+        await refresh();
+      } finally {
+        googleBtn.disabled = false;
+      }
+    });
+  }
 
   $("sign-out").addEventListener("click", async () => {
     const response = await sendMessage({ type: "CB_SIGN_OUT" });
