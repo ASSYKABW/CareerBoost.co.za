@@ -54,6 +54,9 @@ export const SKILL_ROUTING: Record<Skill, SkillRoute> = {
 
   // ----- Streaming-first conversational ------------------------------------
   "interview-session-step":   { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true, stream: true },
+
+  // ----- Phase 5 additions -------------------------------------------------
+  "skill-action-plan":        { provider: "anthropic", model: "claude-haiku-4-5",     tier: "mid" },
 };
 
 /** Per-tier max output token budget. */

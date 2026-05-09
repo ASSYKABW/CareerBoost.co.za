@@ -16,7 +16,8 @@ export type Skill =
   | "resume-parse"
   | "resume-critique"
   | "jd-analyze"
-  | "tailor-plan";
+  | "tailor-plan"
+  | "skill-action-plan";
 
 type Validator = (data: unknown) => boolean;
 
@@ -114,6 +115,14 @@ export const schemas: Record<Skill, Validator> = {
     isArr(d.bullets) &&
     isArr(d.addSkills) &&
     (!("summaryAlternatives" in d) || isArr(d.summaryAlternatives)),
+  "skill-action-plan": (d) =>
+    isObj(d) &&
+    isArr(d.plans) &&
+    (d.plans as unknown[]).every(function (p) {
+      if (!isObj(p)) return false;
+      const pp = p as Record<string, unknown>;
+      return isStr(pp.skill) && isArr(pp.actions);
+    }),
 };
 
 export function validateSkillPayload(skill: string, data: unknown): void {

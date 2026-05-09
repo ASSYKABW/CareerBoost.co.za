@@ -216,6 +216,38 @@ const QUERY_PARSE_SCHEMA = {
 };
 
 // ---------------------------------------------------------------------------
+// skill-action-plan (Phase 5)
+// ---------------------------------------------------------------------------
+const SKILL_ACTION_PLAN_SCHEMA = {
+  type: "object",
+  properties: {
+    plans: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          skill: { type: "string" },
+          severity: {
+            type: "string",
+            enum: ["critical", "high", "medium", "low"],
+          },
+          actions: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },
+          priority: {
+            type: "string",
+            enum: ["do_this_week", "do_this_month"],
+          },
+          rationale: { type: "string" },
+        },
+        required: ["skill", "actions"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["plans"],
+  additionalProperties: false,
+};
+
+// ---------------------------------------------------------------------------
 // Export map — only skills with a defined schema appear here. Others fall
 // through to the free-form JSON output path.
 // ---------------------------------------------------------------------------
@@ -226,4 +258,5 @@ export const TOOL_SCHEMAS: Partial<Record<Skill, { toolName: string; schema: Rec
   "cover-letter-generate": { toolName: "emit_cover_letter",      schema: COVER_LETTER_SCHEMA },
   "interview-intel-pack":  { toolName: "emit_interview_intel",   schema: INTERVIEW_INTEL_SCHEMA },
   "query-parse":           { toolName: "emit_parsed_query",      schema: QUERY_PARSE_SCHEMA },
+  "skill-action-plan":     { toolName: "emit_skill_action_plan", schema: SKILL_ACTION_PLAN_SCHEMA },
 };

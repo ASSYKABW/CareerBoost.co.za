@@ -157,6 +157,18 @@
           Array.isArray(data.addSkills) &&
           (!data.summaryAlternatives || Array.isArray(data.summaryAlternatives))
       );
+    },
+    "skill-action-plan": function (data) {
+      return Boolean(
+        data &&
+          typeof data === "object" &&
+          Array.isArray(data.plans) &&
+          data.plans.every(function (p) {
+            return p && typeof p === "object" &&
+              typeof p.skill === "string" &&
+              Array.isArray(p.actions);
+          })
+      );
     }
   };
 
@@ -175,7 +187,8 @@
     "resume-parse": "resume-parse@v1.0.0",
     "resume-critique": "resume-critique@v1.0.0",
     "jd-analyze": "jd-analyze@v1.0.0",
-    "tailor-plan": "tailor-plan@v1.0.0"
+    "tailor-plan": "tailor-plan@v1.0.0",
+    "skill-action-plan": "skill-action-plan@v1.0.0"
   };
 
   window.CBAI = window.CBAI || {};

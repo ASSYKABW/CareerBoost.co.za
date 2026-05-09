@@ -1584,21 +1584,35 @@
           '</section>'
         );
       }
+      // Phase 5: detect whether plans came from the AI personalize path
+      // (each plan will have a `rationale` field) vs. the templated default.
+      const aiPersonalized = top.some(function (p) {
+        return p && typeof p.rationale === "string" && p.rationale.trim().length > 0;
+      });
       const rows = top.map(function (p) {
         const tone = p.severity === "critical" ? "rose" : p.severity === "high" ? "warning" : "violet";
+        const rationale = (p && p.rationale)
+          ? '<p class="ai-meta" style="margin:6px 0 8px;font-style:italic;">' + st(p.rationale) + '</p>'
+          : "";
         return (
           '<article class="card panel-lg">' +
             '<div class="panel-head"><h2>' + st(p.skill) + '</h2><span class="chip ' + tone + '">' + st(p.severity) + '</span></div>' +
+            rationale +
             '<ul class="stale-list">' +
               (p.actions || []).map(function (a) { return '<li class="stale-item"><div class="stale-body">' + st(a) + '</div></li>'; }).join("") +
             '</ul>' +
           '</article>'
         );
       }).join("");
+      const aiBtn = aiPersonalized
+        ? '<span class="chip violet" style="margin-left:8px;"><i class="fa-solid fa-robot"></i> AI personalized</span>'
+        : '<button type="button" class="btn-ghost btn-sm" id="skill-plans-personalize" style="margin-left:8px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Personalize with AI</button>';
       return (
-        '<section class="card panel-lg">' +
-          '<div class="panel-head"><h2>Skill Gap Action Mapper</h2><span class="chip cyan">Phase 3.3</span></div>' +
-          '<p class="ai-meta">Each gap now has an execution path: resume proof, project proof, and interview story.</p>' +
+        '<section class="card panel-lg" id="skill-actions-card">' +
+          '<div class="panel-head"><h2>Skill Gap Action Mapper</h2><span class="chip cyan">Phase 3.3</span>' + aiBtn + '</div>' +
+          '<p class="ai-meta">' + (aiPersonalized
+            ? 'AI-generated tactical actions tailored to each skill and your background.'
+            : 'Templated execution path: resume proof, project proof, and interview story. Click "Personalize with AI" to swap in skill-specific tactical actions.') + '</p>' +
           rows +
         '</section>'
       );
@@ -2009,9 +2023,30 @@
       (candidate.hasTailored ? 12 : 0) +
       (Math.min(1, matched.length / 8) * 36)
     );
-    const locationScore = /remote|hybrid|on-site|onsite|location|pretoria|centurion|cape town|johannesburg|south africa/i.test(jobText)
-      ? 68
-      : 58;
+    // Phase 5: real geo lookup. Replaces a hardcoded SA-cities regex that
+    // gave a Toronto user 58 across the board for everything. Uses the
+    // shared semanticMatch helper to detect the job's region and the
+    // candidate's preferred region (from profile preferences), then scores
+    // based on whether they match. Remote roles always score 90.
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
+    let locationScore;
+    if (sm && typeof sm.scoreLocationMatch === "function") {
+      const profile = (window.CBV2 && window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || null;
+      const prefs = (profile && profile.preferences) || {};
+      const jp = (prefs.jobPreferences && typeof prefs.jobPreferences === "object") ? prefs.jobPreferences : {};
+      const candidateRegion =
+        (typeof jp.location === "string" && jp.location) ||
+        (typeof prefs.location === "string" && prefs.location) ||
+        "";
+      // Pass both the job's location string and its description so the
+      // detector can pick up "Remote (US)" hints in either field.
+      const jobLocText = (parsed.location || "") + "\n" + (app.location || "") + "\n" + jobText;
+      locationScore = sm.scoreLocationMatch(jobLocText, candidateRegion);
+    } else {
+      // Legacy fallback for environments without the helper. Still better
+      // than the SA-only regex — rewards explicit remote/hybrid mentions.
+      locationScore = /\bremote\b|\bhybrid\b|\bon[-\s]?site\b/i.test(jobText) ? 70 : 58;
+    }
     const readinessScore = clampScore(
       (hasDescription ? 36 : 14) +
       (app.jobUrl ? 16 : 0) +
@@ -2426,5 +2461,81 @@
         generateJudgeReportAndRender();
       });
     });
+    // Phase 5: AI personalize for skill action plans.
+    const personalizeBtn = document.getElementById("skill-plans-personalize");
+    if (personalizeBtn) {
+      personalizeBtn.addEventListener("click", function () {
+        personalizeSkillPlansWithAi(personalizeBtn);
+      });
+    }
   };
+
+  // Phase 5: replace templated skill action plans with AI-generated ones.
+  // One AI call returns plans for all missing skills (cheaper + faster than
+  // per-skill calls). Caches naturally via the Phase 1 response cache so
+  // re-clicking is free.
+  async function personalizeSkillPlansWithAi(button) {
+    const ai = window.CBAI || {};
+    if (typeof ai.runSkill !== "function") {
+      if (window.CBV2.toast) window.CBV2.toast.error("AI orchestrator not available.");
+      return;
+    }
+    const state = loadJudgeState();
+    const latest = state.history && state.history[state.history.length - 1];
+    if (!latest) return;
+    const missing = (latest.missingSkills || []).slice(0, 8);
+    if (!missing.length) {
+      if (window.CBV2.toast) window.CBV2.toast.info("No missing skills to personalize.");
+      return;
+    }
+    const originalLabel = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Personalizing…';
+
+    // Resolve target role + candidate background to make plans specific.
+    const profile = (window.CBV2 && window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || null;
+    const prefs = (profile && profile.preferences) || {};
+    const jp = (prefs.jobPreferences && typeof prefs.jobPreferences === "object") ? prefs.jobPreferences : {};
+    const rp = (jp.roleProfile && typeof jp.roleProfile === "object") ? jp.roleProfile : {};
+    const targetRole = (Array.isArray(rp.targetTitles) && rp.targetTitles[0]) || prefs.targetRole || "";
+    const resumeBase = (window.CBV2.store.getAll().resume || {}).base || "";
+
+    try {
+      const env = await ai.runSkill("skill-action-plan", {
+        targetRole: targetRole,
+        missingSkills: missing.map(function (s) {
+          return { skill: s.skill || s, severity: s.severity || "medium" };
+        }),
+        candidate: resumeBase.slice(0, 3000)
+      });
+      if (env && env.data && Array.isArray(env.data.plans) && env.data.plans.length) {
+        // Merge AI plans back into the latest report — keep the same skill
+        // ordering as the original plan for visual stability.
+        const aiByName = {};
+        env.data.plans.forEach(function (p) {
+          if (p && p.skill) aiByName[String(p.skill).toLowerCase()] = p;
+        });
+        latest.skillActionPlan = (latest.skillActionPlan || []).map(function (orig) {
+          const ai = aiByName[String(orig.skill || "").toLowerCase()];
+          if (!ai) return orig;
+          return Object.assign({}, orig, {
+            actions: ai.actions || orig.actions,
+            priority: ai.priority || orig.priority,
+            rationale: ai.rationale || ""
+          });
+        });
+        saveJudgeState(state);
+        if (window.CBV2.toast) {
+          window.CBV2.toast.success("Personalized " + env.data.plans.length + " skill plan" + (env.data.plans.length === 1 ? "" : "s") + " with AI.");
+        }
+        window.CBV2.renderCurrentRoute();
+        return;
+      }
+      throw new Error("AI returned no plans.");
+    } catch (err) {
+      if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Personalize failed.");
+      button.disabled = false;
+      button.innerHTML = originalLabel;
+    }
+  }
 })();

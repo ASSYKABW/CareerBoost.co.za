@@ -674,4 +674,50 @@ export const prompts: Record<Skill, PromptSpec> = {
       );
     },
   },
+
+  // Phase 5: replaces analytics' templated 3-action stub with AI-generated,
+  // skill-specific, candidate-context-aware action plans. One call returns
+  // a list of plans (one per missing skill) so a 6-skill page is one round
+  // trip not six.
+  "skill-action-plan": {
+    systemStable:
+      "You are a senior career coach building action plans to close skill " +
+      "gaps for a job seeker. Given a list of missing skills (with severity " +
+      "and the user's candidate context), produce a concrete 3-action plan " +
+      "FOR EACH skill. Actions must be: (1) specific and tactical (no \"learn " +
+      "the basics\" filler), (2) doable in 1-4 weeks each, (3) yield evidence " +
+      "the candidate can put on their resume or talk about in an interview. " +
+      "Do not repeat the same templated structure across skills — tailor each " +
+      "plan to the actual skill. For technical skills, suggest a real project " +
+      "or open-source contribution. For domain skills, suggest a certification, " +
+      "volunteer engagement, or community-of-practice. For soft skills, " +
+      "suggest a measurable behavioral practice with a specific cadence. " +
+      "Severity 'critical' or 'high' → priority 'do_this_week'. " +
+      "Severity 'medium' or 'low' → priority 'do_this_month'." +
+      JSON_ONLY +
+      ' Schema: { "plans": [{ "skill": string, "severity": string, ' +
+      '"actions": string[] (exactly 3 specific items), ' +
+      '"priority": "do_this_week" | "do_this_month", ' +
+      '"rationale": string (1 sentence on why these actions in this order) }] }',
+    userTemplate: (input) => {
+      const skills = (input && typeof input === "object" && Array.isArray((input as Record<string, unknown>).missingSkills))
+        ? (input as Record<string, unknown>).missingSkills as Array<Record<string, unknown>>
+        : [];
+      const targetRole = pick(input, ["targetRole", "role"]);
+      const candidateBg = pick(input, ["candidate", "background", "resume"]);
+      const skillLines = skills.slice(0, 8).map(function (s) {
+        const skill = String(s.skill || "").trim();
+        const sev = String(s.severity || "medium").trim();
+        const note = s.note ? " — " + String(s.note).slice(0, 120) : "";
+        return "- " + skill + " (severity: " + sev + ")" + note;
+      }).join("\n") || "- (no missing skills supplied)";
+      return (
+        "TARGET ROLE: " + (targetRole || "Not specified") +
+        "\n\nMISSING SKILLS (one plan per skill):\n" + skillLines +
+        (candidateBg ? "\n\nCANDIDATE BACKGROUND (use this to make actions specific):\n" + candidateBg.slice(0, 3000) : "") +
+        aiContextBlock(input) +
+        "\n\nReturn the JSON action plans now."
+      );
+    },
+  },
 };

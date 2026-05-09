@@ -1236,15 +1236,28 @@ Built analytics dashboard used by 3 teams"></textarea>
       breakdown.bulletQuality -= 8;
     }
 
-    // JD alignment check if available
+    // Phase 5: JD alignment check now uses synonym-aware semanticHas() so
+    // "TypeScript" matches "TS", "Postgres" matches "PostgreSQL", and tokens
+    // sitting inside URLs/tooling labels don't false-positive a real skill.
     const req = (jdAnalyzed && jdAnalyzed.requiredSkills) || [];
-    const resumeText = JSON.stringify(r || {}).toLowerCase();
     let missingReq = [];
     if (req.length) {
-      missingReq = req.filter(function (s) {
-        const term = String(s || "").trim().toLowerCase();
-        return term && !resumeText.includes(term);
-      }).slice(0, 8);
+      const sm = window.CBV2 && window.CBV2.semanticMatch;
+      const corpus = buildResumeCorpus(r);
+      if (sm && typeof sm.semanticHas === "function") {
+        const tokens = sm.tokenize(corpus);
+        missingReq = req.filter(function (s) {
+          const term = String(s || "").trim();
+          return term && !sm.semanticHas(tokens.length ? tokens : corpus, term);
+        }).slice(0, 8);
+      } else {
+        // Legacy fallback for environments without the helper.
+        const lower = corpus.toLowerCase();
+        missingReq = req.filter(function (s) {
+          const term = String(s || "").trim().toLowerCase();
+          return term && !lower.includes(term);
+        }).slice(0, 8);
+      }
       if (missingReq.length) {
         issues.push("JD alignment gap: missing " + missingReq.length + " required skill keyword(s).");
         const gapPenalty = Math.min(16, missingReq.length * 3);
@@ -2259,6 +2272,48 @@ Built analytics dashboard used by 3 teams"></textarea>
     `;
   }
 
+  // Phase 5: synonym-aware coverage. The legacy version did
+  //   `JSON.stringify(resume).toLowerCase()` + regex word-boundary tests,
+  // which meant "TypeScript" never matched "TS", "Postgres" never matched
+  // "PostgreSQL", and a token sitting in a URL or tooling label still counted
+  // as a real skill match. The new version walks the resume structure to
+  // build a clean corpus, then uses semanticHas() (handles synonyms +
+  // singular/plural + multi-word terms).
+  function buildResumeCorpus(r) {
+    if (!r || typeof r !== "object") return "";
+    const out = [];
+    if (r.summary) out.push(r.summary);
+    (r.skills || []).forEach(function (s) {
+      if (typeof s === "string") out.push(s);
+      else if (s && typeof s === "object" && s.name) out.push(s.name);
+    });
+    (r.experience || []).forEach(function (e) {
+      if (!e) return;
+      if (e.role) out.push(e.role);
+      if (e.company) out.push(e.company);
+      (e.bullets || []).forEach(function (b) {
+        if (typeof b === "string") out.push(b);
+        else if (b && b.text) out.push(b.text);
+      });
+    });
+    (r.projects || []).forEach(function (p) {
+      if (!p) return;
+      if (p.name) out.push(p.name);
+      if (p.description) out.push(p.description);
+      (p.bullets || []).forEach(function (b) {
+        if (typeof b === "string") out.push(b);
+        else if (b && b.text) out.push(b.text);
+      });
+    });
+    (r.certifications || []).forEach(function (c) {
+      if (c && c.name) out.push(c.name);
+    });
+    (r.languages || []).forEach(function (l) {
+      if (l && l.name) out.push(l.name);
+    });
+    return out.join("\n");
+  }
+
   function computeCoverage(jd, r) {
     const terms = [];
     const seen = new Set();
@@ -2267,14 +2322,28 @@ Built analytics dashboard used by 3 teams"></textarea>
       const k = s.toLowerCase();
       if (s && !seen.has(k)) { seen.add(k); terms.push(s); }
     });
-    const resumeText = r ? JSON.stringify(r).toLowerCase() : "";
+    const resumeCorpus = buildResumeCorpus(r);
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
     const matched = [];
     const missing = [];
-    terms.forEach(function (t) {
-      const re = new RegExp("\\b" + t.toLowerCase().replace(/[.+#\-\/]/g, "\\$&") + "\\b", "i");
-      if (re.test(resumeText)) matched.push(t);
-      else missing.push(t);
-    });
+    if (sm && typeof sm.semanticHas === "function") {
+      // Tokenize once, then membership-check each term against the synonym-
+      // expanded set. Multi-word terms ("machine learning") fall through to
+      // word-boundary substring inside semanticHas.
+      const tokens = sm.tokenize(resumeCorpus);
+      terms.forEach(function (t) {
+        if (sm.semanticHas(tokens.length ? tokens : resumeCorpus, t)) matched.push(t);
+        else missing.push(t);
+      });
+    } else {
+      // Legacy fallback for environments without the helper (test runner).
+      const lower = resumeCorpus.toLowerCase();
+      terms.forEach(function (t) {
+        const re = new RegExp("\\b" + t.toLowerCase().replace(/[.+#\-\/]/g, "\\$&") + "\\b", "i");
+        if (re.test(lower)) matched.push(t);
+        else missing.push(t);
+      });
+    }
     return { matched: matched, missing: missing, total: terms.length };
   }
 

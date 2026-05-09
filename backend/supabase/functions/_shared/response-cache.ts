@@ -34,6 +34,8 @@ const DEFAULT_TTL_SECONDS: Record<Skill, number> = {
   "interview-intel-pack":     60 * 60 * 24,
   "application-insight":      60 * 60 * 6,
   "followup-email":           0,                  // disabled: tone variations matter
+  // Phase 5: skill plans are stable for the same skill+context for hours.
+  "skill-action-plan":        60 * 60 * 12,
 };
 
 // Stable JSON stringify that sorts object keys recursively.

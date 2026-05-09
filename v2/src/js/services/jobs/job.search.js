@@ -518,8 +518,64 @@
     return acc.slice(0, 24);
   }
 
-  function jobTextRelevanceScore(job, tokens) {
+  // Phase 5: BM25 ranker (Okapi BM25, the IR-relevance gold standard).
+  // Built per `sortJobsInMemory` call so IDF reflects the current result set.
+  // Falls back to the legacy substring scoring if semanticMatch isn't loaded
+  // (e.g. unit-test runner that doesn't include the utils bundle).
+  let bm25CorpusCache = null;
+  let bm25CorpusJobs = null;
+  function getBm25Corpus(jobs) {
+    if (bm25CorpusJobs === jobs && bm25CorpusCache) return bm25CorpusCache;
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
+    if (!sm || typeof sm.buildBm25 !== "function") return null;
+    const docs = jobs.map(function (j) {
+      return {
+        id: j.id || j.url || (j.title + "|" + j.company),
+        fields: {
+          title: j.title || "",
+          company: j.company || "",
+          tags: (j.tags || []).join(" "),
+          location: j.location || "",
+          // Cap body to avoid IDF dominance from one verbose listing.
+          body: String(j.descriptionText || "").slice(0, 1200)
+        }
+      };
+    });
+    bm25CorpusJobs = jobs;
+    bm25CorpusCache = sm.buildBm25(docs, { title: 3, tags: 2, company: 1.5, location: 1, body: 1 });
+    return bm25CorpusCache;
+  }
+
+  function jobTextRelevanceScore(job, tokens, allJobs) {
     if (!tokens || !tokens.length) return 0;
+
+    // Phase 5: BM25 path when the semantic-match helper is available.
+    // Reuses the corpus across all calls within a single sort to amortize
+    // the IDF index build (~150 jobs × 5 fields = sub-millisecond cost).
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
+    if (sm && typeof sm.buildBm25 === "function" && Array.isArray(allJobs) && allJobs.length) {
+      const corpus = getBm25Corpus(allJobs);
+      if (corpus) {
+        const id = job.id || job.url || (job.title + "|" + job.company);
+        const queryText = tokens.join(" ");
+        // BM25 scores are unbounded — scale to a 0-100ish range so they
+        // compose with the other weighted signals in scoreJob().
+        const raw = corpus.score(queryText, id);
+        let bm = Math.round(Math.min(100, raw * 12));
+        // Recency tail-boost (kept from legacy behavior — search results
+        // for the same query should prefer fresher postings).
+        const posted = Date.parse(job.postedAt || "");
+        if (!Number.isNaN(posted)) {
+          const days = (Date.now() - posted) / 86400000;
+          if (days <= 1) bm += 2;
+          else if (days <= 7) bm += 1;
+        }
+        return bm;
+      }
+    }
+
+    // Legacy fallback — substring weighted scoring. Kept so the function works
+    // in test contexts that don't load the utils bundle.
     if (!job.__cbTextCache) {
       job.__cbTextCache = {
         title: (job.title || "").toLowerCase(),
@@ -571,9 +627,11 @@
       if (!tokens.length) {
         sort = "newest";
       } else {
+        // Phase 5: pass the full job list so jobTextRelevanceScore can build a
+        // BM25 corpus once and amortize across the sort comparator.
         return jobs.slice().sort(function (a, b) {
-          var ra = jobTextRelevanceScore(a, tokens);
-          var rb = jobTextRelevanceScore(b, tokens);
+          var ra = jobTextRelevanceScore(a, tokens, jobs);
+          var rb = jobTextRelevanceScore(b, tokens, jobs);
           if (rb !== ra) return rb - ra;
           var xa = a && typeof a.rankScore === "number" ? a.rankScore : 0;
           var xb = b && typeof b.rankScore === "number" ? b.rankScore : 0;
