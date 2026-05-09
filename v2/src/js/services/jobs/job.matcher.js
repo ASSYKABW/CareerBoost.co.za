@@ -196,4 +196,100 @@
       return { ranked: [], reason: (err && err.message) || "Network error" };
     }
   };
+
+  // -------------------------------------------------------------------------
+  // Phase 5C: rank arbitrary evidence items (resume bullets, career assets)
+  // by semantic relevance to a JD/query string. Reuses the jobs-rerank Edge
+  // Function — semantically `resume` = the query embedding, `jobs` = items
+  // to rank. Returns the ORIGINAL items in ranked order (not just IDs) so
+  // callers don't need to re-stitch.
+  //
+  // @param {string} queryText — JD text or focused skill query
+  // @param {Array<{id?:string, text:string}|string>} evidenceItems
+  // @param {{ topN?: number }} [options]
+  // @returns {Promise<{ ranked, reason?, costUsd?, cacheHits?, cacheMisses? }>}
+  //          ranked = [{ ...originalItem, similarity, rank }]
+  // -------------------------------------------------------------------------
+  window.CBJobs.rankEvidence = async function (queryText, evidenceItems, options) {
+    options = options || {};
+    const topN = Math.max(1, Math.min(24, options.topN || 12));
+
+    if (!queryText || !String(queryText).trim()) {
+      return { ranked: [], reason: "No query text" };
+    }
+    if (!Array.isArray(evidenceItems) || !evidenceItems.length) {
+      return { ranked: [], reason: "No evidence items" };
+    }
+    if (!window.CBV2 || !window.CBV2.config || !window.CBV2.config.isBackendEnabled()) {
+      return { ranked: [], reason: "Backend not configured" };
+    }
+    const auth = window.CBV2.auth;
+    if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) {
+      return { ranked: [], reason: "Sign in required" };
+    }
+
+    // Normalize evidence to {id, text, original}. Caller may pass either
+    // {id, text} objects or raw strings.
+    const normalized = evidenceItems
+      .slice(0, topN)
+      .map(function (item, i) {
+        if (typeof item === "string") {
+          return { id: "e" + i, text: item.trim(), original: { text: item.trim() } };
+        }
+        const text = String(item.text || "").trim();
+        return { id: item.id || "e" + i, text: text, original: item };
+      })
+      .filter(function (e) { return e.text && e.text.length >= 20; });
+
+    if (!normalized.length) {
+      return { ranked: [], reason: "Evidence items too short to rank" };
+    }
+
+    const endpoint = window.CBV2.config.getFunctionsUrl() + "/jobs-rerank";
+    const token = await auth.getAccessToken();
+    if (!token) return { ranked: [], reason: "Auth token unavailable" };
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+          "apikey": window.CBV2.config.getSupabaseAnon()
+        },
+        body: JSON.stringify({
+          // jobs-rerank treats `resume` as the query embedding; we pass the
+          // JD text here. The endpoint name is "jobs-" but the math is generic.
+          resume: String(queryText).slice(0, 8000),
+          jobs: normalized.map(function (e) { return { id: e.id, text: e.text }; }),
+          topN: topN
+        })
+      });
+      if (!response.ok) {
+        const txt = await response.text().catch(function () { return ""; });
+        return { ranked: [], reason: "rerank " + response.status + (txt ? ": " + txt.slice(0, 120) : "") };
+      }
+      const data = await response.json();
+      if (!data || data.ok === false) {
+        return { ranked: [], reason: (data && data.error) || "Rerank returned ok=false" };
+      }
+      // Stitch ranked IDs back to original items.
+      const byId = {};
+      normalized.forEach(function (e) { byId[e.id] = e.original; });
+      const ranked = (data.ranked || []).map(function (r) {
+        return Object.assign({}, byId[r.id] || {}, {
+          similarity: r.similarity,
+          rank: r.rank
+        });
+      });
+      return {
+        ranked: ranked,
+        costUsd: data.costUsd || 0,
+        cacheHits: data.cacheHits || 0,
+        cacheMisses: data.cacheMisses || 0
+      };
+    } catch (err) {
+      return { ranked: [], reason: (err && err.message) || "Network error" };
+    }
+  };
 })();

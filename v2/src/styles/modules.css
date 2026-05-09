@@ -2865,6 +2865,23 @@
   margin: 4px 0 8px;
 }
 
+/* Phase 5C: cover-letter proof bank — JD-ranked similarity badge + sort btn */
+.cover-proof-sim {
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+.cover-proof-sort {
+  margin-left: auto;
+}
+.cover-proof-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .job-search-history-workspace {
   max-width: min(920px, 100%);
 }

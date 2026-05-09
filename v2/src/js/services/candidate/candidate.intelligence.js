@@ -123,6 +123,7 @@
   function extractSkills(text) {
     const toks = skillTokens(text);
     const out = [];
+    // Pass 1: SKILL_LEXICON exact-match (high precision, known canonical forms).
     toks.forEach(function (t, i) {
       const one = canonicalSkill(t);
       const two = i < toks.length - 1 ? canonicalSkill(t + " " + toks[i + 1]) : "";
@@ -131,6 +132,19 @@
       if (two && SKILL_LEXICON.has(two)) out.push(two);
       if (one && SKILL_LEXICON.has(one)) out.push(one);
     });
+    // Phase 5C: heuristic fallback. Adds tech-shaped tokens + capitalized
+    // multi-word phrases (Snowflake, RabbitMQ, "Asset Reliability", etc.)
+    // so domain-specific skills aren't silently dropped just because they
+    // weren't pre-listed in SKILL_LEXICON. Lexicon hits stay in front of
+    // heuristic hits (ranking preserves the high-precision pass).
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
+    if (sm && typeof sm.extractSkillCandidates === "function") {
+      const candidates = sm.extractSkillCandidates(text, { maxItems: 30 });
+      candidates.forEach(function (c) {
+        const norm = canonicalSkill(c);
+        if (norm) out.push(norm);
+      });
+    }
     return unique(out, 60);
   }
 

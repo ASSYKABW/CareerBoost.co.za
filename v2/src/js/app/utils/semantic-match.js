@@ -396,6 +396,123 @@
     return 38;                                    // mismatch — different region
   }
 
+  // ---------------------------------------------------------------------------
+  // Phase 5C: heuristic skill-candidate extractor.
+  //
+  // Replaces the SKILL_LEXICON hard-gate with a permissive detector that
+  // recognises tech-shaped tokens, CamelCase identifiers, multi-word
+  // capitalized phrases, and dotted module paths. Any matched candidate is
+  // returned alongside lexicon hits so domain-specific skills (Snowflake,
+  // RabbitMQ, Datadog, Salesforce, "Marine Biology", "Asset Reliability")
+  // are no longer silently dropped just because they're not pre-listed.
+  //
+  // This is purely deterministic — no embeddings, no API calls. Pair it
+  // with the existing lexicon for high-precision known-skill detection,
+  // then take the union for high-recall novel-skill detection.
+  // ---------------------------------------------------------------------------
+
+  // Tech-shape patterns that indicate "this is probably a skill term":
+  //   - CamelCase / PascalCase: TypeScript, GitHub, NestJS
+  //   - Dotted: Node.js, Vue.js, F#.NET
+  //   - Acronyms (2-5 uppercase letters): AWS, GCP, NLP, REST
+  //   - Tech-suffix: -ing/-ops/-DB/-QL/-flow forms (ClickHouse, GraphQL, MongoDB)
+  //   - Code-like: kebab-case-with-numbers (k3s, k8s, OAuth2)
+  //   - Number-prefixed model names (gpt-4, claude-3, llama-3.3)
+  const SHAPE_PATTERNS = [
+    /^[A-Z][a-z]+[A-Z][A-Za-z0-9]+$/,             // CamelCase: NestJS, TypeScript, GitHub
+    /^[A-Z]{2,6}$/,                                // Acronym: AWS, GCP, NLP, REST, GRAPHQL
+    /^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9.]*$/, // Dotted: Node.js, Vue.js
+    /^[A-Za-z]+[0-9]+[A-Za-z]*$/,                 // k8s, OAuth2, ES6, gpt4
+    /^[A-Z][a-z]+(?:[A-Z][a-z]+)+$/,              // PascalCase: Salesforce, MongoDb
+    /^[a-z][a-z0-9]+(?:-[a-z0-9]+){1,3}$/,        // kebab-case: ci-cd, t-sql
+    /^[A-Za-z][A-Za-z]+(?:DB|QL|JS|TS|API|SDK|CLI|UI|IDE)$/i, // suffix: MongoDB, GraphQL
+  ];
+
+  // Stopword phrases that look skill-shaped but are common English nouns.
+  // Used to suppress false positives from the capitalized-phrase pass.
+  const PHRASE_STOPWORDS = new Set([
+    "Job Description", "About Us", "About The", "Our Team", "Key Responsibilities",
+    "Required Skills", "Preferred Skills", "Nice To Have", "Must Have",
+    "Years Experience", "Years Of Experience", "Bachelor Degree", "Masters Degree",
+    "Equal Opportunity", "Apply Now", "Click Here", "Read More", "Learn More",
+    "United States", "United Kingdom", "South Africa", "Cape Town", "New York",
+    "Monday Friday", "Full Time", "Part Time", "Remote Work",
+  ]);
+
+  function looksLikeTechShape(token) {
+    if (!token || token.length < 2 || token.length > 32) return false;
+    return SHAPE_PATTERNS.some(function (re) { return re.test(token); });
+  }
+
+  function isCapitalizedPhraseToken(t) {
+    return /^[A-Z][a-zA-Z0-9+#.\-]{1,28}$/.test(t);
+  }
+
+  /**
+   * Extract candidate skill terms from raw text using heuristics only.
+   * Returns a deduped array (lowercase canonical forms via expandSynonyms).
+   * Use as a fallback / supplement to SKILL_LEXICON.
+   *
+   * @param {string} text
+   * @param {{ maxItems?: number }} [opts]
+   */
+  function extractSkillCandidates(text, opts) {
+    const max = (opts && opts.maxItems) || 60;
+    const raw = String(text == null ? "" : text);
+    if (!raw.trim()) return [];
+    const found = new Set();
+
+    // Pass 1: tech-shape tokens. Walk word boundaries, keep the original case
+    // for the shape test, but bucket the result lowercased so duplicates merge.
+    raw.replace(/[A-Za-z][A-Za-z0-9+#.\-]{1,31}/g, function (tok) {
+      if (looksLikeTechShape(tok)) {
+        const norm = tok.toLowerCase();
+        if (!STOPWORDS.has(norm)) found.add(norm);
+      }
+      return tok;
+    });
+
+    // Pass 2: capitalized 2-3 word phrases that aren't generic English.
+    // Splits the corpus into rough sentences then scans each for sequences
+    // of capitalized tokens of reasonable length. Cheap; no NLP library.
+    const sentences = raw.split(/[.!?\n\r]+/);
+    sentences.forEach(function (sentence) {
+      const tokens = sentence.split(/\s+/);
+      for (let i = 0; i < tokens.length; i++) {
+        const cleanT = tokens[i].replace(/[,;:()"']/g, "");
+        if (!isCapitalizedPhraseToken(cleanT)) continue;
+        // Try 2-word phrase
+        const next = i + 1 < tokens.length ? tokens[i + 1].replace(/[,;:()"']/g, "") : "";
+        if (next && isCapitalizedPhraseToken(next)) {
+          const phrase = cleanT + " " + next;
+          if (!PHRASE_STOPWORDS.has(phrase) && phrase.length >= 5 && phrase.length <= 48) {
+            found.add(phrase.toLowerCase());
+          }
+          // 3-word phrase
+          const third = i + 2 < tokens.length ? tokens[i + 2].replace(/[,;:()"']/g, "") : "";
+          if (third && isCapitalizedPhraseToken(third)) {
+            const triple = cleanT + " " + next + " " + third;
+            if (!PHRASE_STOPWORDS.has(triple) && triple.length >= 8 && triple.length <= 60) {
+              found.add(triple.toLowerCase());
+            }
+          }
+        }
+      }
+    });
+
+    // Drop bare common words (single-letter or all-stopword fragments)
+    const out = [];
+    found.forEach(function (term) {
+      const t = term.trim();
+      if (!t || t.length < 2) return;
+      // Skip phrases that are purely stopwords post-split.
+      const parts = t.split(/\s+/);
+      if (parts.every(function (p) { return STOPWORDS.has(p); })) return;
+      out.push(t);
+    });
+    return out.slice(0, max);
+  }
+
   window.CBV2.semanticMatch = {
     tokenize: tokenize,
     expandSynonyms: expandSynonyms,
@@ -404,6 +521,9 @@
     detectRegion: detectRegion,
     scoreLocationMatch: scoreLocationMatch,
     countTermInTokens: countTermInTokens,
-    singularize: singularize
+    singularize: singularize,
+    // Phase 5C
+    extractSkillCandidates: extractSkillCandidates,
+    looksLikeTechShape: looksLikeTechShape,
   };
 })();

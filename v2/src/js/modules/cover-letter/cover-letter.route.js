@@ -9,7 +9,12 @@
     result: null,
     scoreDetailsOpen: false,
     selectedAssetIds: {},
-    coverTemplate: "professional-clean"
+    coverTemplate: "professional-clean",
+    // Phase 5C: evidence ranking state.
+    sortAssetsByJd: false,         // user-toggled — when true, proof bank sorts by JD relevance
+    rankAssetsBusy: false,
+    assetSimilarities: {},         // map: assetId → cosine similarity (0..1)
+    assetRankSourceJdHash: ""      // hash of the JD used for current rankings (so re-rank fires on JD change)
   };
 
   const COVER_TEMPLATES = [
@@ -228,6 +233,94 @@
     return getCareerAssets().filter(function (a) {
       return !!viewState.selectedAssetIds[a.id];
     });
+  }
+
+  // Phase 5C: read the JD currently typed/pasted into the form. Used both
+  // by the sort-by-JD enable check (button stays disabled when JD empty)
+  // and as the input to the embedding rerank call.
+  function readCurrentJdText() {
+    try {
+      const form = document.getElementById("cover-form");
+      if (!form) return "";
+      const fd = new FormData(form);
+      const jd = String(fd.get("jobDescription") || "").trim();
+      return jd;
+    } catch (e) { return ""; }
+  }
+
+  // Phase 5C: simple non-cryptographic hash for "did the JD change since
+  // last rerank?" Avoids re-spending embedding budget when the user toggles
+  // sort on/off without editing the JD. djb2 is fine — no security need.
+  function djb2Hash(s) {
+    let h = 5381;
+    const str = String(s || "");
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) + h) + str.charCodeAt(i);
+      h = h & 0xffffffff; // keep 32-bit
+    }
+    return String(h);
+  }
+
+  // Phase 5C: rerank proof-bank assets by cosine similarity to the current
+  // JD. Async — calls jobs-rerank → text-embedding-3-small. Cheap and
+  // cached (resume vector is also cached at the embeddings layer, even
+  // though here it's the JD acting as the "query").
+  async function rerankAssetsByJd() {
+    const jd = readCurrentJdText();
+    if (!jd) {
+      if (window.CBV2.toast) window.CBV2.toast.info("Paste a job description first.");
+      return;
+    }
+    if (!window.CBJobs || typeof window.CBJobs.rankEvidence !== "function") {
+      if (window.CBV2.toast) window.CBV2.toast.error("Evidence ranker not loaded.");
+      return;
+    }
+    const assets = getCareerAssets().slice(0, 10);
+    if (!assets.length) {
+      if (window.CBV2.toast) window.CBV2.toast.info("No proof items to rank — save bullets in Resume Lab first.");
+      return;
+    }
+    const jdHash = djb2Hash(jd);
+    // Re-use prior result if JD hasn't changed and we already have scores.
+    if (viewState.assetRankSourceJdHash === jdHash && Object.keys(viewState.assetSimilarities).length) {
+      viewState.sortAssetsByJd = !viewState.sortAssetsByJd;
+      window.CBV2.renderCurrentRoute();
+      return;
+    }
+    viewState.rankAssetsBusy = true;
+    window.CBV2.renderCurrentRoute();
+    try {
+      const result = await window.CBJobs.rankEvidence(jd, assets.map(function (a) {
+        // Compose a short text per asset — name + body — for the embedding.
+        return { id: a.id, text: ((a.name || "") + ": " + (a.text || "")).trim() };
+      }), { topN: assets.length });
+      viewState.rankAssetsBusy = false;
+      if (!result || !Array.isArray(result.ranked) || !result.ranked.length) {
+        viewState.sortAssetsByJd = false;
+        if (window.CBV2.toast) {
+          window.CBV2.toast.error((result && result.reason) || "Couldn't rank evidence — try again.");
+        }
+        window.CBV2.renderCurrentRoute();
+        return;
+      }
+      const sims = {};
+      result.ranked.forEach(function (r) {
+        if (r && r.id != null) sims[r.id] = typeof r.similarity === "number" ? r.similarity : 0;
+      });
+      viewState.assetSimilarities = sims;
+      viewState.assetRankSourceJdHash = jdHash;
+      viewState.sortAssetsByJd = true;
+      if (window.CBV2.toast) {
+        window.CBV2.toast.success("Sorted " + assets.length + " proof items by JD relevance.");
+      }
+      window.CBV2.renderCurrentRoute();
+    } catch (err) {
+      viewState.rankAssetsBusy = false;
+      if (window.CBV2.toast) {
+        window.CBV2.toast.error(err && err.message ? err.message : "Rank failed.");
+      }
+      window.CBV2.renderCurrentRoute();
+    }
   }
 
   function computeCoverScore(subject, body, ctx) {
@@ -526,17 +619,39 @@
 
   function renderView() {
     const st = getSt();
-    const assets = getCareerAssets().slice(0, 10);
+    let assets = getCareerAssets().slice(0, 10);
     const rolePacks = getRolePacks().slice(0, 20);
     const coverState = getCoverLetterState();
     const draft = getActiveDraft();
     const activeRole = getActiveRoleContext();
     const activePosting = roleContextJobText(activeRole);
+    // Phase 5C: when sortAssetsByJd is on AND we have similarity scores,
+    // reorder the visible proof-bank items (highest cosine first). The
+    // selection map keys on id so reorder doesn't break checked state.
+    if (viewState.sortAssetsByJd && Object.keys(viewState.assetSimilarities).length) {
+      const sims = viewState.assetSimilarities;
+      assets = assets.slice().sort(function (a, b) {
+        const sa = typeof sims[a.id] === "number" ? sims[a.id] : -1;
+        const sb = typeof sims[b.id] === "number" ? sims[b.id] : -1;
+        return sb - sa;
+      });
+    }
     const selectedCount = assets.filter(function (a) { return viewState.selectedAssetIds[a.id]; }).length;
     const rolePackOptions = rolePacks.map(function (p) {
       const sel = coverState.activeRolePackId === p.id ? "selected" : "";
       return '<option value="' + st(p.id) + '" ' + sel + '>' + st(p.name) + "</option>";
     }).join("");
+    // Phase 5C: sort-by-JD toggle button. Disabled when no JD is pasted.
+    const jdNow = readCurrentJdText();
+    const sortToggleLabel = viewState.rankAssetsBusy
+      ? '<i class="fa-solid fa-circle-notch fa-spin"></i> Ranking…'
+      : viewState.sortAssetsByJd
+      ? '<i class="fa-solid fa-wave-square"></i> Sorted by JD relevance'
+      : '<i class="fa-solid fa-wave-square"></i> Sort by JD relevance';
+    const sortToggleDisabled = (!jdNow || viewState.rankAssetsBusy) ? " disabled" : "";
+    const sortToggleHtml = '<button type="button" class="btn-ghost btn-sm cover-proof-sort"' + sortToggleDisabled +
+      ' id="cover-assets-sort-by-jd" title="' + (jdNow ? "Re-order proof items by cosine similarity to the pasted JD" : "Paste a JD first to enable") + '">' +
+      sortToggleLabel + '</button>';
     const proofBank = assets.length
       ? (
         '<section class="cover-proof-bank">' +
@@ -548,12 +663,17 @@
           '<div class="cover-proof-list">' +
             assets.map(function (a) {
               const checked = viewState.selectedAssetIds[a.id] ? "checked" : "";
-              return '<label class="cover-proof-card"><input type="checkbox" data-cover-asset-id="' + st(a.id || "") + '" ' + checked + ' /> <span><strong>' + st(a.name || "Asset") + '</strong><small>' + st(a.type || "bullet") + '</small><em>' + st(String(a.text || "").slice(0, 150)) + '</em></span></label>';
+              const sim = typeof viewState.assetSimilarities[a.id] === "number" ? viewState.assetSimilarities[a.id] : null;
+              const simBadge = (viewState.sortAssetsByJd && sim != null && sim >= 0.4)
+                ? ' <span class="chip cyan cover-proof-sim" title="Cosine similarity to JD">' + Math.round(sim * 100) + '%</span>'
+                : "";
+              return '<label class="cover-proof-card"><input type="checkbox" data-cover-asset-id="' + st(a.id || "") + '" ' + checked + ' /> <span><strong>' + st(a.name || "Asset") + simBadge + '</strong><small>' + st(a.type || "bullet") + '</small><em>' + st(String(a.text || "").slice(0, 150)) + '</em></span></label>';
             }).join("") +
           '</div>' +
           '<div class="cover-proof-actions">' +
             '<button class="btn-ghost btn-sm" id="cover-assets-apply-strengths" type="button"><i class="fa-solid fa-bolt"></i> Add selected skills</button>' +
             '<button class="btn-ghost btn-sm" id="cover-assets-clear" type="button"><i class="fa-solid fa-xmark"></i> Clear selection</button>' +
+            sortToggleHtml +
           '</div>' +
         '</section>'
       )
@@ -1277,6 +1397,13 @@
       clearAssets.addEventListener("click", function () {
         viewState.selectedAssetIds = {};
         document.querySelectorAll("[data-cover-asset-id]").forEach(function (cb) { cb.checked = false; });
+      });
+    }
+    // Phase 5C: Sort by JD relevance.
+    const sortByJdBtn = document.getElementById("cover-assets-sort-by-jd");
+    if (sortByJdBtn) {
+      sortByJdBtn.addEventListener("click", function () {
+        rerankAssetsByJd();
       });
     }
     const templateSel = document.getElementById("cover-template");
