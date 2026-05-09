@@ -111,4 +111,89 @@
       return null;
     }
   };
+
+  // -------------------------------------------------------------------------
+  // Phase 5B: embedding-based reranker (cosine similarity over OpenAI
+  // text-embedding-3-small). Hits the new jobs-rerank Edge Function in one
+  // round-trip; resume + N jobs are embedded together server-side, with
+  // 30-day cache so repeat searches mostly come back free.
+  //
+  // Returns: { ranked: [{id, similarity, rank}], reason?, costUsd? }
+  // ranked entries are sorted by cosine similarity DESC (highest fit first).
+  // -------------------------------------------------------------------------
+  window.CBJobs.rerankJobs = async function (jobs, options) {
+    options = options || {};
+    const resume = options.resume != null ? options.resume : getResumeText();
+    const topN = Math.max(1, Math.min(24, options.topN || 12));
+
+    if (!resume || !resume.trim()) {
+      return { ranked: [], reason: "No resume content available" };
+    }
+    if (!Array.isArray(jobs) || !jobs.length) {
+      return { ranked: [], reason: "No jobs supplied" };
+    }
+    if (!window.CBV2 || !window.CBV2.config || !window.CBV2.config.isBackendEnabled()) {
+      return { ranked: [], reason: "Backend not configured" };
+    }
+    const auth = window.CBV2.auth;
+    if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) {
+      return { ranked: [], reason: "Sign in to use embedding rerank" };
+    }
+
+    // Compose a compact text block per job — title + company + tags + body
+    // give the embedding model enough signal without paying for the full
+    // (often 5K+ char) description.
+    const subset = jobs.slice(0, topN).map(function (j) {
+      const parts = [
+        j.title || "",
+        j.company || "",
+        Array.isArray(j.tags) ? j.tags.join(", ") : "",
+        j.location || "",
+        String(j.descriptionText || "").slice(0, 1500)
+      ].filter(Boolean);
+      return { id: j.id, text: parts.join("\n") };
+    }).filter(function (j) { return j.id && j.text; });
+
+    if (!subset.length) {
+      return { ranked: [], reason: "Jobs missing id or text" };
+    }
+
+    const endpoint = window.CBV2.config.getFunctionsUrl() + "/jobs-rerank";
+    const token = await auth.getAccessToken();
+    if (!token) {
+      return { ranked: [], reason: "Auth token unavailable" };
+    }
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+          "apikey": window.CBV2.config.getSupabaseAnon()
+        },
+        body: JSON.stringify({
+          resume: resume.slice(0, 20000),
+          jobs: subset,
+          topN: topN
+        })
+      });
+      if (!response.ok) {
+        const txt = await response.text().catch(function () { return ""; });
+        return { ranked: [], reason: "rerank " + response.status + (txt ? ": " + txt.slice(0, 120) : "") };
+      }
+      const data = await response.json();
+      if (!data || data.ok === false) {
+        return { ranked: [], reason: (data && data.error) || "Rerank returned ok=false" };
+      }
+      return {
+        ranked: Array.isArray(data.ranked) ? data.ranked : [],
+        costUsd: data.costUsd || 0,
+        cacheHits: data.cacheHits || 0,
+        cacheMisses: data.cacheMisses || 0
+      };
+    } catch (err) {
+      return { ranked: [], reason: (err && err.message) || "Network error" };
+    }
+  };
 })();

@@ -36,6 +36,13 @@ const PRICES: Record<string, PricePoint> = {
 
   // Groq (no cache discount, Llama family)
   "llama-3.3-70b-versatile":     { inputPerM: 0.59, outputPerM: 0.79 },
+
+  // Embeddings (Phase 5B). outputPerM is 0 — embeddings have no completion
+  // tokens; only the input is billed. Listed under inputPerM for consistency
+  // with computeCostUSD().
+  "text-embedding-3-small":      { inputPerM: 0.02, outputPerM: 0 },
+  "text-embedding-3-large":      { inputPerM: 0.13, outputPerM: 0 },
+  "text-embedding-004":          { inputPerM: 0.0,  outputPerM: 0 }, // Gemini free tier
 };
 
 const FALLBACK: PricePoint = { inputPerM: 1.00, outputPerM: 4.00 };

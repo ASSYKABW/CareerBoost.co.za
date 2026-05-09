@@ -1125,6 +1125,15 @@
         st(String(ai.score)) +
         "</span>"
       : "";
+
+    // Phase 5B: semantic-match indicator when embedding similarity is high.
+    // 0.55+ is meaningful for text-embedding-3-small on resume↔job pairs.
+    const sim = typeof job.embeddingSimilarity === "number" ? job.embeddingSimilarity : null;
+    const simChipHtml = (sim != null && sim >= 0.55)
+      ? '<span class="chip cyan job-search-sim-chip" title="Cosine similarity to your resume (text-embedding-3-small)"><i class="fa-solid fa-wave-square" aria-hidden="true"></i> ' +
+        st((sim * 100).toFixed(0) + "%") +
+        " semantic</span>"
+      : "";
     const warning = sourceWarningText(job);
     const sourceWarningHtml =
       warning
@@ -1148,6 +1157,7 @@
       "</div>" +
       '<div class="job-search-job-card__chips">' +
       aiChipHtml +
+      simChipHtml +
       (score != null && !aiHasScore
         ? '<span class="chip ' + chip.cls + '" title="Role targeting score">' + st(String(score)) + " · " + st(chip.text) + "</span>"
         : "") +
@@ -1326,9 +1336,67 @@
       if (summary && summary.scored && window.CBV2.toast) {
         window.CBV2.toast.info("AI ranked top " + summary.scored + " roles to your resume.");
       }
+      // Phase 5B: layer cosine-similarity rerank on top. Cheap (cached resume
+      // vector + tiny per-job embeddings cost), runs after the AI score so
+      // the user sees scores first then a tighter ordering moments later.
+      triggerEmbeddingRerankAfterScore(session);
     }).catch(function () {
       aiRerankInFlight = false;
     });
+  }
+
+  // Phase 5B: embedding-based re-rank — fires after the AI score pass.
+  // Combines AI score (coarse 0-100) with cosine similarity (fine-grained
+  // 0-1) into a single composite ranking. Most repeat searches hit the
+  // 30-day embeddings cache so this is essentially free.
+  let embeddingRerankInFlight = false;
+  function triggerEmbeddingRerankAfterScore(session) {
+    if (embeddingRerankInFlight) return;
+    if (!window.CBJobs || typeof window.CBJobs.rerankJobs !== "function") return;
+    if (typeof window.CBJobs.hasResume === "function" && !window.CBJobs.hasResume()) return;
+    const jobs = (session && session.jobs) || [];
+    if (!jobs.length) return;
+
+    embeddingRerankInFlight = true;
+    window.CBJobs.rerankJobs(jobs, { topN: 12 })
+      .then(function (result) {
+        embeddingRerankInFlight = false;
+        if (lastSearchView !== session) return;
+        if (!result || !Array.isArray(result.ranked) || !result.ranked.length) return;
+
+        // Attach embedding similarity to each job so future renders can
+        // surface it (e.g. as a "semantic match" pip in the AI fit panel).
+        const simByJobId = {};
+        result.ranked.forEach(function (r) {
+          if (r && r.id) simByJobId[r.id] = r.similarity;
+        });
+        (session.jobs || []).forEach(function (j) {
+          if (!j) return;
+          if (typeof simByJobId[j.id] === "number") {
+            j.embeddingSimilarity = simByJobId[j.id];
+            if (j.aiScore) j.aiScore.embeddingSimilarity = simByJobId[j.id];
+          }
+        });
+
+        // Compose a composite score = AI score (0-100) + cosine boost (0-15).
+        // The cosine value is ~0..1 in practice; multiplying by 15 gives a
+        // gentle nudge that lets embedding signal break ties in AI scoring
+        // without overwhelming it.
+        const reordered = (session.jobs || []).slice().sort(function (a, b) {
+          const ai = function (j) { return j && j.aiScore && typeof j.aiScore.score === "number" ? j.aiScore.score : null; };
+          const sim = function (j) { return typeof j.embeddingSimilarity === "number" ? j.embeddingSimilarity : 0; };
+          const ca = (ai(a) != null ? ai(a) : 0) + sim(a) * 15;
+          const cb = (ai(b) != null ? ai(b) : 0) + sim(b) * 15;
+          if (cb !== ca) return cb - ca;
+          // Tie-break: cosine alone, then unchanged.
+          return sim(b) - sim(a);
+        });
+        session.jobs = reordered;
+        repaintJobSearchResults();
+      })
+      .catch(function () {
+        embeddingRerankInFlight = false;
+      });
   }
 
   // Phase 2: Apply-with-AI — runs CBJobs.runApplyWorkflow (save → tailor →

@@ -17,12 +17,14 @@
     "fn:deploy:import": "supabase functions deploy job-import --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:external": "supabase functions deploy external-search --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:company-intel": "supabase functions deploy company-intel-search --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
-    "fn:deploy": "npm run fn:deploy:ai && npm run fn:deploy:jobs && npm run fn:deploy:import && npm run fn:deploy:external && npm run fn:deploy:company-intel",
+    "fn:deploy:embeddings": "supabase functions deploy embeddings --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy:rerank": "supabase functions deploy jobs-rerank --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy": "npm run fn:deploy:ai && npm run fn:deploy:jobs && npm run fn:deploy:import && npm run fn:deploy:external && npm run fn:deploy:company-intel && npm run fn:deploy:embeddings && npm run fn:deploy:rerank",
     "secrets:push": "supabase secrets set --env-file ./.env",
     "link": "echo \"Run: supabase link --project-ref <YOUR_PROJECT_REF>\""
   },
   "devDependencies": {
-    "supabase": "^2.90.0"
+    "supabase": "^2.98.2"
   },
   "engines": {
     "node": ">=18"
