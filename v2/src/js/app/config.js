@@ -11,6 +11,11 @@
       functionsUrl: "",
       // Force local-only mode even if supabase keys are set (useful for demos)
       forceLocal: false,
+      // Admin console access is granted from Supabase Auth app_metadata roles.
+      // Do not put candidate emails here; set roles on the user in Supabase.
+      adminAccess: {
+        roles: ["admin", "owner", "developer"]
+      },
       // Show Google + LinkedIn sign-in buttons. Set to true AFTER you've
       // configured those providers in the Supabase Dashboard.
       // Phase 4: enabled by default — Google OAuth is the highest-leverage

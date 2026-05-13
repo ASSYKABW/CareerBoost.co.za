@@ -102,6 +102,21 @@
     }
   }
 
+  function trackUsage(eventName, metadata, options) {
+    const usage = window.CBV2 && window.CBV2.usage;
+    if (usage && typeof usage.track === "function") {
+      usage.track(eventName, metadata || {}, options || {});
+    }
+  }
+
+  function sourceHost(url) {
+    try {
+      return new URL(String(url || "")).hostname.toLowerCase().replace(/^www\./, "");
+    } catch (err) {
+      return "";
+    }
+  }
+
   function trimText(value, max) {
     const text = String(value == null ? "" : value);
     if (!max || text.length <= max) return text;
@@ -612,6 +627,12 @@
       } else {
         cache.applications.unshift(app);
       }
+      trackUsage(idx >= 0 ? "application_updated" : "application_created", {
+        stage: app.stage || "saved",
+        priority: app.priority || "medium",
+        hasSource: Boolean(app.jobUrl),
+        sourceHost: sourceHost(app.jobUrl)
+      }, { module: "pipeline", route: "applications" });
       const row = appToRow(app);
       if (!row.id) {
         fireAndForget(
@@ -671,6 +692,10 @@
         }).eq("id", id),
         "updateApplicationStage"
       );
+      trackUsage("application_stage_changed", {
+        fromStage: from,
+        toStage: stage
+      }, { module: "pipeline", route: "applications" });
     },
     getEventsForApplication: function (id) {
       return cache.events.filter(function (e) { return e.appId === id; });
@@ -679,6 +704,10 @@
       if (!event) return null;
       const local = normalizeEvent(event);
       cache.events.push(local);
+      trackUsage("calendar_event_created", {
+        eventType: local.type || "other",
+        hasApplication: Boolean(local.appId)
+      }, { module: "calendar", route: "calendar" });
       fireAndForget(
         insertEventWithFallback(local, function (r) {
           if (r.data && r.data.id) {
@@ -712,6 +741,10 @@
     setResumeBase: function (text) {
       cache.resume.base = text;
       cache.resume.updatedAt = new Date().toISOString();
+      trackUsage("resume_base_saved", {
+        characterCount: String(text || "").length,
+        hasContent: String(text || "").trim().length > 0
+      }, { module: "resume", route: "resume" });
       fireAndForget(
         client.from("resumes").upsert({ user_id: userId, base_text: text }),
         "setResumeBase"
@@ -720,6 +753,9 @@
     setResumeTailored: function (result) {
       cache.resume.tailored = result;
       cache.resume.updatedAt = new Date().toISOString();
+      trackUsage("resume_tailored_saved", {
+        hasResult: Boolean(result)
+      }, { module: "resume", route: "resume" });
       fireAndForget(
         client.from("resumes").upsert({
           user_id: userId,
@@ -742,6 +778,9 @@
       if (resume) resume.updatedAt = new Date().toISOString();
       cache.resume.structured = resume || null;
       cache.resume.updatedAt = new Date().toISOString();
+      trackUsage("resume_structured_saved", {
+        hasStructuredResume: Boolean(resume)
+      }, { module: "resume", route: "resume" });
       fireAndForget(
         client.from("resumes").upsert({
           user_id: userId,
@@ -842,6 +881,11 @@
       if (idx >= 0) cache.resume.savedCVs[idx] = item;
       else cache.resume.savedCVs.unshift(item);
       if (!cache.resume.defaultSavedCvId) cache.resume.defaultSavedCvId = id;
+      trackUsage("resume_version_saved", {
+        source: item.source || "resume-lab",
+        hasStructuredResume: Boolean(item.structured),
+        characterCount: String(item.baseText || "").length
+      }, { module: "resume", route: "resume" });
       fireAndForget(
         client.from("resumes").upsert({
           user_id: userId,
@@ -970,6 +1014,10 @@
 
     setCoverLetterResult: function (result) {
       cache.coverLetter.lastResult = result;
+      trackUsage("cover_letter_generated", {
+        hasResult: Boolean(result),
+        provider: result && result.provider || ""
+      }, { module: "cover-letter", route: "cover-letter" });
       fireAndForget(
         client.from("cover_letters").upsert({
           user_id: userId,
@@ -1007,6 +1055,11 @@
       if (idx >= 0) cache.coverLetter.variants[idx] = item;
       else cache.coverLetter.variants.unshift(item);
       if (!cache.coverLetter.activeVariantId) cache.coverLetter.activeVariantId = id;
+      trackUsage("cover_letter_variant_saved", {
+        template: item.template,
+        tone: item.tone,
+        hasSubject: Boolean(item.subject)
+      }, { module: "cover-letter", route: "cover-letter" });
       fireAndForget(
         client.from("cover_letters").upsert({
           user_id: userId,
@@ -1076,6 +1129,10 @@
       };
       cache.coverLetter.sentLog = cache.coverLetter.sentLog || [];
       cache.coverLetter.sentLog.unshift(entry);
+      trackUsage("cover_letter_sent_logged", {
+        channel: entry.channel,
+        status: entry.status
+      }, { module: "cover-letter", route: "cover-letter" });
       fireAndForget(
         client.from("cover_letters").upsert({
           user_id: userId,
@@ -1187,6 +1244,10 @@
 
     setInterviewSet: function (result) {
       cache.interview.lastSet = result;
+      trackUsage("interview_questions_generated", {
+        hasResult: Boolean(result),
+        provider: result && result.provider || ""
+      }, { module: "interview", route: "interview" });
       fireAndForget(
         client.from("interview_sets").upsert({ user_id: userId, last_set: result }),
         "setInterviewSet"
@@ -1197,8 +1258,14 @@
       return s && typeof s === "object" ? JSON.parse(JSON.stringify(s)) : null;
     },
     setInterviewMockSession: function (session) {
+      const hadSession = Boolean(cache.interview.mockSession);
       cache.interview.mockSession =
         session && typeof session === "object" ? JSON.parse(JSON.stringify(session)) : null;
+      if (!hadSession && cache.interview.mockSession) {
+        trackUsage("mock_interview_started", {
+          turnCount: Array.isArray(cache.interview.mockSession.transcript) ? cache.interview.mockSession.transcript.length : 0
+        }, { module: "interview", route: "interview" });
+      }
     },
     getInterviewIntelSession: function () {
       const s = cache.interview.intelSession;
@@ -1207,6 +1274,9 @@
     setInterviewIntelSession: function (session) {
       cache.interview.intelSession =
         session && typeof session === "object" ? JSON.parse(JSON.stringify(session)) : null;
+      trackUsage("interview_research_generated", {
+        hasSession: Boolean(cache.interview.intelSession)
+      }, { module: "interview", route: "interview" });
     },
 
     reset: function () {
@@ -1238,6 +1308,12 @@
         postedAt: job.postedAt, savedAt: new Date().toISOString()
       };
       cache.savedJobs.unshift(record);
+      trackUsage("job_saved", {
+        source: job.source || "",
+        sourceHost: sourceHost(job.url),
+        hasRemoteSignal: Boolean(job.remote),
+        hasRoleFit: Boolean(job.roleIntent)
+      }, { module: "job-search", route: "job-search" });
       fireAndForget(
         client.from("saved_jobs").upsert({
           user_id: userId,
@@ -1293,6 +1369,12 @@
       if (cache.jobSearch.analytics.runs.length > 120) {
         cache.jobSearch.analytics.runs = cache.jobSearch.analytics.runs.slice(0, 120);
       }
+      trackUsage("job_search_run", {
+        total: Number(entry.total || entry.count || 0),
+        queryLength: String(entry.query || "").length,
+        sourceCount: entry.sources && typeof entry.sources === "object" ? Object.keys(entry.sources).length : 0,
+        strictMode: Boolean(entry.strictMode)
+      }, { module: "job-search", route: "job-search" });
     },
     getJobSearchAnalytics: function () {
       const a = cache.jobSearch.analytics || { runs: [] };
@@ -1307,6 +1389,10 @@
         : null;
       if (existing) Object.assign(existing, search);
       else cache.savedSearches.unshift(search);
+      trackUsage(existing ? "saved_search_updated" : "saved_search_created", {
+        hasFilters: Boolean(search.filters),
+        queryLength: String(search.query || "").length
+      }, { module: "job-search", route: "job-search" });
 
       const row = {
         user_id: userId,
@@ -1341,6 +1427,10 @@
       if (info && typeof info.lastCount === "number") s.lastCount = info.lastCount;
       if (info && info.lastTopIds) s.lastTopIds = info.lastTopIds;
       if (info && typeof info.lastNewCount === "number") s.lastNewCount = info.lastNewCount;
+      trackUsage("saved_search_run", {
+        lastCount: s.lastCount || 0,
+        lastNewCount: s.lastNewCount || 0
+      }, { module: "job-search", route: "job-search" });
       fireAndForget(
         client.from("saved_searches").update({
           last_run_at: s.lastRunAt,
@@ -1383,6 +1473,11 @@
       };
       // Reuse upsert path (strips client-side id, then adopts DB id).
       remoteStore.upsertApplication(application);
+      trackUsage("job_moved_to_pipeline", {
+        source: job.source || "",
+        sourceHost: sourceHost(job.url),
+        hasCapturedPosting: Boolean(job.descriptionText || job.description || job.summary || job.snippet)
+      }, { module: "pipeline", route: "job-search" });
       return application;
     },
     saveApplicationFromJobUrl: function (rawUrl, meta) {
@@ -1439,6 +1534,11 @@
         stageHistory: [{ stage: "saved", at: new Date().toISOString() }]
       };
       remoteStore.upsertApplication(application);
+      trackUsage("job_moved_to_pipeline", {
+        source: "pasted-url",
+        sourceHost: sourceHost(url),
+        origin: "manual-url"
+      }, { module: "pipeline", route: "applications" });
       return { ok: true, application: application };
     }
   };

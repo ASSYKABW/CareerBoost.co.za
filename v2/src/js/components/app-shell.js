@@ -109,6 +109,12 @@
     const plan = (profile && profile.plan) ? profile.plan : "free";
     const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
     const st = window.CBV2.sanitizeText || function (x) { return String(x || ""); };
+    const canAdmin = window.CBV2.adminAccess && typeof window.CBV2.adminAccess.canAccess === "function"
+      ? window.CBV2.adminAccess.canAccess()
+      : false;
+    const adminLink = canAdmin
+      ? '<a class="user-menu-item" role="menuitem" href="#/admin"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Admin console</a>'
+      : "";
 
     return `
       <div class="user-chip" data-user-chip>
@@ -133,6 +139,7 @@
           <a class="user-menu-item" role="menuitem" href="#/settings">
             <i class="fa-solid fa-gear" aria-hidden="true"></i> Settings
           </a>
+          ${adminLink}
           <div class="user-menu-divider" role="separator"></div>
           <button class="user-menu-item user-menu-item--danger" type="button" role="menuitem" data-signout>
             <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out

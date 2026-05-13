@@ -2,7 +2,7 @@
   // Routes that are visible to signed-out visitors (public).
   const PUBLIC_ROUTES = ["welcome", "auth"];
   // Routes rendered fullscreen (no sidebar/topbar) for authed users.
-  const FULLSCREEN_AUTHED_ROUTES = ["onboarding"];
+  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin"];
 
   function mountAppShell() {
     const app = document.getElementById("app");
@@ -51,6 +51,9 @@
       document.getElementById("route-view").innerHTML = render();
       const hook = window.CBV2.afterRender && window.CBV2.afterRender[target];
       if (typeof hook === "function") hook({});
+      if (window.CBV2.usage && typeof window.CBV2.usage.trackRoute === "function") {
+        window.CBV2.usage.trackRoute(target, {});
+      }
     }
     window.CBV2.setRoute(target);
   }
@@ -64,6 +67,9 @@
       document.getElementById("route-view").innerHTML = render();
       const hook = window.CBV2.afterRender && window.CBV2.afterRender[target];
       if (typeof hook === "function") hook({});
+      if (window.CBV2.usage && typeof window.CBV2.usage.trackRoute === "function") {
+        window.CBV2.usage.trackRoute(target, {});
+      }
     }
     window.CBV2.setRoute(target);
   }

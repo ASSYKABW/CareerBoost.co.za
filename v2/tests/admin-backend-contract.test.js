@@ -1,0 +1,98 @@
+/* eslint-disable no-console */
+const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+
+const root = path.resolve(__dirname, "..", "..");
+
+function read(rel) {
+  return fs.readFileSync(path.join(root, rel), "utf8");
+}
+
+function run() {
+  const auth = read("backend/supabase/functions/_shared/auth.ts");
+  const fn = read("backend/supabase/functions/admin-overview/index.ts");
+  const usageMigration = read("backend/supabase/migrations/0007_usage_events.sql");
+  const sessionMigration = read("backend/supabase/migrations/0008_usage_sessions.sql");
+  const hardeningMigration = read("backend/supabase/migrations/0009_admin_production_hardening.sql");
+  const config = read("backend/supabase/config.toml");
+  const pkg = read("backend/package.json");
+
+  assert.ok(/export async function getAuthedAdmin/.test(auth), "shared auth should expose getAuthedAdmin");
+  assert.ok(/app_metadata/.test(auth), "admin guard should read protected app metadata");
+  assert.ok(!/user_metadata[\s\S]{0,120}Admin/.test(auth), "admin guard should not rely on user metadata");
+  assert.ok(/getAuthedAdmin\(req\)/.test(fn), "admin-overview must verify admin access");
+  assert.ok(/svc\.auth\.admin\.listUsers/.test(fn), "admin-overview should read Supabase Auth users via service role");
+  assert.ok(/from\("applications"\)/.test(fn), "admin-overview should aggregate pipeline records");
+  assert.ok(/from\("ai_usage"\)/.test(fn), "admin-overview should aggregate AI telemetry");
+  assert.ok(/from\("usage_events"\)/.test(fn), "admin-overview should aggregate usage events");
+  assert.ok(/from\("usage_sessions"\)/.test(fn), "admin-overview should aggregate usage sessions");
+  assert.ok(/create table if not exists public\.usage_events/.test(usageMigration), "usage_events migration should create the event table");
+  assert.ok(/enable row level security/.test(usageMigration), "usage_events migration should enable RLS");
+  assert.ok(/owner_insert/.test(usageMigration), "usage_events migration should allow owner inserts");
+  assert.ok(/create table if not exists public\.usage_sessions/.test(sessionMigration), "usage_sessions migration should create the session table");
+  assert.ok(/duration_seconds/.test(sessionMigration), "usage_sessions migration should store session duration");
+  assert.ok(/device_type/.test(sessionMigration), "usage_sessions migration should store device class");
+  assert.ok(/preview_mode/.test(sessionMigration), "usage_sessions migration should store preview mode");
+  assert.ok(/owner_update/.test(sessionMigration), "usage_sessions migration should allow owner session updates");
+  assert.ok(/usage_events_metadata_privacy_guard/.test(hardeningMigration), "hardening migration should guard usage event metadata");
+  assert.ok(/usage_sessions_metadata_privacy_guard/.test(hardeningMigration), "hardening migration should guard usage session metadata");
+  assert.ok(/force row level security/.test(hardeningMigration), "hardening migration should force RLS on telemetry tables");
+  assert.ok(/revoke all on public\.usage_events from anon/.test(hardeningMigration), "hardening migration should block anonymous usage_events access");
+  assert.ok(/revoke all on public\.usage_sessions from anon/.test(hardeningMigration), "hardening migration should block anonymous usage_sessions access");
+  assert.ok(/usage_sessions_modules_gin_idx/.test(hardeningMigration), "hardening migration should index usage session modules");
+  assert.ok(/usage_sessions_routes_gin_idx/.test(hardeningMigration), "hardening migration should index usage session routes");
+  assert.ok(/saved_jobs_source_saved_idx/.test(hardeningMigration), "hardening migration should index saved job source freshness");
+  assert.ok(/applications_stage_updated_idx/.test(hardeningMigration), "hardening migration should index application stage freshness");
+  assert.ok(/ai_usage_status_created_idx/.test(hardeningMigration), "hardening migration should index AI operational status");
+  assert.ok(/alerts/.test(fn), "admin-overview should return operator alerts");
+  assert.ok(/sourceIssues/.test(fn), "admin-overview should expose source truth diagnostics");
+  assert.ok(/recentFailures/.test(fn), "admin-overview should expose recent AI failures");
+  assert.ok(/pipelineCount/.test(fn), "admin-overview should enrich user rows with work counts");
+  assert.ok(/product:\s*\{/.test(fn), "admin-overview should expose product intelligence");
+  assert.ok(/activationScore/.test(fn), "admin-overview should calculate activation score");
+  assert.ok(/activationFunnel/.test(fn), "admin-overview should calculate the strict activation funnel");
+  assert.ok(/first-tailored-asset/.test(fn), "admin-overview should include the first tailored asset step");
+  assert.ok(/largestDropOff/.test(fn), "admin-overview should expose the largest activation drop-off");
+  assert.ok(/MODULE_CATALOG/.test(fn), "admin-overview should define the tracked product modules");
+  assert.ok(/moduleEngagement/.test(fn), "admin-overview should expose per-module engagement metrics");
+  assert.ok(/avgEventsPerSession/.test(fn), "admin-overview should expose per-module depth");
+  assert.ok(/retention:\s*\{/.test(fn), "admin-overview should expose retention metrics");
+  assert.ok(/cohortRetention/.test(fn), "admin-overview should expose true signup-week retention cohorts");
+  assert.ok(/cohortSummary/.test(fn), "admin-overview should summarize cohort retention");
+  assert.ok(/week1Retention/.test(fn), "admin-overview should calculate week 1 retention");
+  assert.ok(/activeSessions/.test(fn), "admin-overview should expose usage session counts");
+  assert.ok(/avgSessionSeconds/.test(fn), "admin-overview should expose average session length");
+  assert.ok(/sessionsByDevice/.test(fn), "admin-overview should expose session device mix");
+  assert.ok(/topRoutes/.test(fn), "admin-overview should expose route views");
+  assert.ok(/byProvider/.test(fn), "admin-overview should expose provider-level AI metrics");
+  assert.ok(/quality:\s*\{/.test(fn), "admin-overview should expose job feed quality metrics");
+  assert.ok(/const reports = \{/.test(fn), "admin-overview should expose operator reports");
+  assert.ok(/healthScore/.test(fn), "admin-overview should calculate reporting health score");
+  assert.ok(/actionQueue/.test(fn), "admin-overview should expose operator action queue");
+  assert.ok(/executiveSummary/.test(fn), "admin-overview should expose executive report summary");
+  assert.ok(/governance:\s*\{/.test(fn), "admin-overview should expose governance metadata");
+  assert.ok(/controlCenter/.test(fn), "admin-overview should expose operations control center");
+  assert.ok(/serviceLevels/.test(fn), "admin-overview should expose service-level checks");
+  assert.ok(/incidents/.test(fn), "admin-overview should expose incident queue");
+  assert.ok(/runbooks/.test(fn), "admin-overview should expose operator runbooks");
+  assert.ok(/releaseReadiness/.test(fn), "admin-overview should expose release readiness checks");
+  assert.ok(/ADMIN_PRIVACY_CONTROLS/.test(fn), "admin-overview should expose admin privacy controls");
+  assert.ok(/dataFreshness/.test(fn), "admin-overview should expose stale-data diagnostics");
+  assert.ok(/staleDataSignals/.test(fn), "admin-overview should expose stale-data signal counts");
+  assert.ok(/exportManifest/.test(fn), "admin-overview should expose export manifest metadata");
+  assert.ok(/Privacy controls are active/.test(fn), "release readiness should include privacy controls");
+  assert.ok(/Telemetry is fresh/.test(fn), "release readiness should include telemetry freshness");
+  assert.ok(/cohortRetention/.test(fn), "admin-overview should export cohort retention reports");
+  assert.ok(/dataFreshness: freshnessSignals/.test(fn), "admin-overview should export freshness reports");
+  assert.ok(/const support = \{/.test(fn), "admin-overview should expose user support health");
+  assert.ok(/supportAccounts/.test(fn), "admin-overview should calculate account support rows");
+  assert.ok(/supportQueues/.test(fn), "admin-overview should expose support queue counts");
+  assert.ok(/accountHealth/.test(fn), "admin-overview should export account health reports");
+  assert.ok(/\[functions\.admin-overview\]/.test(config), "Supabase config should register admin-overview");
+  assert.ok(/fn:deploy:admin/.test(pkg), "backend package should expose admin deploy script");
+
+  console.log("Admin backend contract tests passed.");
+}
+
+run();

@@ -445,6 +445,21 @@
 
   let cache = load();
 
+  function trackUsage(eventName, metadata, options) {
+    const usage = window.CBV2 && window.CBV2.usage;
+    if (usage && typeof usage.track === "function") {
+      usage.track(eventName, metadata || {}, options || {});
+    }
+  }
+
+  function sourceHost(url) {
+    try {
+      return new URL(String(url || "")).hostname.toLowerCase().replace(/^www\./, "");
+    } catch (err) {
+      return "";
+    }
+  }
+
   window.CBV2.store = {
     getAll: function () {
       return cache;
@@ -479,6 +494,12 @@
         cache.applications.push(app);
       }
       persist(cache);
+      trackUsage(idx >= 0 ? "application_updated" : "application_created", {
+        stage: app.stage || "saved",
+        priority: app.priority || "medium",
+        hasSource: Boolean(app.jobUrl),
+        sourceHost: sourceHost(app.jobUrl)
+      }, { module: "pipeline", route: "applications" });
     },
     deleteApplication: function (id) {
       cache.applications = cache.applications.filter(function (a) {
@@ -499,6 +520,10 @@
           stage: stage, at: new Date().toISOString(), from: from
         });
         persist(cache);
+        trackUsage("application_stage_changed", {
+          fromStage: from,
+          toStage: stage
+        }, { module: "pipeline", route: "applications" });
       }
     },
     getApplicationById: function (id) {
@@ -519,6 +544,10 @@
       const created = normalizeEvent(event);
       cache.events.push(created);
       persist(cache);
+      trackUsage("calendar_event_created", {
+        eventType: created.type || "other",
+        hasApplication: Boolean(created.appId)
+      }, { module: "calendar", route: "calendar" });
       return created;
     },
     updateEvent: function (id, patch) {
@@ -541,6 +570,10 @@
       cache.resume.base = text;
       cache.resume.updatedAt = new Date().toISOString();
       persist(cache);
+      trackUsage("resume_base_saved", {
+        characterCount: String(text || "").length,
+        hasContent: String(text || "").trim().length > 0
+      }, { module: "resume", route: "resume" });
     },
     setResumeTailored: function (result) {
       cache.resume.tailored = result;
@@ -548,6 +581,9 @@
       // when the user is actively working on the resume.
       cache.resume.updatedAt = new Date().toISOString();
       persist(cache);
+      trackUsage("resume_tailored_saved", {
+        hasResult: Boolean(result)
+      }, { module: "resume", route: "resume" });
     },
     getResumeStructured: function () {
       return cache.resume.structured || null;
@@ -559,6 +595,9 @@
       cache.resume.structured = resume || null;
       cache.resume.updatedAt = new Date().toISOString();
       persist(cache);
+      trackUsage("resume_structured_saved", {
+        hasStructuredResume: Boolean(resume)
+      }, { module: "resume", route: "resume" });
     },
     clearResume: function () {
       cache.resume = {
@@ -607,6 +646,11 @@
       else cache.resume.savedCVs.unshift(item);
       if (!cache.resume.defaultSavedCvId) cache.resume.defaultSavedCvId = id;
       persist(cache);
+      trackUsage("resume_version_saved", {
+        source: item.source || "resume-lab",
+        hasStructuredResume: Boolean(item.structured),
+        characterCount: String(item.baseText || "").length
+      }, { module: "resume", route: "resume" });
       return item;
     },
     deleteSavedCV: function (id) {
@@ -664,6 +708,10 @@
     setCoverLetterResult: function (result) {
       cache.coverLetter.lastResult = result;
       persist(cache);
+      trackUsage("cover_letter_generated", {
+        hasResult: Boolean(result),
+        provider: result && result.provider || ""
+      }, { module: "cover-letter", route: "cover-letter" });
     },
     getCoverLetterState: function () {
       return cache.coverLetter || { lastResult: null, variants: [], activeVariantId: "", sentLog: [], rolePacks: [], activeRolePackId: "" };
@@ -688,6 +736,11 @@
       else cache.coverLetter.variants.unshift(item);
       if (!cache.coverLetter.activeVariantId) cache.coverLetter.activeVariantId = id;
       persist(cache);
+      trackUsage("cover_letter_variant_saved", {
+        template: item.template,
+        tone: item.tone,
+        hasSubject: Boolean(item.subject)
+      }, { module: "cover-letter", route: "cover-letter" });
       return item;
     },
     setActiveCoverLetterVariant: function (id) {
@@ -718,6 +771,10 @@
       cache.coverLetter.sentLog = cache.coverLetter.sentLog || [];
       cache.coverLetter.sentLog.unshift(entry);
       persist(cache);
+      trackUsage("cover_letter_sent_logged", {
+        channel: entry.channel,
+        status: entry.status
+      }, { module: "cover-letter", route: "cover-letter" });
       return entry;
     },
     updateCoverLetterSentStatus: function (id, status) {
@@ -763,6 +820,10 @@
     setInterviewSet: function (result) {
       cache.interview.lastSet = result;
       persist(cache);
+      trackUsage("interview_questions_generated", {
+        hasResult: Boolean(result),
+        provider: result && result.provider || ""
+      }, { module: "interview", route: "interview" });
     },
     /** Persisted Phase B mock interview (transcript snapshot + optional debrief). */
     getInterviewMockSession: function () {
@@ -770,9 +831,15 @@
       return s && typeof s === "object" ? JSON.parse(JSON.stringify(s)) : null;
     },
     setInterviewMockSession: function (session) {
+      const hadSession = Boolean(cache.interview.mockSession);
       cache.interview.mockSession =
         session && typeof session === "object" ? JSON.parse(JSON.stringify(session)) : null;
       persist(cache);
+      if (!hadSession && cache.interview.mockSession) {
+        trackUsage("mock_interview_started", {
+          turnCount: Array.isArray(cache.interview.mockSession.transcript) ? cache.interview.mockSession.transcript.length : 0
+        }, { module: "interview", route: "interview" });
+      }
     },
     /** Phase A grounded company research + AI pack snapshot. */
     getInterviewIntelSession: function () {
@@ -783,6 +850,9 @@
       cache.interview.intelSession =
         session && typeof session === "object" ? JSON.parse(JSON.stringify(session)) : null;
       persist(cache);
+      trackUsage("interview_research_generated", {
+        hasSession: Boolean(cache.interview.intelSession)
+      }, { module: "interview", route: "interview" });
     },
     reset: function () {
       cache = seedDefaults();
@@ -814,6 +884,12 @@
         roleProfile: job.roleProfile || null
       });
       persist(cache);
+      trackUsage("job_saved", {
+        source: job.source || "",
+        sourceHost: sourceHost(job.url),
+        hasRemoteSignal: Boolean(job.remote),
+        hasRoleFit: Boolean(job.roleIntent)
+      }, { module: "job-search", route: "job-search" });
     },
     unbookmarkJob: function (jobId) {
       cache.savedJobs = cache.savedJobs.filter(function (j) {
@@ -854,6 +930,12 @@
         cache.jobSearch.analytics.runs = cache.jobSearch.analytics.runs.slice(0, 120);
       }
       persist(cache);
+      trackUsage("job_search_run", {
+        total: Number(entry.total || entry.count || 0),
+        queryLength: String(entry.query || "").length,
+        sourceCount: entry.sources && typeof entry.sources === "object" ? Object.keys(entry.sources).length : 0,
+        strictMode: Boolean(entry.strictMode)
+      }, { module: "job-search", route: "job-search" });
     },
     getJobSearchAnalytics: function () {
       const a = cache.jobSearch.analytics || { runs: [] };
@@ -868,6 +950,10 @@
       if (idx >= 0) cache.savedSearches[idx] = search;
       else cache.savedSearches.push(search);
       persist(cache);
+      trackUsage(idx >= 0 ? "saved_search_updated" : "saved_search_created", {
+        hasFilters: Boolean(search.filters),
+        queryLength: String(search.query || "").length
+      }, { module: "job-search", route: "job-search" });
       return search;
     },
     deleteSavedSearch: function (id) {
@@ -882,6 +968,10 @@
       if (info && info.lastTopIds) s.lastTopIds = info.lastTopIds;
       if (info && typeof info.lastNewCount === "number") s.lastNewCount = info.lastNewCount;
       persist(cache);
+      trackUsage("saved_search_run", {
+        lastCount: s.lastCount || 0,
+        lastNewCount: s.lastNewCount || 0
+      }, { module: "job-search", route: "job-search" });
     },
     getApiKeys: function () {
       return Object.assign({}, cache.jobSearch.apiKeys || {});
@@ -907,6 +997,11 @@
       };
       cache.applications.push(application);
       persist(cache);
+      trackUsage("job_moved_to_pipeline", {
+        source: job.source || "",
+        sourceHost: sourceHost(job.url),
+        hasCapturedPosting: Boolean(job.descriptionText || job.description || job.summary || job.snippet)
+      }, { module: "pipeline", route: "job-search" });
       return application;
     },
     /** Tier C — user-pasted listing URL; no server-side fetch of third-party pages. */
@@ -941,6 +1036,11 @@
       };
       cache.applications.push(application);
       persist(cache);
+      trackUsage("job_moved_to_pipeline", {
+        source: "pasted-url",
+        sourceHost: sourceHost(url),
+        origin: "manual-url"
+      }, { module: "pipeline", route: "applications" });
       return { ok: true, application: application };
     }
   };

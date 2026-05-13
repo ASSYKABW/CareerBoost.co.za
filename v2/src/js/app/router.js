@@ -77,6 +77,9 @@
         if (typeof hook === "function") {
           hook(parsed.params);
         }
+        if (window.CBV2.usage && typeof window.CBV2.usage.trackRoute === "function") {
+          window.CBV2.usage.trackRoute(window.CBV2.getState().route, parsed.params);
+        }
       } catch (err) {
         console.error("[router] render failure for route", window.CBV2.getState().route, err);
         outlet.innerHTML = renderRouteError(window.CBV2.getState().route, err);

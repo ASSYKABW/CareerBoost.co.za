@@ -42,6 +42,13 @@
     });
   }
 
+  function trackUsage(eventName, metadata) {
+    const usage = window.CBV2 && window.CBV2.usage;
+    if (usage && typeof usage.track === "function") {
+      usage.track(eventName, metadata || {}, { module: "auth", category: "auth", route: "auth" });
+    }
+  }
+
   async function init() {
     const client = ensureClient();
     if (!client) { state.ready = true; return null; }
@@ -65,6 +72,7 @@
     if (!client) throw new Error("Backend not configured.");
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    trackUsage("sign_in", { method: "password" });
     return data;
   }
 
@@ -80,6 +88,7 @@
       }
     });
     if (error) throw error;
+    trackUsage("sign_up", { method: "password", hasFullName: Boolean(fullName) });
     return data;
   }
 
@@ -93,6 +102,7 @@
       options: { redirectTo }
     });
     if (error) throw error;
+    trackUsage("auth_oauth_started", { provider: provider || "oauth" });
     return data;
   }
 
@@ -108,6 +118,7 @@
   async function signOut() {
     const client = ensureClient();
     if (!client) return;
+    trackUsage("sign_out", { method: "user" });
     await client.auth.signOut();
   }
 

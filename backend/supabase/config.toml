@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.company-intel-search]
 verify_jwt = false
+
+[functions.admin-overview]
+verify_jwt = false

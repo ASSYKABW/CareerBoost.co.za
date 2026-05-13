@@ -154,6 +154,15 @@
               promptVersion: envelope.promptVersion
             });
           }
+          if (window.CBV2 && window.CBV2.usage && typeof window.CBV2.usage.track === "function") {
+            window.CBV2.usage.track("ai_action_completed", {
+              skill: skill,
+              provider: provider.name,
+              model: envelope.model,
+              latencyMs: envelope.latencyMs,
+              promptVersion: envelope.promptVersion
+            }, { module: resolveSkillModule(skill), category: "ai" });
+          }
           return envelope;
         } catch (error) {
           lastError = error;
@@ -168,6 +177,14 @@
               attempt: attempt,
               promptVersion: payload.promptVersion
             });
+          }
+          if (window.CBV2 && window.CBV2.usage && typeof window.CBV2.usage.track === "function") {
+            window.CBV2.usage.track("ai_action_failed", {
+              skill: skill,
+              provider: provider.name,
+              attempt: attempt,
+              promptVersion: payload.promptVersion
+            }, { module: resolveSkillModule(skill), category: "ai" });
           }
           if (attempt === 2) {
             break;

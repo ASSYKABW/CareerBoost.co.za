@@ -16,6 +16,14 @@ export interface AuthedUser {
   email: string | null;
 }
 
+export interface AuthedAdmin extends AuthedUser {
+  roles: string[];
+  /** Resolved list of admin-permitted role names (from ADMIN_ROLES env).
+   *  Exposed so the frontend can mirror the same allowlist for UX gates
+   *  without hardcoding a separate copy that can drift. */
+  allowedRoles: string[];
+}
+
 interface CachedAuth {
   user: AuthedUser;
   /** Wall-clock expiry (ms since epoch). Hard upper bound on cache validity. */
@@ -126,4 +134,38 @@ export function getServiceClient() {
   const url = Deno.env.get("SUPABASE_URL")!;
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function normalizedRoles(value: unknown): string[] {
+  return []
+    .concat(value as never)
+    .map((role) => String(role || "").toLowerCase().trim())
+    .filter(Boolean);
+}
+
+function allowedAdminRoles(): string[] {
+  return (Deno.env.get("ADMIN_ROLES") || "admin,owner,developer")
+    .split(",")
+    .map((role) => role.toLowerCase().trim())
+    .filter(Boolean);
+}
+
+export async function getAuthedAdmin(req: Request): Promise<AuthedAdmin> {
+  const user = await getAuthedUser(req);
+  const svc = getServiceClient();
+  const { data, error } = await svc.auth.admin.getUserById(user.id);
+  if (error) {
+    throw new Error("Unable to verify admin role: " + error.message);
+  }
+  const appMeta = (data.user?.app_metadata || {}) as Record<string, unknown>;
+  const roles = [
+    ...normalizedRoles(appMeta.role),
+    ...normalizedRoles(appMeta.roles),
+  ];
+  const allowed = allowedAdminRoles();
+  const isAdmin = roles.some((role) => allowed.includes(role));
+  if (!isAdmin) {
+    throw new Error("Admin role required.");
+  }
+  return { id: user.id, email: user.email, roles, allowedRoles: allowed };
 }
