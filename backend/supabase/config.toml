@@ -86,3 +86,12 @@ verify_jwt = false
 
 [functions.admin-overview]
 verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false
+
+[functions.embeddings]
+verify_jwt = false
+
+[functions.jobs-rerank]
+verify_jwt = false

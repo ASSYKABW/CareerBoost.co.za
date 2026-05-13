@@ -70,6 +70,21 @@
     inFlight: false
   };
 
+  // Phase B: separate paginated cache for the Users + User Support sections.
+  // Keyed on (page, perPage, sort, filter) so toggling sort doesn't blow
+  // away the previous page's data.
+  const adminUsersRemote = {
+    status: "idle",
+    data: null,
+    error: "",
+    loadedAt: 0,
+    inFlight: false,
+    page: 1,
+    perPage: 50,
+    sort: "health",
+    filter: ""
+  };
+
   function numberOr(value, fallback) {
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;
@@ -1814,6 +1829,83 @@
     state: function () { return Object.assign({}, adminRemote); }
   };
 
+  // Phase B: paginated admin-users fetcher. Returns the next page on
+  // success, null on failure. Throttles concurrent requests; respects a
+  // 30s in-memory TTL keyed on (page, perPage, sort, filter).
+  async function fetchAdminUsers(opts) {
+    opts = opts || {};
+    if (!isBackendAdminRuntime()) return null;
+    if (adminUsersRemote.inFlight) return null;
+
+    const page = Number(opts.page) > 0 ? Number(opts.page) : adminUsersRemote.page;
+    const perPage = Number(opts.perPage) > 0 ? Number(opts.perPage) : adminUsersRemote.perPage;
+    const sort = typeof opts.sort === "string" && opts.sort ? opts.sort : adminUsersRemote.sort;
+    const filter = typeof opts.filter === "string" ? opts.filter : adminUsersRemote.filter;
+    const sameParams = page === adminUsersRemote.page
+      && perPage === adminUsersRemote.perPage
+      && sort === adminUsersRemote.sort
+      && filter === adminUsersRemote.filter;
+    const fresh = adminUsersRemote.loadedAt && Date.now() - adminUsersRemote.loadedAt < 30_000;
+    if (!opts.force && sameParams && fresh && adminUsersRemote.data) {
+      return adminUsersRemote.data;
+    }
+
+    adminUsersRemote.inFlight = true;
+    adminUsersRemote.status = adminUsersRemote.data ? "refreshing" : "loading";
+    adminUsersRemote.error = "";
+    adminUsersRemote.page = page;
+    adminUsersRemote.perPage = perPage;
+    adminUsersRemote.sort = sort;
+    adminUsersRemote.filter = filter;
+    try {
+      const auth = window.CBV2.auth;
+      const client = auth && auth.getClient && auth.getClient();
+      const body = { page: page, perPage: perPage, sort: sort, filter: filter };
+      let result = null;
+      if (client && client.functions && typeof client.functions.invoke === "function") {
+        const invoked = await client.functions.invoke("admin-users", { body: body });
+        if (invoked.error) throw new Error(await parseEdgeError(invoked.error));
+        result = invoked.data;
+      } else {
+        const token = auth && auth.getAccessToken ? await auth.getAccessToken() : "";
+        const endpoint = window.CBV2.config.getFunctionsUrl() + "/admin-users";
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+            apikey: window.CBV2.config.getSupabaseAnon()
+          },
+          body: JSON.stringify(body)
+        });
+        result = await response.json();
+        if (!response.ok || !result || result.ok === false) {
+          throw new Error((result && result.error) || "Admin users fetch failed.");
+        }
+      }
+      adminUsersRemote.data = result;
+      adminUsersRemote.status = "ready";
+      adminUsersRemote.loadedAt = Date.now();
+      return result;
+    } catch (err) {
+      adminUsersRemote.status = "error";
+      adminUsersRemote.error = (err && err.message) || String(err || "Admin users fetch failed.");
+      adminUsersRemote.loadedAt = Date.now();
+      return null;
+    } finally {
+      adminUsersRemote.inFlight = false;
+      const state = window.CBV2.getState && window.CBV2.getState();
+      if (state && state.route === "admin" && typeof window.CBV2.renderCurrentRoute === "function") {
+        window.CBV2.renderCurrentRoute();
+      }
+    }
+  }
+
+  window.CBV2.adminUsers = {
+    fetch: fetchAdminUsers,
+    state: function () { return Object.assign({}, adminUsersRemote); },
+  };
+
   // Phase A: staleness ticker. Updates the toolbar chip every 10s so the
   // "Refreshed Xs ago" text stays current without a full page render. Only
   // runs while the user is actually on /admin.
@@ -1870,6 +1962,20 @@
     });
     if (adminAccessState().ok && isBackendAdminRuntime() && (adminRemote.status === "idle" || (adminRemote.status === "ready" && !cloudDataIsFresh()))) {
       fetchAdminMetrics(false);
+    }
+    // Phase B: lazy-fetch the paginated admin-users endpoint when the
+    // operator is on the Users or User Support section. This pulls the
+    // FULL user list (~50/page) instead of the top-25 snapshot baked into
+    // admin-overview, and is backed by mv_admin_per_user_stats so it's fast.
+    const activeSection = currentSection();
+    if (
+      (activeSection === "users" || activeSection === "user-support") &&
+      adminAccessState().ok &&
+      isBackendAdminRuntime() &&
+      (adminUsersRemote.status === "idle" ||
+        (adminUsersRemote.status === "ready" && Date.now() - adminUsersRemote.loadedAt > 30_000))
+    ) {
+      fetchAdminUsers({});
     }
     startStalenessTicker();
   };

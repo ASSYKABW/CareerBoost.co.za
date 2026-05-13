@@ -200,6 +200,44 @@ async function safeCount(
   return typeof count === "number" ? count : 0;
 }
 
+/**
+ * Phase B: read a pre-aggregated row set from a materialized view. Returns
+ * the rows on success, or `null` on any error or empty result so the caller
+ * can fall back to live aggregation. Adds a warning so we can see in the
+ * diagnostics panel whether the MV path or the live-aggregation path
+ * served this request.
+ */
+async function readMv<T extends Record<string, unknown>>(
+  // deno-lint-ignore no-explicit-any
+  svc: any,
+  view: string,
+  warnings: string[],
+  options?: { order?: string; ascending?: boolean; limit?: number },
+): Promise<T[] | null> {
+  try {
+    let query = svc.from(view).select("*");
+    if (options?.order) {
+      query = query.order(options.order, { ascending: options.ascending ?? true });
+    }
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    const { data, error } = await query;
+    if (error) {
+      warnings.push(`${view}: ${error.message} (falling back to live aggregation)`);
+      return null;
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      // Empty MV = pre-refresh state. Don't warn (this is fine on first deploy).
+      return null;
+    }
+    return data as T[];
+  } catch (err) {
+    warnings.push(`${view}: ${(err as Error).message} (falling back to live aggregation)`);
+    return null;
+  }
+}
+
 function groupCount<T extends Record<string, unknown>>(rows: T[], key: keyof T): Record<string, number> {
   return rows.reduce<Record<string, number>>((out, row) => {
     const label = String(row[key] || "Unknown").trim() || "Unknown";
@@ -478,6 +516,23 @@ Deno.serve(async (req) => {
     .limit(10000);
   if (cohortSessionRowsError) warnings.push("usage_sessions.cohorts: " + cohortSessionRowsError.message);
 
+  // Phase B: pre-aggregated reads. Each MV is refreshed nightly by pg_cron
+  // (see migration 0010); on cache miss we fall back to the live aggregation
+  // below, so the dashboard never breaks.
+  const [
+    mvDailyActive,
+    mvCohorts,
+    mvSourceRollups,
+    mvTopRoutes,
+    mvTopModules,
+  ] = await Promise.all([
+    readMv<Record<string, unknown>>(svc, "mv_admin_daily_active",   warnings, { order: "day", ascending: true }),
+    readMv<Record<string, unknown>>(svc, "mv_admin_weekly_cohorts", warnings, { order: "week_offset", ascending: true }),
+    readMv<Record<string, unknown>>(svc, "mv_admin_source_rollups", warnings, { order: "count", ascending: false, limit: 25 }),
+    readMv<Record<string, unknown>>(svc, "mv_admin_top_routes",     warnings, { order: "views", ascending: false, limit: 25 }),
+    readMv<Record<string, unknown>>(svc, "mv_admin_top_modules",    warnings, { order: "events", ascending: false, limit: 25 }),
+  ]);
+
   const recentApps = ((appRows || []) as Array<Record<string, unknown>>).slice(0, 8);
   const jobs = (savedRows || []) as Array<Record<string, unknown>>;
   const ai = (aiRows || []) as Array<Record<string, unknown>>;
@@ -522,17 +577,31 @@ Deno.serve(async (req) => {
       dailySessions.get(key)?.add(session);
     }
   });
-  const dailyActive = Array.from({ length: 30 }).map((_, index) => {
-    const dayMs = Date.now() - (29 - index) * DAY_MS;
-    const date = isoDateKeyFromMs(dayMs);
-    return {
-      date,
-      label: date.slice(5),
-      activeUsers: dailyActiveUsers.get(date)?.size || 0,
-      sessions: dailySessions.get(date)?.size || 0,
-      avg7: 0,
-    };
-  });
+  // Phase B: prefer the materialized view; fall back to in-memory aggregation.
+  let dailyActive: Array<{ date: string; label: string; activeUsers: number; sessions: number; avg7: number }>;
+  if (mvDailyActive && mvDailyActive.length) {
+    dailyActive = mvDailyActive.map((row) => ({
+      date:        String(row.day || "").slice(0, 10),
+      label:       String(row.label || ""),
+      activeUsers: Number(row.active_users || 0),
+      sessions:    Number(row.sessions || 0),
+      avg7:        0,
+    }));
+  } else {
+    dailyActive = Array.from({ length: 30 }).map((_, index) => {
+      const dayMs = Date.now() - (29 - index) * DAY_MS;
+      const date = isoDateKeyFromMs(dayMs);
+      return {
+        date,
+        label: date.slice(5),
+        activeUsers: dailyActiveUsers.get(date)?.size || 0,
+        sessions: dailySessions.get(date)?.size || 0,
+        avg7: 0,
+      };
+    });
+  }
+  // 7-day rolling average is computed the same way whether the rows came
+  // from the MV or the live aggregation.
   dailyActive.forEach((row, index) => {
     const window = dailyActive.slice(Math.max(0, index - 6), index + 1);
     row.avg7 = Number(avg(window.map((item) => item.activeUsers)).toFixed(1));
@@ -562,8 +631,19 @@ Deno.serve(async (req) => {
       moduleMap[label] = (moduleMap[label] || 0) + 1;
     }
   });
-  const topRoutes = toRows(routeMap).slice(0, 8);
-  const topModules = toRows(moduleMap).slice(0, 8);
+  // Phase B: prefer MV-precomputed top routes/modules; fall back to live agg.
+  const topRoutes = (mvTopRoutes && mvTopRoutes.length)
+    ? mvTopRoutes.slice(0, 8).map((row) => ({
+        label: String(row.route || "Unknown"),
+        count: Number(row.views || 0),
+      }))
+    : toRows(routeMap).slice(0, 8);
+  const topModules = (mvTopModules && mvTopModules.length)
+    ? mvTopModules.slice(0, 8).map((row) => ({
+        label: moduleLabel(canonicalModule(String(row.module || ""))),
+        count: Number(row.events || 0) + Number(row.sessions_touched || 0),
+      }))
+    : toRows(moduleMap).slice(0, 8);
   const sessionsByDevice = toRows(groupCount(usageSessions, "device_type")).filter((row) => row.label !== "Unknown").slice(0, 6);
   const sessionsByBrowser = toRows(groupCount(usageSessions, "browser")).filter((row) => row.label !== "Unknown").slice(0, 6);
   const sessionsByPreviewMode = toRows(groupCount(usageSessions, "preview_mode")).slice(0, 6);
@@ -602,15 +682,24 @@ Deno.serve(async (req) => {
     return { ...row, failed, costUsd: Number(costUsd.toFixed(4)) };
   });
 
-  const sourceRows = toRows(groupCount(jobs, "source")).slice(0, 12).map((row) => {
-    const latest = jobs.find((job) => String(job.source || "Unknown") === row.label);
-    const url = latest ? String(latest.url || "") : "";
-    return {
-      ...row,
-      host: hostFromUrl(url),
-      lastSavedAt: latest ? latest.saved_at || null : null,
-    };
-  });
+  // Phase B: prefer the materialized source-rollup view. Falls back to
+  // in-memory aggregation from the 1000-row jobs slice when the MV is empty.
+  const sourceRows = (mvSourceRollups && mvSourceRollups.length)
+    ? mvSourceRollups.slice(0, 12).map((row) => ({
+        label:       String(row.source || "Unknown"),
+        count:       Number(row.count || 0),
+        host:        hostFromUrl(String(row.latest_url || "")),
+        lastSavedAt: row.last_saved_at || null,
+      }))
+    : toRows(groupCount(jobs, "source")).slice(0, 12).map((row) => {
+        const latest = jobs.find((job) => String(job.source || "Unknown") === row.label);
+        const url = latest ? String(latest.url || "") : "";
+        return {
+          ...row,
+          host: hostFromUrl(url),
+          lastSavedAt: latest ? latest.saved_at || null : null,
+        };
+      });
 
   const sourceIssues = jobs
     .map((job) => {
@@ -991,50 +1080,122 @@ Deno.serve(async (req) => {
     };
   });
   const cohortReturnWeeks = [0, 1, 2, 3];
-  const cohortRetention = Array.from({ length: 8 }).map((_, index) => {
-    const offset = 7 - index;
-    const start = weekStartMs(offset);
-    const end = start + WEEK_MS;
-    const cohortUsers = users.filter((user) => inRange(user.created_at, start, end));
-    const cohortUserIds = new Set(cohortUsers.map((user) => String(user.id || "")).filter(Boolean));
-    const weeks = cohortReturnWeeks.map((weekOffset) => {
-      const weekStart = start + weekOffset * WEEK_MS;
-      const weekEnd = weekStart + WEEK_MS;
-      const pending = weekStart > Date.now();
-      const complete = weekEnd <= Date.now();
-      const partial = weekStart <= Date.now() && weekEnd > Date.now();
-      const sessions = pending
-        ? []
-        : cohortSessions.filter((session) => {
-          const uid = String(session.user_id || "");
-          return cohortUserIds.has(uid) && inRange(session.last_activity_at || session.started_at, weekStart, weekEnd);
-        });
-      const activeUsers = pending ? 0 : userIdSet(sessions).size;
+  // Phase B: MV-first cohort retention. The materialized view pre-computes
+  // signup cohorts + W0..W3 active counts; here we just shape it into the
+  // response format the frontend already consumes.
+  function buildWeekRow(weekOffset: number, cohortStartMs: number, active: number, users: number) {
+    const weekStart = cohortStartMs + weekOffset * WEEK_MS;
+    const weekEnd = weekStart + WEEK_MS;
+    const pending = weekStart > Date.now();
+    const complete = weekEnd <= Date.now();
+    const partial = weekStart <= Date.now() && weekEnd > Date.now();
+    return {
+      week: `W${weekOffset}`,
+      weekOffset,
+      start: new Date(weekStart).toISOString(),
+      end: new Date(weekEnd).toISOString(),
+      activeUsers: pending ? 0 : active,
+      sessions: pending ? 0 : active, // best-effort from MV; live path computes real session count
+      rate: pending || !users ? null : pct(active, users),
+      complete,
+      partial,
+      pending,
+    };
+  }
+
+  interface CohortWeek {
+    week: string;
+    weekOffset: number;
+    start: string;
+    end: string;
+    activeUsers: number;
+    sessions: number;
+    rate: number | null;
+    complete: boolean;
+    partial: boolean;
+    pending: boolean;
+  }
+  interface CohortRow {
+    week: string;
+    start: string;
+    end: string;
+    users: number;
+    weeks: CohortWeek[];
+    week0Retention: number | null | undefined;
+    week1Retention: number | null | undefined;
+    week2Retention: number | null | undefined;
+    week3Retention: number | null | undefined;
+  }
+  let cohortRetention: CohortRow[];
+  if (mvCohorts && mvCohorts.length) {
+    cohortRetention = mvCohorts.map((row) => {
+      const cohortStartMs = Date.parse(String(row.cohort_start || "")) || Date.now();
+      const cohortEndMs = Date.parse(String(row.cohort_end || "")) || cohortStartMs + WEEK_MS;
+      const usersCount = Number(row.users || 0);
+      const weeks = [
+        buildWeekRow(0, cohortStartMs, Number(row.w0_active || 0), usersCount),
+        buildWeekRow(1, cohortStartMs, Number(row.w1_active || 0), usersCount),
+        buildWeekRow(2, cohortStartMs, Number(row.w2_active || 0), usersCount),
+        buildWeekRow(3, cohortStartMs, Number(row.w3_active || 0), usersCount),
+      ];
       return {
-        week: `W${weekOffset}`,
-        weekOffset,
-        start: new Date(weekStart).toISOString(),
-        end: new Date(weekEnd).toISOString(),
-        activeUsers,
-        sessions: sessions.length,
-        rate: pending || !cohortUsers.length ? null : pct(activeUsers, cohortUsers.length),
-        complete,
-        partial,
-        pending,
+        week: String(row.cohort_label || shortWeekLabel(cohortStartMs)),
+        start: new Date(cohortStartMs).toISOString(),
+        end: new Date(cohortEndMs).toISOString(),
+        users: usersCount,
+        weeks,
+        week0Retention: weeks[0]?.rate,
+        week1Retention: weeks[1]?.rate,
+        week2Retention: weeks[2]?.rate,
+        week3Retention: weeks[3]?.rate,
       };
     });
-    return {
-      week: shortWeekLabel(start),
-      start: new Date(start).toISOString(),
-      end: new Date(end).toISOString(),
-      users: cohortUsers.length,
-      weeks,
-      week0Retention: weeks[0]?.rate,
-      week1Retention: weeks[1]?.rate,
-      week2Retention: weeks[2]?.rate,
-      week3Retention: weeks[3]?.rate,
-    };
-  });
+  } else {
+    cohortRetention = Array.from({ length: 8 }).map((_, index) => {
+      const offset = 7 - index;
+      const start = weekStartMs(offset);
+      const end = start + WEEK_MS;
+      const cohortUsers = users.filter((user) => inRange(user.created_at, start, end));
+      const cohortUserIds = new Set(cohortUsers.map((user) => String(user.id || "")).filter(Boolean));
+      const weeks = cohortReturnWeeks.map((weekOffset) => {
+        const weekStart = start + weekOffset * WEEK_MS;
+        const weekEnd = weekStart + WEEK_MS;
+        const pending = weekStart > Date.now();
+        const complete = weekEnd <= Date.now();
+        const partial = weekStart <= Date.now() && weekEnd > Date.now();
+        const sessions = pending
+          ? []
+          : cohortSessions.filter((session) => {
+            const uid = String(session.user_id || "");
+            return cohortUserIds.has(uid) && inRange(session.last_activity_at || session.started_at, weekStart, weekEnd);
+          });
+        const activeUsers = pending ? 0 : userIdSet(sessions).size;
+        return {
+          week: `W${weekOffset}`,
+          weekOffset,
+          start: new Date(weekStart).toISOString(),
+          end: new Date(weekEnd).toISOString(),
+          activeUsers,
+          sessions: sessions.length,
+          rate: pending || !cohortUsers.length ? null : pct(activeUsers, cohortUsers.length),
+          complete,
+          partial,
+          pending,
+        };
+      });
+      return {
+        week: shortWeekLabel(start),
+        start: new Date(start).toISOString(),
+        end: new Date(end).toISOString(),
+        users: cohortUsers.length,
+        weeks,
+        week0Retention: weeks[0]?.rate,
+        week1Retention: weeks[1]?.rate,
+        week2Retention: weeks[2]?.rate,
+        week3Retention: weeks[3]?.rate,
+      };
+    });
+  }
   const maturedCohorts = cohortRetention.filter((row) => row.users > 0);
   const maturedWeek1 = maturedCohorts.filter((row) => row.weeks[1] && !row.weeks[1].pending && row.weeks[1].complete);
   const maturedWeek2 = maturedCohorts.filter((row) => row.weeks[2] && !row.weeks[2].pending && row.weeks[2].complete);
