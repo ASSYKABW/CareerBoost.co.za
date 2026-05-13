@@ -6,8 +6,17 @@
 -- API keys, and auth tokens should never be written into metadata.
 -- =============================================================================
 
+-- Ensure uuid generators are available. 0001_init.sql installs these too, but
+-- the Supabase CLI shadow database used for `db push` dry-runs may not carry
+-- the extension across migrations, so we declare it defensively here.
+create extension if not exists "uuid-ossp";
+create extension if not exists pgcrypto;
+
+-- Use gen_random_uuid() (pg built-in since v13) rather than the schema-scoped
+-- uuid_generate_v4 — Supabase moved uuid-ossp to the `extensions` schema and
+-- it isn't on the public search_path during `db push` dry-runs.
 create table if not exists public.usage_events (
-  id             uuid primary key default uuid_generate_v4(),
+  id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references auth.users(id) on delete cascade,
   event_name     text not null,
   event_category text not null default 'workflow',
