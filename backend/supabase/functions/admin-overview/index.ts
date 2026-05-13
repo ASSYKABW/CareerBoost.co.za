@@ -1562,18 +1562,111 @@ Deno.serve(async (req) => {
     return "activation";
   }
 
-  const incidents = alerts
-    .filter((alert) => alert.title !== "No critical admin alerts")
-    .map((alert, index) => ({
-      id: `ops-${index + 1}`,
-      status: "open",
-      severity: alert.severity,
-      title: alert.title,
-      affectedArea: alert.section,
-      detectedAt: new Date().toISOString(),
-      action: alert.action,
-      runbookId: runbookFor(alert.section),
-    }));
+  // Phase C.2: persist computed alerts to admin_incidents via the dedup'ed
+  // upsert RPC. Re-reads the live rows so the response shows the real
+  // lifecycle state (open / acknowledged / snoozed / resolved) — which
+  // means an operator who clicked "Acknowledge" earlier won't see the
+  // same alert flap back to "open" every minute.
+  //
+  // Falls back to the in-memory shape if the RPC errors or the table
+  // is missing (early-deploy state).
+  function alertKind(alert: AdminAlert): string {
+    const titleSlug = String(alert.title || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .split("-")
+      .slice(0, 6)
+      .join("-") || "unknown";
+    return (alert.section || "overview") + ":" + titleSlug;
+  }
+  const persistableAlerts = alerts.filter((alert) => alert.title !== "No critical admin alerts");
+  // Upsert each in parallel; ignore individual failures (we still get the
+  // in-memory shape below as a fallback).
+  const upsertResults = await Promise.all(persistableAlerts.map(async (alert) => {
+    try {
+      const kind = alertKind(alert);
+      const { data, error } = await svc.rpc("upsert_admin_incident", {
+        p_kind: kind,
+        p_key: "",
+        p_severity: alert.severity,
+        p_title: alert.title,
+        p_body: alert.body,
+        p_section: alert.section,
+        p_payload: { action: alert.action },
+      });
+      if (error) {
+        warnings.push(`upsert_admin_incident(${kind}): ${error.message}`);
+        return null;
+      }
+      return { kind, id: data as string | null };
+    } catch (err) {
+      warnings.push(`upsert_admin_incident: ${(err as Error).message}`);
+      return null;
+    }
+  }));
+  // Re-fetch the persisted rows by id to get current statuses.
+  const persistedIds = upsertResults
+    .map((r) => r && r.id)
+    .filter((x): x is string => typeof x === "string" && x.length > 0);
+  let persistedRows: Array<Record<string, unknown>> = [];
+  if (persistedIds.length) {
+    try {
+      const { data, error } = await svc
+        .from("admin_incidents")
+        .select("id, dedup_key, kind, severity, status, title, body, section, payload, opened_at, last_seen_at, acknowledged_at, snoozed_until, resolved_at, occurrence_count")
+        .in("id", persistedIds);
+      if (error) warnings.push("admin_incidents.read: " + error.message);
+      else if (Array.isArray(data)) persistedRows = data as Array<Record<string, unknown>>;
+    } catch (err) {
+      warnings.push("admin_incidents.read: " + ((err as Error).message || "failed"));
+    }
+  }
+  const incidents = persistedRows.length
+    ? persistedRows.map((row) => {
+        const ackOrResolved = row.status === "acknowledged" || row.status === "resolved" || row.status === "snoozed";
+        return {
+          id:           String(row.id || ""),
+          dedupKey:     String(row.dedup_key || ""),
+          status:       String(row.status || "open"),
+          severity:     String(row.severity || "warning"),
+          title:        String(row.title || ""),
+          body:         String(row.body || ""),
+          affectedArea: String(row.section || "overview"),
+          section:      String(row.section || "overview"),
+          detectedAt:   String(row.opened_at || ""),
+          lastSeenAt:   String(row.last_seen_at || ""),
+          acknowledgedAt: row.acknowledged_at || null,
+          snoozedUntil: row.snoozed_until || null,
+          resolvedAt:   row.resolved_at || null,
+          occurrenceCount: Number(row.occurrence_count || 1),
+          action:       (row.payload && typeof row.payload === "object")
+                          ? String((row.payload as Record<string, unknown>).action || "")
+                          : "",
+          runbookId:    runbookFor(String(row.section || "overview")),
+          // UI hint: whether to show the ack/resolve buttons.
+          canAct:       !ackOrResolved || row.status === "snoozed",
+        };
+      })
+    : persistableAlerts.map((alert, index) => ({
+        id:           `ops-${index + 1}`,
+        dedupKey:     "",
+        status:       "open",
+        severity:     alert.severity,
+        title:        alert.title,
+        body:         alert.body,
+        affectedArea: alert.section,
+        section:      alert.section,
+        detectedAt:   new Date().toISOString(),
+        lastSeenAt:   new Date().toISOString(),
+        acknowledgedAt: null,
+        snoozedUntil: null,
+        resolvedAt:   null,
+        occurrenceCount: 1,
+        action:       alert.action,
+        runbookId:    runbookFor(alert.section),
+        canAct:       false,                 // can't act on synthetic IDs
+      }));
 
   const serviceLevels = [
     {

@@ -97,6 +97,28 @@
     mutationBusy: false
   };
 
+  // Phase C.2: incident mutation state. The list of incidents itself lives
+  // inside admin-overview's response — this tracks which one is currently
+  // being acted on so we can disable buttons + show an error inline.
+  const adminIncidentsRemote = {
+    mutationBusy: false,
+    mutationError: "",
+    actingOnId: ""
+  };
+
+  // Phase C.2: audit log viewer cache. Same pagination shape as adminUsers.
+  const adminAuditRemote = {
+    status: "idle",
+    data: null,
+    error: "",
+    loadedAt: 0,
+    inFlight: false,
+    page: 1,
+    perPage: 50,
+    actionFilter: "",
+    targetEmailFilter: ""
+  };
+
   function numberOr(value, fallback) {
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;
@@ -1448,22 +1470,110 @@
     const readiness = control.releaseReadiness || {};
     const checks = safeArray(readiness.checks);
     const escalation = control.escalation || {};
+
+    // Phase C.2: filter open/snoozed incidents to the top, surface
+    // acknowledged/resolved at the bottom collapsed. Also show counts.
+    const openCount = incidents.filter(function (i) {
+      return (i.status || "open") === "open";
+    }).length;
+    const ackCount = incidents.filter(function (i) { return i.status === "acknowledged"; }).length;
+    const snoozedCount = incidents.filter(function (i) { return i.status === "snoozed"; }).length;
+    const resolvedCount = incidents.filter(function (i) { return i.status === "resolved"; }).length;
+
+    const incidentMutErr = adminIncidentsRemote.mutationError
+      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(adminIncidentsRemote.mutationError) + '</p>'
+      : "";
+
+    function renderIncidentRow(item) {
+      const status = String(item.status || "open");
+      const isOpen = status === "open";
+      const isAck = status === "acknowledged";
+      const isSnoozed = status === "snoozed";
+      const isResolved = status === "resolved";
+      const persisted = !!item.dedupKey;
+      const isThisBusy = adminIncidentsRemote.mutationBusy && adminIncidentsRemote.actingOnId === item.id;
+      const disabledAttr = (adminIncidentsRemote.mutationBusy || !persisted) ? " disabled" : "";
+      const statusTone = isResolved ? "green"
+        : isAck ? "cyan"
+        : isSnoozed ? "blue"
+        : (item.severity === "critical" ? "rose" : item.severity === "warning" ? "amber" : "subtle");
+      const sevChip = '<b class="chip ' + (item.severity === "critical" ? "rose" : item.severity === "warning" ? "amber" : "subtle") + '">' + st(item.severity || "info") + '</b>';
+      const statusChip = '<b class="chip ' + statusTone + '">' + st(status) +
+        (item.occurrenceCount > 1 ? ' · ' + item.occurrenceCount + '×' : "") +
+        '</b>';
+      const buttons = [];
+      if (isOpen) {
+        buttons.push(
+          '<button type="button" class="btn-ghost btn-sm" data-incident-ack="' + st(item.id) + '"' + disabledAttr + '>' +
+            (isThisBusy ? '<i class="fa-solid fa-circle-notch fa-spin"></i>' : '<i class="fa-solid fa-eye"></i>') +
+            ' Ack' +
+          '</button>',
+          '<button type="button" class="btn-ghost btn-sm" data-incident-snooze="' + st(item.id) + '"' + disabledAttr + '>' +
+            '<i class="fa-solid fa-clock"></i> Snooze' +
+          '</button>'
+        );
+      }
+      if (isOpen || isAck || isSnoozed) {
+        buttons.push(
+          '<button type="button" class="btn-ghost btn-sm" data-incident-resolve="' + st(item.id) + '"' + disabledAttr + '>' +
+            '<i class="fa-solid fa-check"></i> Resolve' +
+          '</button>'
+        );
+      }
+      if (isResolved || isAck || isSnoozed) {
+        buttons.push(
+          '<button type="button" class="btn-ghost btn-sm" data-incident-reopen="' + st(item.id) + '"' + disabledAttr + '>' +
+            '<i class="fa-solid fa-rotate-left"></i> Reopen' +
+          '</button>'
+        );
+      }
+      const tooltip = !persisted
+        ? ' title="Re-deploy admin-overview to enable lifecycle controls."'
+        : "";
+      return (
+        '<div class="admin-incident-row admin-incident-row--' + st(status) + '"' + tooltip + '>' +
+          '<div class="admin-incident-meta">' +
+            sevChip + statusChip +
+            '<span class="admin-incident-area">' + st(item.affectedArea || item.section || "overview") + '</span>' +
+          '</div>' +
+          '<div class="admin-incident-body">' +
+            '<strong>' + st(item.title || "Incident") + '</strong>' +
+            (item.body ? '<span>' + st(item.body) + '</span>' : "") +
+            (item.action ? '<em>' + st(item.action) + '</em>' : "") +
+          '</div>' +
+          (buttons.length ? '<div class="admin-incident-actions">' + buttons.join("") + '</div>' : "") +
+        '</div>'
+      );
+    }
+
+    const openOrPending = incidents.filter(function (i) {
+      const s = i.status || "open";
+      return s === "open" || s === "acknowledged" || s === "snoozed";
+    });
+    const archived = incidents.filter(function (i) { return i.status === "resolved"; });
+
     return (
       '<section class="admin-stat-grid">' +
-        renderStat("Open incidents", incidents.length, "critical and warning operator signals", incidents.length ? "amber" : "green") +
-        renderStat("Release readiness", (readiness.score != null ? readiness.score : 0) + "%", readiness.status || "waiting for backend", serviceTone(readiness.status)) +
-        renderStat("Service levels", levels.length, "operational checks", "cyan") +
-        renderStat("Runbooks", runbooks.length, "response playbooks", "blue") +
+        renderStat("Open incidents", openCount, "needing attention", openCount ? "amber" : "green") +
+        renderStat("Acknowledged", ackCount, "operator aware", ackCount ? "cyan" : "subtle") +
+        renderStat("Snoozed", snoozedCount, "will reopen", snoozedCount ? "blue" : "subtle") +
+        renderStat("Release readiness", (readiness.score != null ? readiness.score : 0) + "%", readiness.status || "waiting", serviceTone(readiness.status)) +
       '</section>' +
       '<section class="admin-grid admin-grid--two">' +
         '<article class="admin-panel">' +
-          '<div class="admin-panel-head"><div><span>Risk center</span><h2>Open incidents</h2></div><span class="chip ' + st(incidents.length ? "amber" : "green") + '">' + st(incidents.length ? "Review" : "Clean") + '</span></div>' +
-          '<div class="admin-table">' +
-            '<div class="admin-table-row admin-table-row--five admin-table-head"><span>Severity</span><span>Area</span><span>Incident</span><span>Runbook</span><span>Status</span></div>' +
-            (incidents.length ? incidents.map(function (item) {
-              return '<div class="admin-table-row admin-table-row--five"><span>' + st(item.severity || "info") + '</span><span>' + st(item.affectedArea || "overview") + '</span><span>' + st(item.title || "Incident") + '</span><span>' + st(item.runbookId || "review") + '</span><span>' + st(item.status || "open") + '</span></div>';
-            }).join("") : '<p class="admin-copy">No open incidents. Keep monitoring job source truth, AI reliability, sync health, and activation.</p>') +
-          '</div>' +
+          '<div class="admin-panel-head"><div><span>Risk center</span><h2>Incident queue</h2></div><span class="chip ' + st(openCount ? "amber" : "green") + '">' + st(openCount ? openCount + " open" : "Clean") + '</span></div>' +
+          incidentMutErr +
+          (openOrPending.length
+            ? '<div class="admin-incident-list">' + openOrPending.map(renderIncidentRow).join("") + '</div>'
+            : '<p class="admin-copy">No open incidents. Keep monitoring job source truth, AI reliability, sync health, and activation.</p>') +
+          (archived.length
+            ? '<details class="admin-resolved-incidents">' +
+                '<summary>Resolved (' + st(archived.length) + ')</summary>' +
+                '<div class="admin-incident-list admin-incident-list--archived">' +
+                  archived.map(renderIncidentRow).join("") +
+                '</div>' +
+              '</details>'
+            : "") +
         '</article>' +
         '<article class="admin-panel">' +
           '<div class="admin-panel-head"><div><span>Service levels</span><h2>Operating health checks</h2></div><span class="chip blue">Live controls</span></div>' +
@@ -1594,7 +1704,109 @@
             '<div class="admin-action-card"><i class="fa-solid fa-lock"></i><div><strong>Privacy controls</strong><span>' + st((privacy.excludedContent || []).length ? "Excludes " + privacy.excludedContent.join(", ") + "." : "Candidate document content is excluded from admin exports.") + '</span></div></div>' +
           '</div>' +
         '</article>' +
-      '</section>'
+      '</section>' +
+      renderAuditLogPanel()
+    );
+  }
+
+  // Phase C.2: paginated audit log viewer. Reads from /admin-list-audit;
+  // shows full mutation history with action + target filters + paging.
+  function renderAuditLogPanel() {
+    const op = adminAuditRemote;
+    const data = (op.data && op.data.ok !== false) ? op.data : null;
+    const entries = (data && Array.isArray(data.entries)) ? data.entries : [];
+    const meta = data && data.page ? data.page : null;
+    const mix = (data && Array.isArray(data.actionMix)) ? data.actionMix : [];
+
+    const status = op.status;
+    const errLine = op.error
+      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.error) + '</p>'
+      : "";
+    const mixChips = mix.length
+      ? mix.map(function (row) {
+          return '<span class="chip subtle">' + st(row.action) + ' · ' + st(row.count) + '</span>';
+        }).join(" ")
+      : "";
+
+    const currentPage = meta ? Number(meta.page) : 1;
+    const totalPages = meta ? Number(meta.totalPages) : 1;
+    const totalRows = meta ? Number(meta.total) : entries.length;
+    const hasNext = meta ? Boolean(meta.hasNext) : false;
+    const hasPrev = meta ? Boolean(meta.hasPrev) : false;
+    const actionFilter = meta ? String(meta.action || "") : op.actionFilter;
+    const targetFilter = meta ? String(meta.targetEmail || "") : op.targetEmailFilter;
+
+    const toolbar =
+      '<div class="admin-users-toolbar" role="toolbar" aria-label="Audit log filters">' +
+        '<label class="admin-users-filter" style="flex:2;">' +
+          '<i class="fa-solid fa-bolt" aria-hidden="true"></i>' +
+          '<input type="search" id="admin-audit-action" placeholder="Action (e.g. promote_user)" value="' + st(actionFilter) + '" autocomplete="off" />' +
+        '</label>' +
+        '<label class="admin-users-filter" style="flex:2;">' +
+          '<i class="fa-solid fa-envelope" aria-hidden="true"></i>' +
+          '<input type="search" id="admin-audit-target" placeholder="Target email" value="' + st(targetFilter) + '" autocomplete="off" />' +
+        '</label>' +
+        '<div class="admin-users-pager">' +
+          '<button type="button" class="btn-ghost btn-sm" id="admin-audit-prev"' + (hasPrev ? "" : " disabled") + ' title="Previous page"><i class="fa-solid fa-chevron-left"></i></button>' +
+          '<span class="admin-users-pager-status">Page ' + st(currentPage) + ' of ' + st(totalPages) + ' · ' + st(totalRows) + ' entr' + (totalRows === 1 ? "y" : "ies") + '</span>' +
+          '<button type="button" class="btn-ghost btn-sm" id="admin-audit-next"' + (hasNext ? "" : " disabled") + ' title="Next page"><i class="fa-solid fa-chevron-right"></i></button>' +
+          '<button type="button" class="btn-ghost btn-sm" id="admin-audit-refresh" title="Refresh"' + (op.inFlight ? " disabled" : "") + '><i class="fa-solid fa-rotate' + (op.inFlight ? " fa-spin" : "") + '"></i></button>' +
+        '</div>' +
+      '</div>';
+
+    function payloadSnippet(payload) {
+      if (!payload || typeof payload !== "object") return "";
+      const keys = Object.keys(payload).slice(0, 3);
+      if (!keys.length) return "";
+      return keys.map(function (k) {
+        const v = payload[k];
+        let val = "";
+        if (v == null) val = "null";
+        else if (typeof v === "object") {
+          try { val = JSON.stringify(v).slice(0, 60); } catch (e) { val = "[obj]"; }
+        } else val = String(v).slice(0, 60);
+        return k + "=" + val;
+      }).join(" · ");
+    }
+
+    const rowsHtml = entries.length
+      ? entries.map(function (row) {
+          const status = String(row.result_status || "success");
+          const statusTone = status === "success" ? "green" : "rose";
+          const snippet = payloadSnippet(row.payload);
+          return (
+            '<div class="admin-table-row admin-table-row--audit">' +
+              '<span>' + st(formatDateTime(row.occurred_at)) + '</span>' +
+              '<span>' + st(row.admin_email || "Unknown") + '</span>' +
+              '<span><code>' + st(row.action || "unknown") + '</code></span>' +
+              '<span>' + st(row.target_email || "—") + '</span>' +
+              '<span><b class="chip ' + statusTone + '">' + st(status) + '</b></span>' +
+              '<span class="admin-audit-payload">' + st(snippet) +
+                (row.error_message ? '<em class="admin-audit-error"> · ' + st(row.error_message) + '</em>' : "") +
+              '</span>' +
+            '</div>'
+          );
+        }).join("")
+      : (status === "loading"
+          ? '<p class="admin-copy">Loading audit entries…</p>'
+          : '<p class="admin-copy">No audit entries match these filters. Run a promote/demote or resolve an incident to populate the log.</p>');
+
+    return (
+      '<article class="admin-panel admin-panel--wide" id="admin-audit-panel">' +
+        '<div class="admin-panel-head">' +
+          '<div><span>Audit log</span><h2>Mutation history</h2></div>' +
+          '<span class="chip blue">' + st(totalRows || 0) + ' entr' + ((totalRows || 0) === 1 ? "y" : "ies") + '</span>' +
+        '</div>' +
+        (mixChips ? '<p class="admin-copy"><strong>Last 30 days:</strong> ' + mixChips + '</p>' : "") +
+        errLine +
+        toolbar +
+        '<div class="admin-table">' +
+          '<div class="admin-table-row admin-table-row--audit admin-table-head">' +
+            '<span>When</span><span>Admin</span><span>Action</span><span>Target</span><span>Result</span><span>Detail</span>' +
+          '</div>' +
+          rowsHtml +
+        '</div>' +
+      '</article>'
     );
   }
 
@@ -2179,6 +2391,104 @@
     state: function () { return Object.assign({}, adminOperatorsRemote); }
   };
 
+  // Phase C.2: incident lifecycle mutation. After success we force-refresh
+  // the admin-overview metrics so the new status (acknowledged / snoozed /
+  // resolved) flows back into the Risk Center render.
+  async function mutateIncident(incidentId, action, opts) {
+    opts = opts || {};
+    if (!incidentId || !action) return;
+    adminIncidentsRemote.actingOnId = incidentId;
+    adminIncidentsRemote.mutationBusy = true;
+    adminIncidentsRemote.mutationError = "";
+    window.CBV2.renderCurrentRoute();
+    try {
+      const body = { incidentId: incidentId, action: action };
+      if (opts.note) body.note = String(opts.note).slice(0, 300);
+      if (action === "snooze") body.snoozeHours = Math.max(1, Number(opts.snoozeHours) || 24);
+      await callAdminEndpoint("admin-incident-update", body);
+      if (window.CBV2.toast) {
+        const label = action === "ack" ? "Acknowledged"
+          : action === "resolve" ? "Resolved"
+          : action === "snooze" ? "Snoozed"
+          : "Reopened";
+        window.CBV2.toast.success(label + " incident.");
+      }
+      // Force-refresh the admin-overview metrics so the Risk Center reflects
+      // the new lifecycle state.
+      await fetchAdminMetrics(true);
+    } catch (err) {
+      adminIncidentsRemote.mutationError = (err && err.message) || "Incident update failed.";
+      if (window.CBV2.toast) window.CBV2.toast.error(adminIncidentsRemote.mutationError);
+    } finally {
+      adminIncidentsRemote.mutationBusy = false;
+      adminIncidentsRemote.actingOnId = "";
+      window.CBV2.renderCurrentRoute();
+    }
+  }
+
+  window.CBV2.adminIncidents = {
+    mutate: mutateIncident,
+    state: function () { return Object.assign({}, adminIncidentsRemote); }
+  };
+
+  // Phase C.2: paginated audit log fetcher. 30s TTL keyed on
+  // (page, perPage, action, targetEmail) so toggling filters doesn't blow
+  // away cached pages but a manual refresh always wins.
+  async function fetchAdminAudit(opts) {
+    opts = opts || {};
+    if (!isBackendAdminRuntime()) return null;
+    if (adminAuditRemote.inFlight) return null;
+
+    const page = Number(opts.page) > 0 ? Number(opts.page) : adminAuditRemote.page;
+    const perPage = Number(opts.perPage) > 0 ? Number(opts.perPage) : adminAuditRemote.perPage;
+    const actionFilter = typeof opts.action === "string" ? opts.action : adminAuditRemote.actionFilter;
+    const targetEmailFilter = typeof opts.targetEmail === "string" ? opts.targetEmail : adminAuditRemote.targetEmailFilter;
+    const sameParams = page === adminAuditRemote.page
+      && perPage === adminAuditRemote.perPage
+      && actionFilter === adminAuditRemote.actionFilter
+      && targetEmailFilter === adminAuditRemote.targetEmailFilter;
+    const fresh = adminAuditRemote.loadedAt && Date.now() - adminAuditRemote.loadedAt < 30_000;
+    if (!opts.force && sameParams && fresh && adminAuditRemote.data) {
+      return adminAuditRemote.data;
+    }
+
+    adminAuditRemote.inFlight = true;
+    adminAuditRemote.status = adminAuditRemote.data ? "refreshing" : "loading";
+    adminAuditRemote.error = "";
+    adminAuditRemote.page = page;
+    adminAuditRemote.perPage = perPage;
+    adminAuditRemote.actionFilter = actionFilter;
+    adminAuditRemote.targetEmailFilter = targetEmailFilter;
+    try {
+      const result = await callAdminEndpoint("admin-list-audit", {
+        page: page,
+        perPage: perPage,
+        action: actionFilter,
+        targetEmail: targetEmailFilter
+      });
+      adminAuditRemote.data = result;
+      adminAuditRemote.status = "ready";
+      adminAuditRemote.loadedAt = Date.now();
+      return result;
+    } catch (err) {
+      adminAuditRemote.status = "error";
+      adminAuditRemote.error = (err && err.message) || "Audit log fetch failed.";
+      adminAuditRemote.loadedAt = Date.now();
+      return null;
+    } finally {
+      adminAuditRemote.inFlight = false;
+      const state = window.CBV2.getState && window.CBV2.getState();
+      if (state && state.route === "admin" && typeof window.CBV2.renderCurrentRoute === "function") {
+        window.CBV2.renderCurrentRoute();
+      }
+    }
+  }
+
+  window.CBV2.adminAudit = {
+    fetch: fetchAdminAudit,
+    state: function () { return Object.assign({}, adminAuditRemote); }
+  };
+
   // Phase A: staleness ticker. Updates the toolbar chip every 10s so the
   // "Refreshed Xs ago" text stays current without a full page render. Only
   // runs while the user is actually on /admin.
@@ -2254,6 +2564,24 @@
     // Phase B.1: bind toolbar controls when on the User Support section.
     if (activeSection === "user-support") {
       bindUserSupportControls();
+    }
+
+    // Phase C.2: bind Risk Center incident buttons.
+    if (activeSection === "risk-center") {
+      bindRiskCenterControls();
+    }
+
+    // Phase C.2: lazy-fetch + bind audit log viewer when on Reports section.
+    if (activeSection === "reports") {
+      if (
+        adminAccessState().ok &&
+        isBackendAdminRuntime() &&
+        (adminAuditRemote.status === "idle" ||
+          (adminAuditRemote.status === "ready" && Date.now() - adminAuditRemote.loadedAt > 30_000))
+      ) {
+        fetchAdminAudit({});
+      }
+      bindAuditLogControls();
     }
 
     // Phase C: bind Operator Management controls when on Admin Settings.
@@ -2363,5 +2691,87 @@
         } catch (e) { /* ignore */ }
       }
     }
+  }
+
+  // Phase C.2: Risk Center incident ack/snooze/resolve/reopen handlers.
+  function bindRiskCenterControls() {
+    document.querySelectorAll("[data-incident-ack]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-incident-ack");
+        if (id) mutateIncident(id, "ack", { note: "acknowledged via UI" });
+      });
+    });
+    document.querySelectorAll("[data-incident-resolve]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-incident-resolve");
+        if (!id) return;
+        const note = prompt("Optional resolution note (saved to audit log):", "") || "";
+        mutateIncident(id, "resolve", { note: note });
+      });
+    });
+    document.querySelectorAll("[data-incident-snooze]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-incident-snooze");
+        if (!id) return;
+        const hoursStr = prompt("Snooze for how many hours?", "24") || "24";
+        const hours = Math.max(1, Math.min(168, Number(hoursStr) || 24));
+        mutateIncident(id, "snooze", { snoozeHours: hours, note: "snoozed " + hours + "h via UI" });
+      });
+    });
+    document.querySelectorAll("[data-incident-reopen]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-incident-reopen");
+        if (id) mutateIncident(id, "reopen", { note: "reopened via UI" });
+      });
+    });
+  }
+
+  // Phase C.2: audit log filter + pager handlers.
+  let auditFilterTimer = null;
+  let auditRestoreFocusId = "";
+  function bindAuditLogControls() {
+    const prevBtn = document.getElementById("admin-audit-prev");
+    const nextBtn = document.getElementById("admin-audit-next");
+    const refresh = document.getElementById("admin-audit-refresh");
+    const actionInput = document.getElementById("admin-audit-action");
+    const targetInput = document.getElementById("admin-audit-target");
+
+    if (prevBtn && !prevBtn.disabled) {
+      prevBtn.addEventListener("click", function () {
+        fetchAdminAudit({ page: Math.max(1, adminAuditRemote.page - 1), force: true });
+      });
+    }
+    if (nextBtn && !nextBtn.disabled) {
+      nextBtn.addEventListener("click", function () {
+        fetchAdminAudit({ page: adminAuditRemote.page + 1, force: true });
+      });
+    }
+    if (refresh) {
+      refresh.addEventListener("click", function () { fetchAdminAudit({ force: true }); });
+    }
+    [actionInput, targetInput].forEach(function (input) {
+      if (!input) return;
+      input.addEventListener("input", function () {
+        if (auditFilterTimer != null) clearTimeout(auditFilterTimer);
+        auditFilterTimer = setTimeout(function () {
+          auditFilterTimer = null;
+          auditRestoreFocusId = input.id;
+          fetchAdminAudit({
+            action: String((actionInput && actionInput.value) || "").trim(),
+            targetEmail: String((targetInput && targetInput.value) || "").trim(),
+            page: 1,
+            force: true
+          });
+        }, 350);
+      });
+      if (auditRestoreFocusId === input.id) {
+        auditRestoreFocusId = "";
+        try {
+          input.focus();
+          const len = input.value.length;
+          input.setSelectionRange(len, len);
+        } catch (e) { /* ignore */ }
+      }
+    });
   }
 })();
