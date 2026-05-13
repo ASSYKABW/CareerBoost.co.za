@@ -85,6 +85,18 @@
     filter: ""
   };
 
+  // Phase C: cache for the operator management panel in Admin Settings.
+  // Refreshed on demand after each promote/demote so the table stays current.
+  const adminOperatorsRemote = {
+    status: "idle",
+    data: null,
+    error: "",
+    loadedAt: 0,
+    inFlight: false,
+    mutationError: "",
+    mutationBusy: false
+  };
+
   function numberOr(value, fallback) {
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;
@@ -1604,6 +1616,95 @@
     );
   }
 
+  // Phase C: Operator Management panel — lists current admins and lets the
+  // operator promote a new user by email or demote an existing one. Every
+  // action is audit-logged at the DB level (admin_audit_log table).
+  function renderOperatorManagement(data) {
+    const access = (data.cloud && data.cloud.access) || {};
+    const allowedRoles = Array.isArray(access.allowedRoles) && access.allowedRoles.length
+      ? access.allowedRoles
+      : ["admin", "owner", "developer"];
+    const op = adminOperatorsRemote;
+    const operators = (op.data && Array.isArray(op.data.operators)) ? op.data.operators : [];
+    const status = op.status;
+    const errorLine = op.error
+      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.error) + '</p>'
+      : "";
+    const mutationErr = op.mutationError
+      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.mutationError) + '</p>'
+      : "";
+
+    const roleOptions = allowedRoles.map(function (role) {
+      return '<option value="' + st(role) + '">' + st(role) + '</option>';
+    }).join("");
+
+    const rows = operators.map(function (op) {
+      const adminRolesLabel = op.adminRoles && op.adminRoles.length ? op.adminRoles.join(", ") : "admin";
+      const isSelf = !!op.isSelf;
+      const demoteAttrs = isSelf
+        ? 'disabled title="You cannot demote yourself — ask another admin"'
+        : 'data-admin-demote="' + st(op.id || "") + '" data-admin-demote-email="' + st(op.email || "") + '"';
+      return (
+        '<div class="admin-table-row admin-table-row--operators">' +
+          '<span>' + st(op.email || "Unknown email") + (isSelf ? ' <em class="admin-self-tag">(you)</em>' : "") + '</span>' +
+          '<span><b class="chip blue">' + st(adminRolesLabel) + '</b></span>' +
+          '<span>' + st(formatDateTime(op.lastSignInAt || op.createdAt)) + '</span>' +
+          '<span>' +
+            '<button type="button" class="btn-ghost btn-sm" ' + demoteAttrs + '>' +
+              '<i class="fa-solid fa-user-minus"></i> Remove admin' +
+            '</button>' +
+          '</span>' +
+        '</div>'
+      );
+    }).join("");
+
+    const tableBody = operators.length
+      ? rows
+      : (status === "loading"
+          ? '<p class="admin-copy">Loading operators…</p>'
+          : '<p class="admin-copy">No active admin operators returned. The admin-list-operators function may not be deployed yet.</p>');
+
+    return (
+      '<article class="admin-panel admin-panel--wide" id="admin-operator-management">' +
+        '<div class="admin-panel-head">' +
+          '<div><span>Operator management</span><h2>Who has admin access</h2></div>' +
+          '<div class="admin-topbar-actions" style="display:flex;gap:6px;align-items:center;">' +
+            '<span class="chip blue">' + st(operators.length || 0) + ' operator' + (operators.length === 1 ? "" : "s") + '</span>' +
+            '<button type="button" class="btn-ghost btn-sm" id="admin-operators-refresh"' + (op.inFlight ? " disabled" : "") + '>' +
+              '<i class="fa-solid fa-rotate' + (op.inFlight ? " fa-spin" : "") + '"></i> Refresh' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+        errorLine +
+        '<p class="admin-copy">Promote a teammate to admin by entering their CareerBoost email and role. They\'ll need to sign in/out to see the admin console. All changes are audit-logged.</p>' +
+        '<form class="admin-operator-form" id="admin-operator-form">' +
+          '<label class="admin-users-filter" style="flex:2;">' +
+            '<i class="fa-solid fa-envelope" aria-hidden="true"></i>' +
+            '<input type="email" name="email" placeholder="teammate@example.com" required autocomplete="off" />' +
+          '</label>' +
+          '<label class="admin-users-sort">' +
+            '<span class="admin-users-sort-label">Role</span>' +
+            '<select name="role">' + roleOptions + '</select>' +
+          '</label>' +
+          '<label class="admin-users-filter" style="flex:1;">' +
+            '<i class="fa-solid fa-pen" aria-hidden="true"></i>' +
+            '<input type="text" name="note" placeholder="Optional note (audit log)" maxlength="200" autocomplete="off" />' +
+          '</label>' +
+          '<button type="submit" class="btn-primary btn-sm"' + (op.mutationBusy ? " disabled" : "") + '>' +
+            (op.mutationBusy
+              ? '<i class="fa-solid fa-circle-notch fa-spin"></i> Granting…'
+              : '<i class="fa-solid fa-user-plus"></i> Grant admin') +
+          '</button>' +
+        '</form>' +
+        mutationErr +
+        '<div class="admin-table" style="margin-top:12px;">' +
+          '<div class="admin-table-row admin-table-row--operators admin-table-head"><span>Email</span><span>Admin role</span><span>Last sign-in</span><span></span></div>' +
+          tableBody +
+        '</div>' +
+      '</article>'
+    );
+  }
+
   function renderAdminSettings(data) {
     // Phase A: surface backend privacy controls + allowed-roles so the
     // operator has a transparent view of WHO can access and WHAT this
@@ -1645,6 +1746,7 @@
       // Phase A: privacy disclosure panel. Mirrors the backend ADMIN_PRIVACY_CONTROLS
       // constant + ADMIN_ROLES env so the operator can see exactly what this
       // console is permitted to read/export.
+      renderOperatorManagement(data) +
       '<article class="admin-panel admin-panel--wide">' +
         '<div class="admin-panel-head"><div><span>Privacy &amp; access disclosure</span><h2>What this console can see — and cannot</h2></div><span class="chip cyan">Transparency</span></div>' +
         '<p class="admin-copy">Sourced from the backend at request time. Reflects the ADMIN_ROLES env value and the privacy guard constraint on usage_events / usage_sessions metadata.</p>' +
@@ -1980,6 +2082,103 @@
     state: function () { return Object.assign({}, adminUsersRemote); },
   };
 
+  // Phase C: Operator Management — list, promote, demote.
+  // Uses the same SDK-or-fetch pattern as fetchAdminMetrics so it works in
+  // both modern (functions.invoke) and degraded (raw fetch) environments.
+  async function callAdminEndpoint(name, body) {
+    if (!isBackendAdminRuntime()) {
+      throw new Error("Sign in as an admin to call " + name + ".");
+    }
+    const auth = window.CBV2.auth;
+    const client = auth && auth.getClient && auth.getClient();
+    if (client && client.functions && typeof client.functions.invoke === "function") {
+      const invoked = await client.functions.invoke(name, { body: body || {} });
+      if (invoked.error) throw new Error(await parseEdgeError(invoked.error));
+      return invoked.data;
+    }
+    const token = auth && auth.getAccessToken ? await auth.getAccessToken() : "";
+    const endpoint = window.CBV2.config.getFunctionsUrl() + "/" + name;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+        apikey: window.CBV2.config.getSupabaseAnon()
+      },
+      body: JSON.stringify(body || {})
+    });
+    const result = await response.json();
+    if (!response.ok || !result || result.ok === false) {
+      throw new Error((result && result.error) || (name + " failed."));
+    }
+    return result;
+  }
+
+  async function fetchAdminOperators(force) {
+    if (adminOperatorsRemote.inFlight) return null;
+    if (!force && adminOperatorsRemote.data && Date.now() - adminOperatorsRemote.loadedAt < 60_000) {
+      return adminOperatorsRemote.data;
+    }
+    adminOperatorsRemote.inFlight = true;
+    adminOperatorsRemote.status = adminOperatorsRemote.data ? "refreshing" : "loading";
+    adminOperatorsRemote.error = "";
+    try {
+      const result = await callAdminEndpoint("admin-list-operators", {});
+      adminOperatorsRemote.data = result;
+      adminOperatorsRemote.status = "ready";
+      adminOperatorsRemote.loadedAt = Date.now();
+      return result;
+    } catch (err) {
+      adminOperatorsRemote.status = "error";
+      adminOperatorsRemote.error = (err && err.message) || "Operator list failed.";
+      adminOperatorsRemote.loadedAt = Date.now();
+      return null;
+    } finally {
+      adminOperatorsRemote.inFlight = false;
+      const state = window.CBV2.getState && window.CBV2.getState();
+      if (state && state.route === "admin" && typeof window.CBV2.renderCurrentRoute === "function") {
+        window.CBV2.renderCurrentRoute();
+      }
+    }
+  }
+
+  async function promoteOperator(opts) {
+    opts = opts || {};
+    adminOperatorsRemote.mutationBusy = true;
+    adminOperatorsRemote.mutationError = "";
+    window.CBV2.renderCurrentRoute();
+    try {
+      const body = {
+        roles: Array.isArray(opts.roles) ? opts.roles : (opts.roles ? [opts.roles] : []),
+        note: opts.note || ""
+      };
+      if (opts.targetUserId) body.targetUserId = opts.targetUserId;
+      if (opts.targetEmail) body.targetEmail = opts.targetEmail;
+      await callAdminEndpoint("admin-promote-user", body);
+      if (window.CBV2.toast) {
+        window.CBV2.toast.success(
+          body.roles.length
+            ? "Granted " + body.roles.join(", ") + " to " + (opts.targetEmail || opts.targetUserId)
+            : "Removed admin roles from " + (opts.targetEmail || opts.targetUserId)
+        );
+      }
+      // Force-refresh after mutation so the table is current.
+      await fetchAdminOperators(true);
+    } catch (err) {
+      adminOperatorsRemote.mutationError = (err && err.message) || "Promote failed.";
+      if (window.CBV2.toast) window.CBV2.toast.error(adminOperatorsRemote.mutationError);
+    } finally {
+      adminOperatorsRemote.mutationBusy = false;
+      window.CBV2.renderCurrentRoute();
+    }
+  }
+
+  window.CBV2.adminOperators = {
+    fetch: fetchAdminOperators,
+    promote: promoteOperator,
+    state: function () { return Object.assign({}, adminOperatorsRemote); }
+  };
+
   // Phase A: staleness ticker. Updates the toolbar chip every 10s so the
   // "Refreshed Xs ago" text stays current without a full page render. Only
   // runs while the user is actually on /admin.
@@ -2057,8 +2256,62 @@
       bindUserSupportControls();
     }
 
+    // Phase C: bind Operator Management controls when on Admin Settings.
+    if (activeSection === "settings") {
+      if (
+        adminAccessState().ok &&
+        isBackendAdminRuntime() &&
+        (adminOperatorsRemote.status === "idle" ||
+          (adminOperatorsRemote.status === "ready" && Date.now() - adminOperatorsRemote.loadedAt > 60_000))
+      ) {
+        fetchAdminOperators(false);
+      }
+      bindOperatorManagementControls();
+    }
+
     startStalenessTicker();
   };
+
+  // Phase C: Operator Management form + demote buttons.
+  function bindOperatorManagementControls() {
+    const refresh = document.getElementById("admin-operators-refresh");
+    if (refresh) {
+      refresh.addEventListener("click", function () {
+        fetchAdminOperators(true);
+      });
+    }
+    const form = document.getElementById("admin-operator-form");
+    if (form) {
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        const fd = new FormData(form);
+        const email = String(fd.get("email") || "").trim().toLowerCase();
+        const role = String(fd.get("role") || "").trim();
+        const note = String(fd.get("note") || "").trim();
+        if (!email || !role) return;
+        promoteOperator({ targetEmail: email, roles: [role], note: note }).then(function () {
+          // Clear the form on success (mutationError is "")
+          if (!adminOperatorsRemote.mutationError) {
+            try { form.reset(); } catch (e) { /* ignore */ }
+          }
+        });
+      });
+    }
+    document.querySelectorAll("[data-admin-demote]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const userId = btn.getAttribute("data-admin-demote") || "";
+        const email = btn.getAttribute("data-admin-demote-email") || "";
+        if (!userId) return;
+        const ok = confirm(
+          "Remove admin role from " + (email || userId) + "?\n\n" +
+          "They will lose access to the admin console immediately. " +
+          "This is audit-logged."
+        );
+        if (!ok) return;
+        promoteOperator({ targetUserId: userId, targetEmail: email, roles: [], note: "demoted via UI" });
+      });
+    });
+  }
 
   // Phase B.1: User Support pagination + sort + filter handlers.
   let userSupportFilterTimer = null;

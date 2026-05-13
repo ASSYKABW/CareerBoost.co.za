@@ -1222,6 +1222,40 @@
   margin: 8px 0;
 }
 
+/* Phase C: Operator Management form + table row layout. */
+.admin-operator-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+.admin-table-row--operators {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.2fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.admin-self-tag {
+  color: #9ef8ff;
+  font-size: 11px;
+  margin-left: 4px;
+  font-style: normal;
+}
+@media (max-width: 720px) {
+  .admin-operator-form > * {
+    flex: 1 1 100% !important;
+  }
+  .admin-table-row--operators {
+    grid-template-columns: 1fr;
+  }
+}
+
 .admin-count-bar {
   display: grid;
   gap: 8px;

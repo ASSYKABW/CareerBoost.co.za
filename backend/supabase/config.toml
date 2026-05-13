@@ -90,6 +90,12 @@ verify_jwt = false
 [functions.admin-users]
 verify_jwt = false
 
+[functions.admin-list-operators]
+verify_jwt = false
+
+[functions.admin-promote-user]
+verify_jwt = false
+
 [functions.embeddings]
 verify_jwt = false
 
