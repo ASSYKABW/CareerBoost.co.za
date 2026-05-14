@@ -51,6 +51,10 @@
 
   <script src="./src/js/app/config.js"></script>
   <script src="./src/js/auth/auth.service.js"></script>
+  <!-- Phase E2: acquisition attribution. Captures UTM + referrer on
+       every page load (first-touch wins), then POSTs to the signup-
+       attribution Edge Function once the user is authenticated. -->
+  <script src="./src/js/auth/auth.attribution.js"></script>
   <script src="./src/js/app/usage-tracker.js"></script>
   <script src="./src/js/app/profile.js"></script>
 
@@ -121,6 +125,7 @@
        caller that still requests section=overview, but it's no longer the
        primary home — currentSection() redirects "overview" → "command-center". -->
   <script src="./src/js/modules/admin/sections/command-center.js"></script>
+  <script src="./src/js/modules/admin/sections/growth.js"></script>
   <script src="./src/js/modules/admin/sections/overview.js"></script>
   <script src="./src/js/modules/admin/sections/usage-engagement.js"></script>
   <script src="./src/js/modules/admin/sections/funnel.js"></script>

@@ -73,8 +73,8 @@ function run() {
   // Phase E1: command-center is loaded too (new admin home).
   loadScript(ctx, "src/js/modules/admin/admin-helpers.js");
   [
-    "command-center", "overview", "usage-engagement", "funnel", "users",
-    "user-support", "job-feed", "ai-cost", "extension", "sync",
+    "command-center", "growth", "overview", "usage-engagement", "funnel",
+    "users", "user-support", "job-feed", "ai-cost", "extension", "sync",
     "risk-center", "reports", "logs", "settings"
   ].forEach(function (name) {
     loadScript(ctx, "src/js/modules/admin/sections/" + name + ".js");
@@ -457,6 +457,61 @@ function run() {
   assert.ok(/Do new users come back/.test(usageHtml), "usage section should explain cohort retention");
   assert.ok(/Avg week 1/.test(usageHtml), "usage section should summarize week 1 retention");
   assert.ok(/Weekly cohorts/.test(usageHtml), "usage section should render cohort activity");
+
+  // Phase E2: Growth board. Patch growth block onto the cached snapshot
+  // so we can render the full board with real-shaped data.
+  (function () {
+    const remote = ctx.window.CBV2.adminMetrics.state();
+    const enriched = Object.assign({}, remote.data, {
+      growth: {
+        summary: {
+          totalSignups: 8, totalSignups30d: 5, totalActivated: 4, totalPlaced: 2,
+          overallActivation: 50, overallPlacement: 25, attributionCoverage: 75
+        },
+        funnel: [
+          { id: "signups", label: "Signups", count: 8, share: 100 },
+          { id: "activated", label: "Activated", count: 4, share: 50 },
+          { id: "placed", label: "Placed", count: 2, share: 25 }
+        ],
+        channels: [
+          { channel: "linkedin", medium: "social", signups: 4, signups_30d: 3, activated: 3, placed: 2, quality_score: 50 },
+          { channel: "google",   medium: "cpc",    signups: 2, signups_30d: 1, activated: 1, placed: 0, quality_score: 0 },
+          { channel: "direct",   medium: "unknown",signups: 2, signups_30d: 1, activated: 0, placed: 0, quality_score: 0 }
+        ],
+        geo: [
+          { country_code: "ZA", signups: 5, signups_30d: 3, activated: 3, placed: 2 },
+          { country_code: "US", signups: 3, signups_30d: 2, activated: 1, placed: 0 }
+        ],
+        landing: [
+          { landing_path: "/", signups: 6, signups_30d: 4, activated: 3 },
+          { landing_path: "/landing-pro", signups: 2, signups_30d: 1, activated: 1 }
+        ],
+        referrers: [
+          { referrer_host: "linkedin.com", signups: 4, signups_30d: 3, activated: 3 },
+          { referrer_host: "direct", signups: 4, signups_30d: 2, activated: 1 }
+        ],
+        topChannels: [
+          { channel: "linkedin", medium: "social", signups: 4, activated: 3, placed: 2, quality_score: 50 }
+        ],
+        leakingChannels: [],
+        recommendations: [
+          { severity: "info", title: "Invest more in linkedin", body: "50% of linkedin signups placed.", action: "Double down on LinkedIn." }
+        ]
+      }
+    });
+    ctx.window.CBV2.adminMetrics.applyRemoteSnapshot(enriched);
+  })();
+
+  ctx.window.CBV2.getRouteParams = function () { return { section: "growth" }; };
+  const growthHtml = ctx.window.CBV2.routes.admin();
+  assert.ok(/Growth recommendations/.test(growthHtml), "growth section should render recommendations");
+  assert.ok(/Acquisition funnel/.test(growthHtml), "growth section should render the acquisition funnel");
+  assert.ok(/Acquisition channels/.test(growthHtml), "growth section should render channels table");
+  assert.ok(/linkedin/.test(growthHtml), "growth section should include channel rows");
+  assert.ok(/Signups by country/.test(growthHtml), "growth section should render geography");
+  assert.ok(/ZA/.test(growthHtml), "growth section should include country codes");
+  assert.ok(/Quality/.test(growthHtml), "growth section should render channel quality column");
+  assert.ok(/Invest more in linkedin/.test(growthHtml), "growth section should render specific recommendations");
 
   ctx.window.CBV2.getRouteParams = function () { return { section: "users" }; };
   const usersHtml = ctx.window.CBV2.routes.admin();

@@ -107,3 +107,9 @@ verify_jwt = false
 
 [functions.jobs-rerank]
 verify_jwt = false
+
+# Phase E2: candidate-side signup attribution. The function calls
+# getAuthedUser() to validate the JWT and writes only to the caller's
+# own profile, so platform JWT verification is bypassed here too.
+[functions.signup-attribution]
+verify_jwt = false

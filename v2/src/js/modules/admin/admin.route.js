@@ -59,8 +59,13 @@
     {
       group: "Analytics",
       items: [
+        // Phase E2: Growth & Acquisition is the new marketing-side board.
+        // It answers "where do users come from and which channels deliver
+        // QUALITY signups". The original pipeline funnel still lives at
+        // section=funnel so existing links don't break.
+        { id: "growth", icon: "fa-chart-line", label: "Growth", badge: "New" },
         { id: "usage", icon: "fa-wave-square", label: "Usage & engagement" },
-        { id: "funnel", icon: "fa-filter-circle-dollar", label: "Funnel analytics" }
+        { id: "funnel", icon: "fa-filter-circle-dollar", label: "Pipeline funnel" }
       ]
     },
     {
@@ -274,7 +279,9 @@
       aarrr: [],
       priorities: [],
       weeklyChanges: [],
-      outcomes: null
+      outcomes: null,
+      // Phase E2: Growth & Acquisition block.
+      growth: null
     };
 
     const remote = adminRemote.data;
@@ -326,6 +333,8 @@
       data.priorities = Array.isArray(remote.priorities) ? remote.priorities : [];
       data.weeklyChanges = Array.isArray(remote.weeklyChanges) ? remote.weeklyChanges : [];
       data.outcomes = remote.outcomes || null;
+      // Phase E2: Growth & Acquisition block.
+      data.growth = remote.growth || null;
       data.totals.users = numberOr(totals.users, 0);
       data.totals.profiles = numberOr(totals.profiles, 0);
       data.totals.applications = numberOr(totals.applications, data.totals.applications);

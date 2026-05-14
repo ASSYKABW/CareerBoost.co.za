@@ -115,6 +115,40 @@ function run() {
   assert.ok(/const outcomesBlock = \{/.test(fn), "admin-overview should compute outcomes block");
   assert.ok(/northStar,\s*aarrr,\s*priorities,\s*weeklyChanges,\s*outcomes: outcomesBlock/.test(fn), "admin-overview response should expose Command Center blocks at top level");
 
+  // Phase E2: Growth & Acquisition contract.
+  const acquisitionMigration = read("backend/supabase/migrations/0013_acquisition_attribution.sql");
+  assert.ok(/add column if not exists utm_source/.test(acquisitionMigration), "acquisition migration should add utm_source column");
+  assert.ok(/add column if not exists utm_medium/.test(acquisitionMigration), "acquisition migration should add utm_medium column");
+  assert.ok(/add column if not exists utm_campaign/.test(acquisitionMigration), "acquisition migration should add utm_campaign column");
+  assert.ok(/add column if not exists referrer_host/.test(acquisitionMigration), "acquisition migration should add referrer_host column");
+  assert.ok(/add column if not exists country_code/.test(acquisitionMigration), "acquisition migration should add country_code column");
+  assert.ok(/add column if not exists signup_at/.test(acquisitionMigration), "acquisition migration should add signup_at column");
+  assert.ok(/profiles_utm_source_size_chk/.test(acquisitionMigration), "acquisition migration should cap utm_source size");
+  assert.ok(/profiles_landing_path_size_chk/.test(acquisitionMigration), "acquisition migration should cap landing_path size");
+  assert.ok(/create or replace view public\.v_admin_acquisition_channels/.test(acquisitionMigration), "acquisition migration should expose channels view");
+  assert.ok(/create or replace view public\.v_admin_acquisition_geo/.test(acquisitionMigration), "acquisition migration should expose geo view");
+  assert.ok(/create or replace view public\.v_admin_acquisition_landing/.test(acquisitionMigration), "acquisition migration should expose landing view");
+  assert.ok(/create or replace view public\.v_admin_acquisition_referrers/.test(acquisitionMigration), "acquisition migration should expose referrers view");
+  assert.ok(/quality_score/.test(acquisitionMigration), "acquisition channels view should expose quality_score");
+
+  const signupAttributionFn = read("backend/supabase/functions/signup-attribution/index.ts");
+  assert.ok(/getAuthedUser\(req\)/.test(signupAttributionFn), "signup-attribution should verify auth");
+  assert.ok(/cf-ipcountry/.test(signupAttributionFn), "signup-attribution should read cf-ipcountry header");
+  assert.ok(/signup_at/.test(signupAttributionFn), "signup-attribution should write signup_at");
+  assert.ok(/firstTouch/.test(signupAttributionFn), "signup-attribution should implement first-touch attribution");
+  assert.ok(/\.upsert\(/.test(signupAttributionFn), "signup-attribution should upsert profile");
+
+  assert.ok(/from\("v_admin_acquisition_channels"\)/.test(fn), "admin-overview should read the acquisition channels view");
+  assert.ok(/from\("v_admin_acquisition_geo"\)/.test(fn), "admin-overview should read the acquisition geo view");
+  assert.ok(/from\("v_admin_acquisition_landing"\)/.test(fn), "admin-overview should read the acquisition landing view");
+  assert.ok(/from\("v_admin_acquisition_referrers"\)/.test(fn), "admin-overview should read the acquisition referrers view");
+  assert.ok(/const growthBlock = \{/.test(fn), "admin-overview should compute the growth block");
+  assert.ok(/growthRecommendations/.test(fn), "admin-overview should compute growth recommendations");
+  assert.ok(/growth: growthBlock/.test(fn), "admin-overview response should expose the growth block");
+
+  assert.ok(/\[functions\.signup-attribution\]/.test(config), "Supabase config should register signup-attribution");
+  assert.ok(/fn:deploy:signup-attribution/.test(pkg), "backend package should expose signup-attribution deploy script");
+
   console.log("Admin backend contract tests passed.");
 }
 

@@ -2185,6 +2185,138 @@ Deno.serve(async (req) => {
     { metric: "AI requests", icon: "fa-wand-magic-sparkles", ...delta(aiThisWeek, aiPriorWeek), goodDirection: "up" },
   ];
 
+  // ─── Phase E2: Growth & Acquisition block ─────────────────────────────
+  // Reads the four v_admin_acquisition_* views. Each returns aggregates
+  // by channel / geo / landing / referrer with signup, activated, placed
+  // counts. We then compute "where to invest" recommendations based on
+  // the quality_score column (placed/signups).
+  const [
+    { data: channelRows, error: channelErr },
+    { data: geoRows,     error: geoErr },
+    { data: landingRows, error: landingErr },
+    { data: referrerRows, error: referrerErr },
+  ] = await Promise.all([
+    svc.from("v_admin_acquisition_channels")
+      .select("channel, medium, signups, signups_30d, activated, placed, quality_score")
+      .limit(50),
+    svc.from("v_admin_acquisition_geo")
+      .select("country_code, signups, signups_30d, activated, placed")
+      .limit(50),
+    svc.from("v_admin_acquisition_landing")
+      .select("landing_path, signups, signups_30d, activated"),
+    svc.from("v_admin_acquisition_referrers")
+      .select("referrer_host, signups, signups_30d, activated"),
+  ]);
+  if (channelErr)  warnings.push("acquisition_channels: "  + channelErr.message);
+  if (geoErr)      warnings.push("acquisition_geo: "       + geoErr.message);
+  if (landingErr)  warnings.push("acquisition_landing: "   + landingErr.message);
+  if (referrerErr) warnings.push("acquisition_referrers: " + referrerErr.message);
+
+  const channels  = (channelRows  || []) as Array<Record<string, unknown>>;
+  const geo       = (geoRows      || []) as Array<Record<string, unknown>>;
+  const landing   = (landingRows  || []) as Array<Record<string, unknown>>;
+  const referrers = (referrerRows || []) as Array<Record<string, unknown>>;
+
+  // Conversion totals — the operator's headline numbers.
+  const totalSignups        = channels.reduce((sum, row) => sum + n(row.signups), 0);
+  const totalActivated      = channels.reduce((sum, row) => sum + n(row.activated), 0);
+  const totalPlaced         = channels.reduce((sum, row) => sum + n(row.placed), 0);
+  const totalSignups30d     = channels.reduce((sum, row) => sum + n(row.signups_30d), 0);
+  const overallActivation   = pct(totalActivated, Math.max(1, totalSignups));
+  const overallPlacement    = pct(totalPlaced, Math.max(1, totalSignups));
+  const attributedSignups   = channels
+    .filter((row) => String(row.channel || "") !== "direct" && String(row.channel || "") !== "unknown")
+    .reduce((sum, row) => sum + n(row.signups), 0);
+  const attributionCoverage = pct(attributedSignups, Math.max(1, totalSignups));
+
+  // "Where to invest" — top 3 channels by quality_score with minimum
+  // sample size, and bottom 3 (where signups are flowing but quality is
+  // low — investigate or cut).
+  const minSampleSize = 3;
+  const qualifiedChannels = channels.filter((row) =>
+    n(row.signups) >= minSampleSize && String(row.channel || "") !== "direct" && String(row.channel || "") !== "unknown"
+  );
+  const topChannels = qualifiedChannels
+    .slice()
+    .sort((a, b) => n(b.quality_score) - n(a.quality_score))
+    .slice(0, 3);
+  const leakingChannels = qualifiedChannels
+    .filter((row) => n(row.quality_score) < 5 && n(row.signups) >= 5)
+    .slice()
+    .sort((a, b) => n(b.signups) - n(a.signups))
+    .slice(0, 3);
+
+  const growthRecommendations: Array<Record<string, unknown>> = [];
+  if (totalSignups === 0) {
+    growthRecommendations.push({
+      severity: "critical",
+      title: "No signups recorded",
+      body: "No signups have come through any channel yet. Acquisition needs to be the #1 focus.",
+      action: "Pick one channel (organic social, paid search, content partnership) and run a 7-day push experiment.",
+    });
+  } else if (attributionCoverage < 30 && totalSignups >= 10) {
+    growthRecommendations.push({
+      severity: "warning",
+      title: `Only ${attributionCoverage}% of signups are attributed`,
+      body: "Most signups come through direct/organic with no campaign tag. Marketing decisions will fly blind.",
+      action: "Add utm_source/utm_medium to every campaign link, social post, and email template.",
+    });
+  }
+  topChannels.forEach((c) => {
+    growthRecommendations.push({
+      severity: "info",
+      title: `Invest more in ${c.channel}`,
+      body: `${c.quality_score}% of ${c.channel} signups have moved to interview/offer (${c.placed} placed of ${c.signups} signups).`,
+      action: `Double down: increase budget/effort on ${c.channel} (medium: ${c.medium || "any"}).`,
+    });
+  });
+  leakingChannels.forEach((c) => {
+    growthRecommendations.push({
+      severity: "warning",
+      title: `${c.channel} signups don't convert`,
+      body: `${c.signups} signups, ${c.activated} activated, ${c.placed} placed. Channel quality is below 5%.`,
+      action: `Audit the landing experience for ${c.channel}: wrong audience, weak copy, or misaligned promise.`,
+    });
+  });
+  if (geo.length > 0) {
+    const topCountry = geo.slice().sort((a, b) => n(b.signups_30d) - n(a.signups_30d))[0];
+    if (topCountry && String(topCountry.country_code) !== "unknown" && n(topCountry.signups_30d) >= 3) {
+      growthRecommendations.push({
+        severity: "info",
+        title: `${topCountry.country_code} is your biggest geo`,
+        body: `${topCountry.signups_30d} signups in the last 30 days from ${topCountry.country_code}.`,
+        action: `Localize: payment methods, time-of-day messaging, and currency formatting for ${topCountry.country_code}.`,
+      });
+    }
+  }
+
+  // Acquisition funnel: signups → activated → placed.
+  const acquisitionFunnel = [
+    { id: "signups",    label: "Signups",                   count: totalSignups,   share: 100 },
+    { id: "activated",  label: "Activated (created an application)", count: totalActivated, share: overallActivation },
+    { id: "placed",     label: "Placed (interview / offer)", count: totalPlaced,   share: overallPlacement },
+  ];
+
+  const growthBlock = {
+    summary: {
+      totalSignups,
+      totalSignups30d,
+      totalActivated,
+      totalPlaced,
+      overallActivation,
+      overallPlacement,
+      attributionCoverage,
+    },
+    funnel: acquisitionFunnel,
+    channels,
+    geo,
+    landing,
+    referrers,
+    topChannels,
+    leakingChannels,
+    recommendations: growthRecommendations,
+  };
+
   // ─── Outcomes block (for the Command Center + Growth board) ───────────
   const outcomesBlock = {
     placements30d,
@@ -2343,6 +2475,8 @@ Deno.serve(async (req) => {
     priorities,
     weeklyChanges,
     outcomes: outcomesBlock,
+    // Phase E2: Growth & Acquisition board reads this.
+    growth: growthBlock,
     operations: {
       staleSaved: staleSavedRows.length,
       sourceIssueCount: sourceIssues.length,
