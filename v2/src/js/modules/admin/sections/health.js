@@ -256,6 +256,56 @@
     );
   }
 
+  // Phase 8: Client-side error telemetry panel. Shows the top error
+  // classes from the last 24h, surfaced from v_admin_client_errors_24h
+  // via the admin-overview function.
+  function renderClientErrors(data, h) {
+    const st = h.st;
+    const safeArray = h.safeArray;
+    const formatDateTime = h.formatDateTime;
+    const errors = data.clientErrors || null;
+    if (!errors) {
+      return '<article class="admin-panel"><div class="admin-panel-head"><div><span>Client-side errors</span><h2>What\'s breaking on candidates\' devices</h2></div><span class="chip subtle">No data</span></div><p class="admin-copy">Client error telemetry will appear once observability.js fires its first batch.</p></article>';
+    }
+    const rows = safeArray(errors.last24h).slice(0, 8);
+    const tone = errors.healthSignal === "clean" ? "green"
+      : errors.healthSignal === "watch" ? "amber"
+      : errors.healthSignal === "elevated" ? "rose"
+      : "subtle";
+    const headLabel = errors.totalEvents24h === 0
+      ? "Clean"
+      : errors.totalEvents24h + " event" + (errors.totalEvents24h === 1 ? "" : "s") + " · " + errors.distinctClasses + " class" + (errors.distinctClasses === 1 ? "" : "es");
+    if (!rows.length) {
+      return (
+        '<article class="admin-panel">' +
+          '<div class="admin-panel-head"><div><span>Client-side errors</span><h2>What\'s breaking on candidates\' devices</h2></div><span class="chip ' + tone + '">' + st(headLabel) + '</span></div>' +
+          '<p class="admin-copy">No client-side errors captured in the last 24 hours. Telemetry is live (observability.js auto-installed).</p>' +
+        '</article>'
+      );
+    }
+    return (
+      '<article class="admin-panel admin-panel--wide">' +
+        '<div class="admin-panel-head"><div><span>Client-side errors</span><h2>What\'s breaking on candidates\' devices (24h)</h2></div><span class="chip ' + tone + '">' + st(headLabel) + '</span></div>' +
+        '<div class="admin-table">' +
+          '<div class="admin-table-row admin-table-row--client-err admin-table-head"><span>Class</span><span>Kind</span><span>Count</span><span>Users</span><span>Last seen</span><span>Sample route</span></div>' +
+          rows.map(function (row) {
+            return (
+              '<div class="admin-table-row admin-table-row--client-err">' +
+                '<span><strong>' + st(row.error_class || "Unknown") + '</strong></span>' +
+                '<span><code>' + st(row.event_kind || "manual") + '</code></span>' +
+                '<span>' + st(row.event_count || 0) + '</span>' +
+                '<span>' + st(row.distinct_users || 0) + (row.distinct_anons ? " + " + row.distinct_anons + " anon" : "") + '</span>' +
+                '<span>' + st(formatDateTime(row.last_occurred_at)) + '</span>' +
+                '<span><code>' + st((row.sample_route || "—").slice(0, 40)) + '</code></span>' +
+              '</div>'
+            );
+          }).join("") +
+        '</div>' +
+        '<p class="admin-copy admin-copy--small">Grouped by event_kind + leading error class. Captured by v2/src/js/services/observability/observability.js with privacy-guarded metadata. Stack traces stored separately; click into a row for the full trace once the per-error drill-down ships.</p>' +
+      '</article>'
+    );
+  }
+
   function render(data) {
     const h = window.CBV2.adminHelpers;
     return (
@@ -269,6 +319,7 @@
         renderCloudDiagnostics(data, h) +
         renderJobSourceTruth(data, h) +
       '</section>' +
+      renderClientErrors(data, h) +
       renderRunbooks(data, h)
     );
   }

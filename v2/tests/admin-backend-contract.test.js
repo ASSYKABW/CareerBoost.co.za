@@ -185,6 +185,34 @@ function run() {
   assert.ok(/const productIntelligence = \{/.test(fn), "admin-overview should assemble the productIntelligence block");
   assert.ok(/productIntelligence,/.test(fn), "admin-overview response should expose productIntelligence at the top level");
 
+  // Phase 8: observability contract.
+  const telemetryMigration = read("backend/supabase/migrations/0015_client_telemetry.sql");
+  assert.ok(/create table if not exists public\.client_telemetry/.test(telemetryMigration), "P8 migration should create client_telemetry table");
+  assert.ok(/severity in \('error', 'warning', 'info'\)/.test(telemetryMigration), "client_telemetry severity should be constrained");
+  assert.ok(/octet_length\(message\) <= 1024/.test(telemetryMigration), "client_telemetry message should be size-capped");
+  assert.ok(/octet_length\(stack\) <= 8192/.test(telemetryMigration), "client_telemetry stack should be size-capped");
+  assert.ok(/octet_length\(metadata::text\) <= 4096/.test(telemetryMigration), "client_telemetry metadata should be size-capped");
+  assert.ok(/client_telemetry_metadata_privacy_guard/.test(telemetryMigration), "client_telemetry should have a metadata privacy guard trigger");
+  assert.ok(/force row level security/.test(telemetryMigration), "client_telemetry should force RLS");
+  assert.ok(/client_telemetry_owner_insert/.test(telemetryMigration), "client_telemetry should expose owner-insert policy");
+  assert.ok(/grant insert on public\.client_telemetry to anon/.test(telemetryMigration), "client_telemetry should allow anon insert for landing-page errors");
+  assert.ok(/create or replace view public\.v_admin_client_errors_24h/.test(telemetryMigration), "P8 migration should expose the 24h errors view");
+
+  const telemetryFn = read("backend/supabase/functions/client-telemetry/index.ts");
+  assert.ok(/tryAuthedUser/.test(telemetryFn), "client-telemetry should try to read auth (optional)");
+  assert.ok(/ALLOWED_SEVERITIES/.test(telemetryFn), "client-telemetry should constrain severity");
+  assert.ok(/ALLOWED_KINDS/.test(telemetryFn), "client-telemetry should constrain event_kind");
+  assert.ok(/BLOCKED_METADATA_KEYS/.test(telemetryFn), "client-telemetry should scrub blocked metadata keys");
+  assert.ok(/rateBuckets/.test(telemetryFn), "client-telemetry should rate-limit");
+  assert.ok(/MAX_BATCH/.test(telemetryFn), "client-telemetry should cap batch size");
+
+  assert.ok(/from\("v_admin_client_errors_24h"\)/.test(fn), "admin-overview should read the 24h client errors view");
+  assert.ok(/const clientErrors = \{/.test(fn), "admin-overview should compute the clientErrors block");
+  assert.ok(/clientErrors,/.test(fn), "admin-overview response should expose clientErrors at the top level");
+
+  assert.ok(/\[functions\.client-telemetry\]/.test(config), "Supabase config should register client-telemetry");
+  assert.ok(/fn:deploy:client-telemetry/.test(pkg), "backend package should expose client-telemetry deploy script");
+
   console.log("Admin backend contract tests passed.");
 }
 

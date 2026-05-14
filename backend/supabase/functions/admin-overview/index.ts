@@ -2612,6 +2612,27 @@ Deno.serve(async (req) => {
     },
   };
 
+  // ─── Phase 8: client error telemetry (last 24h) ──────────────────────
+  // Reads v_admin_client_errors_24h which buckets by event_kind + error
+  // class and orders by count. Powers the admin Health board's
+  // "Client-side errors" panel.
+  const { data: clientErrorRows, error: clientErrorErr } = await svc
+    .from("v_admin_client_errors_24h")
+    .select("event_kind, error_class, event_count, distinct_users, distinct_anons, last_occurred_at, sample_route, sample_user_agent");
+  if (clientErrorErr) warnings.push("client_errors: " + clientErrorErr.message);
+  const clientErrorList = (clientErrorRows || []) as Array<Record<string, unknown>>;
+  const clientErrors = {
+    last24h: clientErrorList,
+    totalEvents24h: clientErrorList.reduce((sum, row) => sum + n(row.event_count), 0),
+    distinctClasses: clientErrorList.length,
+    impactedUsers: Array.from(new Set(clientErrorList.map(r => String(r.distinct_users || 0)))).length,
+    healthSignal: clientErrorList.length === 0
+      ? "clean"
+      : clientErrorList.reduce((sum, row) => sum + n(row.event_count), 0) > 50
+      ? "elevated"
+      : "watch",
+  };
+
   // ─── Outcomes block (for the Command Center + Growth board) ───────────
   const outcomesBlock = {
     placements30d,
@@ -2778,6 +2799,9 @@ Deno.serve(async (req) => {
     // impact, extension summary. Reads the same engagement + outcome
     // data as the other boards but reframes it through an ROI lens.
     productIntelligence,
+    // Phase 8: client-side error telemetry (last 24h) for the Health
+    // board's "Client-side errors" panel.
+    clientErrors,
     operations: {
       staleSaved: staleSavedRows.length,
       sourceIssueCount: sourceIssues.length,

@@ -119,3 +119,10 @@ verify_jwt = false
 # admin role server-side.
 [functions.admin-user-timeline]
 verify_jwt = false
+
+# Phase 8: client-side error + perf telemetry ingestion. Both
+# authenticated and anonymous callers are accepted (anon for landing-
+# page errors before sign-in). The function does its own auth check
+# (tryAuthedUser) and rate-limits in-memory per (user/anon/IP).
+[functions.client-telemetry]
+verify_jwt = false

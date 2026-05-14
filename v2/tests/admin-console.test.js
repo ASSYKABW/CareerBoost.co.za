@@ -61,7 +61,14 @@ function makeContext() {
     String: String,
     Object: Object,
     Array: Array,
-    Blob: function () {}
+    Blob: function () {},
+    // Phase 8: admin-realtime.js uses setTimeout to retry auth.onChange
+    // wiring. setInterval is referenced by the staleness ticker. We
+    // expose them as no-ops so they don't crash the test load.
+    setTimeout: function () { return 0; },
+    setInterval: function () { return 0; },
+    clearInterval: function () {},
+    clearTimeout: function () {}
   });
 }
 
@@ -71,7 +78,11 @@ function run() {
   ctx.window.CB_CONFIG.forceLocal = true;
   // Phase D: helpers + section files load first, then the route dispatcher.
   // Phase E1: command-center is loaded too (new admin home).
+  // Phase 8: admin-realtime.js loads after helpers (state caches) but
+  // before sections, providing window.CBV2.adminRealtime for the
+  // realtime chip rendered by admin.route.js renderToolbar.
   loadScript(ctx, "src/js/modules/admin/admin-helpers.js");
+  loadScript(ctx, "src/js/modules/admin/admin-realtime.js");
   // Phase E3: user-support.js deleted (folded into users.js which
   // registers both "users" and the legacy "user-support" section IDs).
   // Phase E5: health + operations are the new consolidated boards.
@@ -515,6 +526,12 @@ function run() {
         ],
         samples: { power: [], new: [], at_risk: [], churned: [], active: [] }
       },
+      clientErrors: {
+        last24h: [
+          { event_kind: "unhandled_error", error_class: "TypeError", event_count: 3, distinct_users: 1, distinct_anons: 0, last_occurred_at: "2026-05-10T09:55:00.000Z", sample_route: "/calendar", sample_user_agent: "Chrome/x" }
+        ],
+        totalEvents24h: 3, distinctClasses: 1, impactedUsers: 1, healthSignal: "watch"
+      },
       productIntelligence: {
         summary: { coreModules: 1, underusedModules: 1, noDataModules: 0, biggestLeak: null, expensiveSkills: 0, unreliableSkills: 0 },
         moduleRoi: [
@@ -630,6 +647,10 @@ function run() {
   assert.ok(/Release readiness/.test(healthHtml), "health board should render release readiness");
   assert.ok(/Active incidents/.test(healthHtml), "health board should render the incidents panel");
   assert.ok(/Source truth issues|Source\/host mismatches|Job source truth/.test(healthHtml), "health board should render source truth panel");
+  // Phase 8: client error telemetry panel + realtime toolbar chip.
+  assert.ok(/Client-side errors/.test(healthHtml), "health board should render client errors panel");
+  assert.ok(/TypeError/.test(healthHtml), "health board should render error class names");
+  assert.ok(/Realtime off|Live|Connecting|Realtime stale/.test(healthHtml), "admin toolbar should render the realtime chip");
 
   // Phase E5: consolidated Operations board.
   ctx.window.CBV2.getRouteParams = function () { return { section: "operations" }; };

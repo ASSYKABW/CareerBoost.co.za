@@ -295,7 +295,9 @@
       // Phase E3: Users board segments + timeline state.
       userSegments: null,
       // Phase E4: Product Intelligence.
-      productIntelligence: null
+      productIntelligence: null,
+      // Phase 8: client error telemetry.
+      clientErrors: null
     };
 
     const remote = adminRemote.data;
@@ -353,6 +355,8 @@
       data.userSegments = remote.userSegments || null;
       // Phase E4: Product Intelligence — module ROI, AI economics, drop-offs.
       data.productIntelligence = remote.productIntelligence || null;
+      // Phase 8: client-side error telemetry (last 24h).
+      data.clientErrors = remote.clientErrors || null;
       data.totals.users = numberOr(totals.users, 0);
       data.totals.profiles = numberOr(totals.profiles, 0);
       data.totals.applications = numberOr(totals.applications, data.totals.applications);
@@ -493,6 +497,25 @@
     return '<span class="chip ' + tone + ' admin-staleness-chip" id="admin-staleness" title="Cache TTL is ' + (ADMIN_METRICS_TTL_MS / 1000) + 's; click Refresh to force a reload"><i class="fa-solid fa-clock-rotate-left"></i> ' + st(label) + '</span>';
   }
 
+  // Phase 8: real-time connection status chip. Reflects whether
+  // the Supabase Realtime channel for admin_incidents + admin_audit_log
+  // is currently subscribed and receiving events.
+  function renderRealtimeChip() {
+    const rt = window.CBV2.adminRealtime;
+    if (!rt) return '<span class="chip subtle"><i class="fa-solid fa-circle"></i> Realtime off</span>';
+    const s = rt.state();
+    if (s.status === "live") {
+      return '<span class="chip green" id="admin-realtime-chip" title="Real-time channel is subscribed. Incidents + audit log updates arrive without manual refresh."><i class="fa-solid fa-circle fa-beat-fade"></i> Live</span>';
+    }
+    if (s.status === "connecting") {
+      return '<span class="chip blue" id="admin-realtime-chip" title="Connecting to real-time channel…"><i class="fa-solid fa-circle-notch fa-spin"></i> Connecting</span>';
+    }
+    if (s.status === "error") {
+      return '<span class="chip amber" id="admin-realtime-chip" title="Real-time channel disconnected. Reverting to manual refresh."><i class="fa-solid fa-triangle-exclamation"></i> Realtime stale</span>';
+    }
+    return '<span class="chip subtle" id="admin-realtime-chip"><i class="fa-solid fa-circle"></i> Realtime off</span>';
+  }
+
   function renderToolbar(access) {
     const user = access && access.user;
     const profile = access && access.profile;
@@ -504,7 +527,7 @@
           '<h1>Usage &amp; operations command center</h1>' +
         '</div>' +
         '<div class="admin-topbar-actions">' +
-          '<span class="chip green"><i class="fa-solid fa-circle"></i> Live-ready</span>' +
+          renderRealtimeChip() +
           renderStalenessChip() +
           '<span class="chip blue"><i class="fa-solid fa-shield-halved"></i> ' + st(access.label || "Admin") + '</span>' +
           '<button type="button" class="btn-ghost" id="admin-export"><i class="fa-solid fa-download"></i> Export CSV</button>' +
@@ -1124,6 +1147,12 @@
     }
 
     startStalenessTicker();
+    // Phase 8: subscribe to Supabase Realtime postgres_changes for
+    // admin_incidents + admin_audit_log so the admin sees updates
+    // without manual refresh.
+    if (window.CBV2.adminRealtime && typeof window.CBV2.adminRealtime.setup === "function") {
+      window.CBV2.adminRealtime.setup();
+    }
   };
 
   // -- Bindings -------------------------------------------------------------

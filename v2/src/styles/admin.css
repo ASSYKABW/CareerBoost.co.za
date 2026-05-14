@@ -2828,6 +2828,21 @@
   line-height: 1.4;
 }
 
+/* Phase 8: client-side error telemetry table (Health board). */
+.admin-table-row--client-err {
+  grid-template-columns: 1.4fr 0.9fr 0.6fr 0.8fr 0.9fr 1.3fr;
+}
+.admin-table-row--client-err code {
+  font-size: 11px;
+  background: rgba(94, 234, 212, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #5eead4;
+}
+@media (max-width: 1024px) {
+  .admin-table-row--client-err { grid-template-columns: 1fr 1fr; gap: 6px; }
+}
+
 @media (max-width: 1024px) {
   .admin-econ-hero { grid-template-columns: 1fr; gap: 16px; padding: 20px; }
   .admin-econ-hero-stats { grid-template-columns: repeat(2, 1fr); }

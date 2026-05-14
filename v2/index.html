@@ -50,6 +50,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 
   <script src="./src/js/app/config.js"></script>
+  <!-- Phase 8: observability MUST load right after config so it can
+       capture any error from the rest of the bootstrap. It installs
+       window.onerror + unhandledrejection handlers immediately. -->
+  <script src="./src/js/services/observability/observability.js"></script>
   <script src="./src/js/auth/auth.service.js"></script>
   <!-- Phase E2: acquisition attribution. Captures UTM + referrer on
        every page load (first-touch wins), then POSTs to the signup-
@@ -127,6 +131,10 @@
        sections/*.js each register on window.CBV2.adminSections[<id>];
        admin.route.js (loaded last) wires the dispatcher + fetchers + bindings. -->
   <script src="./src/js/modules/admin/admin-helpers.js"></script>
+  <!-- Phase 8: realtime subscriptions for admin_incidents + audit_log.
+       Must load after admin-helpers (state caches) but before
+       admin.route.js (which sets up the afterRender hook). -->
+  <script src="./src/js/modules/admin/admin-realtime.js"></script>
   <!-- Phase E1: Command Center replaces the old Overview as the admin home.
        The old sections/overview.js stays in the tree as a fallback for any
        caller that still requests section=overview, but it's no longer the
