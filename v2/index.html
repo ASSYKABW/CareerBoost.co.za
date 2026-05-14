@@ -129,6 +129,10 @@
        so the chip selector + intelStepPayloadBase can read the canonical
        persona list at render time. -->
   <script src="./src/js/modules/interview/interview.personas.js"></script>
+  <!-- Phase 4.5 voice: Web Speech API wrapper. Loads BEFORE
+       interview.route.js so the mock UI can call CBV2.interviewVoice
+       at render time. No backend dependency — 100% client-side. -->
+  <script src="./src/js/modules/interview/interview.voice.js"></script>
   <script src="./src/js/modules/interview/interview.route.js"></script>
   <script src="./src/js/modules/analytics/analytics.shared.js"></script>
   <script src="./src/js/modules/analytics/analytics.route.js"></script>

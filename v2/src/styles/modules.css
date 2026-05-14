@@ -1100,6 +1100,95 @@
   .interview-persona-strip { grid-template-columns: 1fr 1fr; }
 }
 
+/* Phase 4.5 voice: mock interview voice-mode toolbar + mic button. */
+.interview-voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin: 8px 0 4px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.interview-voice-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.interview-voice-indicator.is-listening {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fda4af;
+}
+.interview-voice-indicator.is-listening i {
+  animation: cb-voice-pulse 1.2s ease-in-out infinite;
+}
+.interview-voice-indicator.is-speaking {
+  background: rgba(94, 234, 212, 0.14);
+  color: #5eead4;
+}
+.interview-voice-indicator.is-ready {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(248, 251, 255, 0.6);
+}
+.interview-voice-indicator.is-ready i {
+  font-size: 8px;
+  color: #5eead4;
+}
+.interview-voice-error {
+  margin: 0;
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.interview-voice-unsupported {
+  margin: 8px 0;
+  font-size: 12px;
+}
+@keyframes cb-voice-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.25); opacity: 0.6; }
+}
+
+/* Mic button inside the reply textarea label. */
+.interview-reply-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.interview-voice-mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(94, 234, 212, 0.1);
+  border: 1px solid rgba(94, 234, 212, 0.32);
+  color: #5eead4;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.interview-voice-mic:hover {
+  background: rgba(94, 234, 212, 0.18);
+  transform: translateY(-1px);
+}
+.interview-voice-mic.is-listening {
+  background: rgba(244, 63, 94, 0.16);
+  border-color: rgba(244, 63, 94, 0.42);
+  color: #fda4af;
+}
+.interview-voice-mic.is-listening i {
+  animation: cb-voice-pulse 1.2s ease-in-out infinite;
+}
+
 .interview-page .form-grid label {
   min-width: 0;
 }

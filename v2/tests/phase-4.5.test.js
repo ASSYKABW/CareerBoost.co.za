@@ -164,6 +164,64 @@ function run() {
     });
   });
   console.log("Backend persona injection contract tests passed.");
+
+  // ─── Voice module ────────────────────────────────────────────────────
+  const voiceCtx = makeBrowserContext();
+  loadScript(voiceCtx, "src/js/modules/interview/interview.voice.js");
+  const voice = voiceCtx.window.CBV2.interviewVoice;
+  assert.ok(voice, "voice module should expose window.CBV2.interviewVoice");
+  // API surface
+  assert.strictEqual(typeof voice.isRecognitionSupported, "function", "isRecognitionSupported");
+  assert.strictEqual(typeof voice.isSynthesisSupported, "function", "isSynthesisSupported");
+  assert.strictEqual(typeof voice.isFullySupported, "function", "isFullySupported");
+  assert.strictEqual(typeof voice.listen, "function", "listen");
+  assert.strictEqual(typeof voice.speak, "function", "speak");
+  assert.strictEqual(typeof voice.stopListening, "function", "stopListening");
+  assert.strictEqual(typeof voice.stopSpeaking, "function", "stopSpeaking");
+  // In the test sandbox neither SpeechRecognition nor speechSynthesis
+  // exist, so the module should self-report unsupported and gracefully
+  // no-op rather than throw.
+  assert.strictEqual(voice.isRecognitionSupported(), false, "recognition unsupported in test sandbox");
+  assert.strictEqual(voice.isSynthesisSupported(), false, "synthesis unsupported in test sandbox");
+  // listen returns null + fires onError when unsupported.
+  let errSeen = null;
+  const result = voice.listen({ onError: function (e) { errSeen = e; } });
+  assert.strictEqual(result, null, "listen() returns null when unsupported");
+  assert.ok(errSeen && errSeen.code === "unsupported", "listen() fires onError(unsupported)");
+  // speak is a safe no-op when unsupported and still calls onEnd.
+  let onEndFired = false;
+  voice.speak("hello", { onEnd: function () { onEndFired = true; } });
+  assert.strictEqual(onEndFired, true, "speak() calls onEnd even when unsupported");
+  // Chunking splits long text into <=220-char pieces.
+  const long = "This is a sentence. ".repeat(40); // 800 chars
+  const chunks = voice._chunkForTts(long);
+  assert.ok(chunks.length > 1, "long text should be chunked");
+  chunks.forEach(function (c, i) {
+    assert.ok(c.length <= 250, "chunk " + i + " should be <=250 chars (got " + c.length + ")");
+  });
+  // clamp respects bounds + fallback.
+  assert.strictEqual(voice._clamp(0.5, 0.5, 1.8, 1), 0.5, "clamp at lower bound");
+  assert.strictEqual(voice._clamp(2.0, 0.5, 1.8, 1), 1.8, "clamp at upper bound");
+  assert.strictEqual(voice._clamp(NaN, 0.5, 1.8, 1), 1, "clamp fallback for NaN");
+  assert.strictEqual(voice._clamp(undefined, 0.5, 1.8, 1), 1, "clamp fallback for undefined");
+  console.log("Voice module tests passed.");
+
+  // ─── Persona ↔ voice profile contract ───────────────────────────────
+  // Every persona must have a voiceProfile with gender/rate/pitch + at
+  // least one preferred voice name hint so the runtime can pick a
+  // sensible voice on macOS/Windows/Linux.
+  list.forEach(function (p) {
+    assert.ok(p.voiceProfile, "persona " + p.id + " should have a voiceProfile");
+    assert.ok(["male", "female"].indexOf(p.voiceProfile.gender) >= 0,
+      "persona " + p.id + " voiceProfile.gender should be male|female");
+    assert.ok(typeof p.voiceProfile.rate === "number" && p.voiceProfile.rate >= 0.5 && p.voiceProfile.rate <= 1.8,
+      "persona " + p.id + " voiceProfile.rate in 0.5..1.8");
+    assert.ok(typeof p.voiceProfile.pitch === "number" && p.voiceProfile.pitch >= 0.5 && p.voiceProfile.pitch <= 1.8,
+      "persona " + p.id + " voiceProfile.pitch in 0.5..1.8");
+    assert.ok(Array.isArray(p.voiceProfile.preferredNames) && p.voiceProfile.preferredNames.length > 0,
+      "persona " + p.id + " voiceProfile.preferredNames non-empty");
+  });
+  console.log("Persona voice profile tests passed.");
 }
 
 run();

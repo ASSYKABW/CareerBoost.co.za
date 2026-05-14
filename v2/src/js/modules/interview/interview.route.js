@@ -47,7 +47,18 @@
     intelWarnings: [],
     intelPackEnvelope: null,
     intelIncludeInMock: true,
-    activeRoleContextKey: ""
+    activeRoleContextKey: "",
+    // Phase 4.5 voice mode:
+    //   voiceMode      — user toggled "Voice" in the toolbar.
+    //   voiceListening — recognition is currently active (mic open).
+    //   voiceInterim   — partial transcript shown while user speaks.
+    //   voiceSpeaking  — synthesis is actively reading an AI reply.
+    //   voiceError     — last STT/TTS error message; cleared on next try.
+    voiceMode: false,
+    voiceListening: false,
+    voiceInterim: "",
+    voiceSpeaking: false,
+    voiceError: ""
   };
 
   function getSt() {
@@ -1037,6 +1048,169 @@
     };
   }
 
+  // ─── Phase 4.5 voice helpers ────────────────────────────────────────
+  // Speak the most recent interviewer message aloud, in the active
+  // persona's voice profile. No-op when voice mode is off or the
+  // synthesis API is unsupported.
+  function speakInterviewerTurn(text) {
+    if (!viewState.voiceMode) return;
+    const voice = window.CBV2 && window.CBV2.interviewVoice;
+    if (!voice || !voice.isSynthesisSupported()) return;
+    const personas = window.CBV2 && window.CBV2.interviewPersonas;
+    const persona = personas ? personas.get(viewState.mockMeta.persona || personas.DEFAULT_ID) : null;
+    const profile = (persona && persona.voiceProfile) || null;
+    viewState.voiceSpeaking = true;
+    window.CBV2.renderCurrentRoute();
+    voice.speak(text, {
+      profile: profile,
+      onEnd: function () {
+        viewState.voiceSpeaking = false;
+        window.CBV2.renderCurrentRoute();
+        // Auto-open the mic after the interviewer finishes — natural
+        // conversational rhythm; the candidate doesn't have to click.
+        // Only do this if voice mode is still on and the session isn't
+        // closed (avoids re-listening during debrief).
+        if (viewState.voiceMode && !viewState.mockSessionClosed && !viewState.mockBusy) {
+          startVoiceListening();
+        }
+      },
+      onError: function (err) {
+        viewState.voiceSpeaking = false;
+        viewState.voiceError = err && err.message ? err.message : "Voice playback failed.";
+        window.CBV2.renderCurrentRoute();
+      }
+    });
+  }
+
+  // Begin push-to-talk recognition. Interim results populate the reply
+  // textarea live; final transcript stays in the textarea so the user
+  // can review + edit before sending.
+  function startVoiceListening() {
+    const voice = window.CBV2 && window.CBV2.interviewVoice;
+    if (!voice || !voice.isRecognitionSupported()) return;
+    if (viewState.voiceListening) return;
+    viewState.voiceListening = true;
+    viewState.voiceInterim = "";
+    viewState.voiceError = "";
+    window.CBV2.renderCurrentRoute();
+    voice.listen({
+      lang: "en-US",
+      continuous: false,
+      interimResults: true,
+      onResult: function (res) {
+        viewState.voiceInterim = res.text;
+        // Mirror interim text into the reply textarea so the user sees
+        // their words appear in real time.
+        const box = document.getElementById("mock-reply-box");
+        if (box) box.value = res.text;
+      },
+      onEnd: function (res) {
+        viewState.voiceListening = false;
+        viewState.voiceInterim = "";
+        const box = document.getElementById("mock-reply-box");
+        const finalText = (box && box.value) || (res && res.text) || "";
+        window.CBV2.renderCurrentRoute();
+        // Auto-submit if we have substantive text. Trim + minimum length
+        // gate prevents tiny "uh" pickups from triggering a turn.
+        if (finalText.trim().length >= 8 && !viewState.mockBusy) {
+          submitMockReply();
+        }
+      },
+      onError: function (err) {
+        viewState.voiceListening = false;
+        viewState.voiceError = err && err.message ? err.message : "Microphone error.";
+        window.CBV2.renderCurrentRoute();
+      }
+    });
+  }
+
+  function stopVoiceListening() {
+    const voice = window.CBV2 && window.CBV2.interviewVoice;
+    if (!voice) return;
+    voice.stopListening();
+    viewState.voiceListening = false;
+    viewState.voiceInterim = "";
+  }
+
+  function toggleVoiceMode() {
+    const voice = window.CBV2 && window.CBV2.interviewVoice;
+    if (!voice) return;
+    if (!voice.isFullySupported()) {
+      viewState.voiceError = !voice.isRecognitionSupported()
+        ? "Speech recognition isn't available in this browser. Chrome, Edge, or Safari work best."
+        : "Speech synthesis isn't available in this browser.";
+      window.CBV2.renderCurrentRoute();
+      return;
+    }
+    viewState.voiceMode = !viewState.voiceMode;
+    viewState.voiceError = "";
+    if (!viewState.voiceMode) {
+      // Turning OFF: stop any in-flight speaking / listening.
+      voice.stopSpeaking();
+      voice.stopListening();
+      viewState.voiceListening = false;
+      viewState.voiceSpeaking = false;
+    }
+    window.CBV2.renderCurrentRoute();
+  }
+
+  function renderVoiceToolbar() {
+    const voice = window.CBV2 && window.CBV2.interviewVoice;
+    if (!voice) return "";
+    const st = getSt();
+    const supported = voice.isFullySupported();
+    const recOnly = voice.isRecognitionSupported() && !voice.isSynthesisSupported();
+    if (!supported && !recOnly) {
+      // Neither — surface a tiny notice instead of a broken toggle.
+      return '<p class="ai-meta interview-voice-unsupported"><i class="fa-solid fa-circle-info"></i> Voice mode needs Chrome, Edge, or Safari.</p>';
+    }
+    const on = viewState.voiceMode;
+    const speaking = viewState.voiceSpeaking;
+    const listening = viewState.voiceListening;
+    const errLine = viewState.voiceError
+      ? '<p class="ai-error interview-voice-error">' + st(viewState.voiceError) + '</p>'
+      : '';
+    const indicator = on
+      ? (listening
+          ? '<span class="interview-voice-indicator is-listening"><i class="fa-solid fa-microphone"></i> Listening…</span>'
+          : speaking
+            ? '<span class="interview-voice-indicator is-speaking"><i class="fa-solid fa-volume-high fa-beat-fade"></i> Speaking…</span>'
+            : '<span class="interview-voice-indicator is-ready"><i class="fa-solid fa-circle"></i> Voice ready</span>')
+      : '';
+    return (
+      '<div class="interview-voice-bar">' +
+        '<button type="button" id="mock-voice-toggle" class="' + (on ? "btn-primary" : "btn-ghost") + '" title="Voice mode: speak your reply, the interviewer speaks back">' +
+          '<i class="fa-solid ' + (on ? "fa-microphone" : "fa-microphone-slash") + '"></i> ' +
+          (on ? "Voice on" : "Voice off") +
+        '</button>' +
+        indicator +
+        errLine +
+      '</div>'
+    );
+  }
+
+  function bindVoiceControls() {
+    const toggle = document.getElementById("mock-voice-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", function () { toggleVoiceMode(); });
+    }
+    const mic = document.getElementById("mock-voice-mic");
+    if (mic) {
+      mic.addEventListener("click", function () {
+        if (viewState.voiceListening) {
+          stopVoiceListening();
+        } else {
+          // Stop interviewer playback when user wants to interject —
+          // mirrors a real interview interruption.
+          const voice = window.CBV2 && window.CBV2.interviewVoice;
+          if (voice && viewState.voiceSpeaking) voice.stopSpeaking();
+          startVoiceListening();
+        }
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+  }
+
   function scrollMockTranscript() {
     window.requestAnimationFrame(function () {
       const el =
@@ -1139,6 +1313,10 @@
       streamingBubble.phase = env.data.phase;
       streamingBubble.streaming = false;
       viewState.mockInterviewerTurns = 1;
+      // Phase 4.5 voice: speak the AI's opening turn aloud if voice
+      // mode is on. Done AFTER the bubble text is finalized so chunks
+      // match exactly what the user sees.
+      speakInterviewerTurn(env.data.message);
       if (env.data.isComplete) {
         viewState.mockSessionClosed = true;
         await runInterviewDebrief(false);
@@ -1246,6 +1424,9 @@
       streamingBubble.phase = env.data.phase;
       streamingBubble.streaming = false;
       viewState.mockInterviewerTurns += 1;
+      // Phase 4.5 voice: speak each new interviewer turn aloud in the
+      // persona's voice. No-op if voice mode is off.
+      speakInterviewerTurn(env.data.message);
 
       if (env.data.isComplete) {
         viewState.mockSessionClosed = true;
@@ -2023,11 +2204,20 @@
           </aside>
         </div>
         ${viewState.mockError ? '<p class="ai-error">' + st(viewState.mockError) + "</p>" : ""}
+        ${renderVoiceToolbar()}
         <div id="mock-transcript-wrap" class="mock-transcript-wrap interview-transcript-wrap">
           ${renderMockTranscript()}
         </div>
         <label class="mock-reply-label interview-reply-box" ${showReply ? "" : "hidden"}>
-          Your spoken answer
+          <span class="interview-reply-head">
+            <span>Your spoken answer</span>
+            ${viewState.voiceMode && window.CBV2.interviewVoice && window.CBV2.interviewVoice.isRecognitionSupported()
+              ? '<button type="button" id="mock-voice-mic" class="interview-voice-mic ' + (viewState.voiceListening ? "is-listening" : "") + '" title="' + (viewState.voiceListening ? "Stop listening" : "Hold or click to speak") + '">' +
+                '<i class="fa-solid ' + (viewState.voiceListening ? "fa-stop" : "fa-microphone") + '"></i> ' +
+                (viewState.voiceListening ? "Listening — click to stop" : "Tap to speak") +
+              '</button>'
+              : ''}
+          </span>
           <textarea id="mock-reply-box" rows="4" placeholder="Answer as you would on a live call. Be specific; STAR works well." ${replyLocked ? "disabled" : ""}></textarea>
         </label>
         ${renderMockDebriefCardV2()}
@@ -2070,6 +2260,10 @@
     // Phase 4.5: persona chip selector lives inside the mock setup form
     // and is rendered on every interview-route render.
     bindPersonaSelector();
+    // Phase 4.5 voice: bind voice mode toggle + push-to-talk mic.
+    // The bindings are idempotent — bind on every render so they
+    // survive view re-renders during streaming.
+    bindVoiceControls();
     const targetSelect = document.getElementById("interview-target-select");
     if (targetSelect) {
       targetSelect.addEventListener("change", function () {

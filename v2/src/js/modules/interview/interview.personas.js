@@ -36,6 +36,15 @@
         "Sells the company between questions",
       ],
       difficulty: "easy",
+      // Phase 4.5 voice: warm, friendly female voice, slightly faster
+      // than normal — recruiters sound upbeat and energetic.
+      voiceProfile: {
+        gender: "female",
+        rate: 1.05,
+        pitch: 1.12,
+        preferredLang: "en-US",
+        preferredNames: ["Samantha", "Victoria", "Karen", "Zira", "Jenny", "Google US English"],
+      },
       promptDirective:
         "PERSONA OVERRIDE: You are playing a WARM RECRUITER on an initial " +
         "screen call. Tone: friendly, encouraging, conversational. Use the " +
@@ -61,6 +70,15 @@
         "Calls out vague answers explicitly but constructively",
       ],
       difficulty: "medium",
+      // Phase 4.5 voice: confident male voice at normal rate — analytical
+      // and grounded, not theatrical.
+      voiceProfile: {
+        gender: "male",
+        rate: 1.0,
+        pitch: 0.95,
+        preferredLang: "en-US",
+        preferredNames: ["Daniel", "Alex", "Fred", "David", "Mark", "Tom"],
+      },
       promptDirective:
         "PERSONA OVERRIDE: You are playing a TECHNICAL LEAD or senior " +
         "engineer/practitioner who will be the candidate's peer. Tone: " +
@@ -86,6 +104,16 @@
         "Politely impatient with rambling answers",
       ],
       difficulty: "medium",
+      // Phase 4.5 voice: slightly slower, polished — exec cadence is
+      // measured, never rushed. Prefer en-GB voices for a polished
+      // boardroom feel when available.
+      voiceProfile: {
+        gender: "female",
+        rate: 0.95,
+        pitch: 0.95,
+        preferredLang: "en-GB",
+        preferredNames: ["Moira", "Fiona", "Tessa", "Karen", "Hazel"],
+      },
       promptDirective:
         "PERSONA OVERRIDE: You are playing an EXECUTIVE (VP / Director / " +
         "CXO) on the final-round panel. Tone: poised, succinct, polished. " +
@@ -110,6 +138,16 @@
         "Reads vague answers as red flags out loud",
       ],
       difficulty: "hard",
+      // Phase 4.5 voice: low pitch, slower, cool delivery — the silence
+      // between sentences is part of the pressure. Avoid sounding angry
+      // (that would be unhelpful); sound measured and skeptical.
+      voiceProfile: {
+        gender: "male",
+        rate: 0.9,
+        pitch: 0.85,
+        preferredLang: "en-US",
+        preferredNames: ["Daniel", "Alex", "Fred", "David"],
+      },
       promptDirective:
         "PERSONA OVERRIDE: You are playing a HOSTILE SKEPTIC interviewer " +
         "— think a brand-new manager who's read too many engineering " +
