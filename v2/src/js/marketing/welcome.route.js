@@ -147,26 +147,22 @@
     }
   ];
 
-  // ─── Brand glyph (reused in nav + footer) ──────────────────────────
-  // Logo strategy:
-  //   1. If the user has dropped a `logo.svg` (or .png) into
-  //      `v2/src/assets/`, the <img> tag loads it.
-  //   2. If that file is missing, the browser's onerror swaps in the
-  //      bundled `logo-default.svg` (a more polished mark than the
-  //      flat "CB" square we used before).
-  //   3. We pre-bake the default path into src= so users with
-  //      JavaScript disabled still see a brand mark.
-  function renderBrand(showTagline) {
+  // ─── Brand lockup (used in nav + footer) ───────────────────────────
+  // The CareerBoost logo file is a FULL LOCKUP — it already contains
+  // the diamond icon, the "CareerBoost" wordmark, AND the "BUILT FOR
+  // AMBITION" tagline. So we render the image alone; no separate
+  // text labels are added next to it (that would duplicate what's in
+  // the image).
+  //
+  // Replace strategy: drop a different `logo.svg` (or .png) into
+  // `v2/src/assets/` to change the lockup. If the user provides
+  // an icon-only mark (1:1 aspect ratio), drop it as `logo-mark.svg`
+  // — the nav at very narrow viewports prefers the mark.
+  function renderBrand() {
     return (
-      '<span class="lp-brand">' +
-        '<span class="lp-brand-mark">' +
-          '<img src="./src/assets/logo.svg" alt="CareerBoost"' +
-          ' onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'./src/assets/logo-default.svg\';}" />' +
-        '</span>' +
-        '<span class="lp-brand-text">' +
-          '<strong>CareerBoost</strong>' +
-          (showTagline ? '<small>Your career operating system</small>' : '') +
-        '</span>' +
+      '<span class="lp-brand lp-brand--lockup">' +
+        '<img class="lp-brand-img" src="./src/assets/logo.svg" alt="CareerBoost"' +
+        ' onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'./src/assets/logo-default.svg\';}" />' +
       '</span>'
     );
   }
@@ -183,7 +179,7 @@
     }).join("");
     return (
       '<div class="lp-footer-brand-col">' +
-        renderBrand(true) +
+        renderBrand() +
         '<p class="lp-footer-tagline">A calm, AI-powered workspace for ambitious job seekers. Research roles, tailor every application, rehearse interviews, track every move.</p>' +
         '<div class="lp-social-row">' + socials + '</div>' +
       '</div>'
@@ -300,7 +296,7 @@
         // ── Sticky nav ─────────────────────────────────────────────
         '<header class="lp-nav">' +
           '<div class="lp-nav-inner">' +
-            '<a class="lp-nav-brand" href="#/welcome" aria-label="CareerBoost home">' + renderBrand(false) + '</a>' +
+            '<a class="lp-nav-brand" href="#/welcome" aria-label="CareerBoost home">' + renderBrand() + '</a>' +
             '<nav class="lp-nav-links" aria-label="Landing navigation">' +
               '<a href="#features">Features</a>' +
               '<a href="#how">How it works</a>' +

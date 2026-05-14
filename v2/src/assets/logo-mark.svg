@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CareerBoost icon-only mark. Just the diamond + "CB" — for tight
+     contexts like a mobile nav, favicon, or anywhere the full
+     wordmark won't fit. 1:1 aspect ratio. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="CareerBoost">
+  <defs>
+    <linearGradient id="cbMarkBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1326"/>
+      <stop offset="100%" stop-color="#0a0f1d"/>
+    </linearGradient>
+    <linearGradient id="cbMarkFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(34, 227, 255, 0.14)"/>
+      <stop offset="100%" stop-color="rgba(34, 227, 255, 0.04)"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="22" ry="22" fill="url(#cbMarkBg)" stroke="#1a2240" stroke-width="1"/>
+  <g transform="translate(100, 100)">
+    <rect x="-62" y="-62" width="124" height="124" rx="7" ry="7"
+          transform="rotate(45)"
+          fill="url(#cbMarkFill)"
+          stroke="#22e3ff" stroke-width="4"/>
+    <rect x="-46" y="-46" width="92" height="92" rx="4" ry="4"
+          transform="rotate(45)"
+          fill="none"
+          stroke="#22e3ff" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="0" y="14" text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif"
+          font-weight="700" font-size="44" fill="#f8fbff" letter-spacing="0.04em">CB</text>
+  </g>
+</svg>

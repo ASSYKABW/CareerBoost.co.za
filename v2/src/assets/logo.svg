@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CareerBoost brand lockup. Three elements:
+       1. Diamond mark with "CB" in the center
+       2. "CareerBoost" wordmark (Career white, Boost blue)
+       3. Thin cyan divider + "BUILT FOR AMBITION" tagline
+     Crafted from a uploaded brand asset; SVG so it stays crisp at
+     every render size. ViewBox is 600x200 (3:1) — the renderBrand()
+     helper scales to fit the nav (36px tall) and footer (50px tall).
+     To replace, drop a different `logo.svg` into this folder. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" role="img" aria-label="CareerBoost — Built for ambition">
+  <defs>
+    <linearGradient id="cbLogoBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1326"/>
+      <stop offset="100%" stop-color="#0a0f1d"/>
+    </linearGradient>
+    <linearGradient id="cbLogoDiamondFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(34, 227, 255, 0.12)"/>
+      <stop offset="100%" stop-color="rgba(34, 227, 255, 0.04)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded dark container -->
+  <rect width="600" height="200" rx="22" ry="22" fill="url(#cbLogoBg)" stroke="#1a2240" stroke-width="1"/>
+
+  <!-- Diamond mark (rotated square) with thin inner outline -->
+  <g transform="translate(100, 100)">
+    <rect x="-58" y="-58" width="116" height="116" rx="6" ry="6"
+          transform="rotate(45)"
+          fill="url(#cbLogoDiamondFill)"
+          stroke="#22e3ff" stroke-width="3.5"/>
+    <rect x="-44" y="-44" width="88" height="88" rx="4" ry="4"
+          transform="rotate(45)"
+          fill="none"
+          stroke="#22e3ff" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="0" y="14" text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif"
+          font-weight="700" font-size="40" fill="#f8fbff" letter-spacing="0.04em">CB</text>
+  </g>
+
+  <!-- Wordmark: Career (white) + Boost (cyan-blue) -->
+  <text x="195" y="105"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif"
+        font-weight="700" font-size="62" letter-spacing="-0.02em">
+    <tspan fill="#f8fbff">Career</tspan><tspan fill="#38bdf8">Boost</tspan>
+  </text>
+
+  <!-- Divider line -->
+  <line x1="195" y1="130" x2="555" y2="130" stroke="#22e3ff" stroke-opacity="0.45" stroke-width="1"/>
+
+  <!-- Tagline -->
+  <text x="195" y="162"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif"
+        font-weight="600" font-size="15" letter-spacing="0.20em" fill="#6b7c93">BUILT FOR AMBITION</text>
+</svg>

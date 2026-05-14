@@ -5089,36 +5089,26 @@ a.settings-status-card:hover {
   color: var(--lp-accent-strong);
 }
 
-/* ── Brand ────────────────────────────────────────────────────────── */
+/* ── Brand lockup ────────────────────────────────────────────────────
+   The logo file is a FULL LOCKUP (icon + wordmark + tagline) so the
+   brand is just the image — no separate text labels. We size by
+   height so the 3:1 aspect-ratio image scales correctly. Nav gets
+   a 40px height; the footer uses a larger 56px lockup for prominence. */
 .lp-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  flex-shrink: 0;
 }
-.lp-brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px; height: 36px;
-  border-radius: 10px;
-  overflow: hidden;
-  /* No background — the logo image carries its own visual weight.
-     Falls back to a subtle gradient frame only if the logo is missing. */
-  background: transparent;
-}
-.lp-brand-mark img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.lp-brand-img {
   display: block;
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
 }
-.lp-brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
+.lp-footer-brand-col .lp-brand-img {
+  height: 56px;
 }
-.lp-brand-text strong { color: var(--lp-text); font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
-.lp-brand-text small { color: var(--lp-text-dim); font-size: 11px; }
 
 /* ── Sticky nav ──────────────────────────────────────────────────── */
 .lp-nav {
@@ -5854,4 +5844,7 @@ a.settings-status-card:hover {
   .lp-final-card { padding: 28px; }
   .lp-final-stats { grid-template-columns: 1fr; }
   .lp-footer-grid { grid-template-columns: 1fr; }
+  /* On narrow screens the wide lockup eats the nav. Shrink the
+     nav logo so it stays balanced against the small Start free CTA. */
+  .lp-nav .lp-brand-img { height: 32px; }
 }
