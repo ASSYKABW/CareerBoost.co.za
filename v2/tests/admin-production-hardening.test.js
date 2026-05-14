@@ -18,7 +18,16 @@ function assertHasAll(source, values, message) {
 function run() {
   const fn = read("backend/supabase/functions/admin-overview/index.ts");
   const migration = read("backend/supabase/migrations/0009_admin_production_hardening.sql");
-  const adminRoute = read("v2/src/js/modules/admin/admin.route.js");
+  // Phase D: admin.route.js was split into helpers + per-section files. The
+  // export buttons + privacy/freshness HTML now live in sections/reports.js
+  // and sections/settings.js. Read the combined module source for assertions.
+  const adminRoute = [
+    "v2/src/js/modules/admin/admin.route.js",
+    "v2/src/js/modules/admin/admin-helpers.js",
+    "v2/src/js/modules/admin/sections/reports.js",
+    "v2/src/js/modules/admin/sections/settings.js",
+    "v2/src/js/modules/admin/sections/logs.js"
+  ].map(read).join("\n");
 
   const blockedKeys = [
     "apiKey",

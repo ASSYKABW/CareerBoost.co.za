@@ -69,6 +69,15 @@ function run() {
   const ctx = makeContext();
   loadScript(ctx, "src/js/app/config.js");
   ctx.window.CB_CONFIG.forceLocal = true;
+  // Phase D: helpers + section files load first, then the route dispatcher.
+  loadScript(ctx, "src/js/modules/admin/admin-helpers.js");
+  [
+    "overview", "usage-engagement", "funnel", "users", "user-support",
+    "job-feed", "ai-cost", "extension", "sync", "risk-center", "reports",
+    "logs", "settings"
+  ].forEach(function (name) {
+    loadScript(ctx, "src/js/modules/admin/sections/" + name + ".js");
+  });
   loadScript(ctx, "src/js/modules/admin/admin.route.js");
   assert.strictEqual(typeof ctx.window.CBV2.routes.admin, "function", "admin route should register");
   assert.strictEqual(ctx.window.CBV2.adminAccess.canAccess(), true, "local preview should be allowed");

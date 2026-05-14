@@ -111,6 +111,24 @@
   <script src="./src/js/modules/analytics/analytics.route.js"></script>
   <script src="./src/js/modules/settings/settings.meta.js"></script>
   <script src="./src/js/modules/settings/settings.route.js"></script>
+  <!-- Phase D: admin console split into helpers + per-section files. Load order:
+       admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
+       sections/*.js each register on window.CBV2.adminSections[<id>];
+       admin.route.js (loaded last) wires the dispatcher + fetchers + bindings. -->
+  <script src="./src/js/modules/admin/admin-helpers.js"></script>
+  <script src="./src/js/modules/admin/sections/overview.js"></script>
+  <script src="./src/js/modules/admin/sections/usage-engagement.js"></script>
+  <script src="./src/js/modules/admin/sections/funnel.js"></script>
+  <script src="./src/js/modules/admin/sections/users.js"></script>
+  <script src="./src/js/modules/admin/sections/user-support.js"></script>
+  <script src="./src/js/modules/admin/sections/job-feed.js"></script>
+  <script src="./src/js/modules/admin/sections/ai-cost.js"></script>
+  <script src="./src/js/modules/admin/sections/extension.js"></script>
+  <script src="./src/js/modules/admin/sections/sync.js"></script>
+  <script src="./src/js/modules/admin/sections/risk-center.js"></script>
+  <script src="./src/js/modules/admin/sections/reports.js"></script>
+  <script src="./src/js/modules/admin/sections/logs.js"></script>
+  <script src="./src/js/modules/admin/sections/settings.js"></script>
   <script src="./src/js/modules/admin/admin.route.js"></script>
   <script src="./src/js/app/router.js"></script>
   <script src="./src/js/app/bootstrap.js"></script>
