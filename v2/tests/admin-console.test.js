@@ -70,11 +70,12 @@ function run() {
   loadScript(ctx, "src/js/app/config.js");
   ctx.window.CB_CONFIG.forceLocal = true;
   // Phase D: helpers + section files load first, then the route dispatcher.
+  // Phase E1: command-center is loaded too (new admin home).
   loadScript(ctx, "src/js/modules/admin/admin-helpers.js");
   [
-    "overview", "usage-engagement", "funnel", "users", "user-support",
-    "job-feed", "ai-cost", "extension", "sync", "risk-center", "reports",
-    "logs", "settings"
+    "command-center", "overview", "usage-engagement", "funnel", "users",
+    "user-support", "job-feed", "ai-cost", "extension", "sync",
+    "risk-center", "reports", "logs", "settings"
   ].forEach(function (name) {
     loadScript(ctx, "src/js/modules/admin/sections/" + name + ".js");
   });
@@ -86,7 +87,9 @@ function run() {
   assert.ok(/cb-logo--admin/.test(html), "admin shell should use the CareerBoost logo lockup");
   assert.ok(!/admin-brand-mark/.test(html), "admin shell should not render the temporary CB tile");
   assert.ok(/Usage &amp; operations command center/.test(html), "admin shell should render overview header");
-  assert.ok(/Total pipeline records/.test(html), "admin shell should render metric cards");
+  // Phase E1: home is now the Command Center. North Star + AARRR + priorities
+  // render even with no remote snapshot, so the shell shows the new copy.
+  assert.ok(/Active placements/.test(html) || /Total pipeline records/.test(html), "admin shell should render command center or overview metrics");
 
   ctx.window.CB_CONFIG.forceLocal = false;
   ctx.window.CBV2.config.isBackendEnabled = function () { return true; };
@@ -367,13 +370,68 @@ function run() {
       }
     }
   });
+  // Phase E1: simulate the new backend fields landing in the snapshot so
+  // the Command Center renders fully. The applyRemoteSnapshot above
+  // doesn't include E1 blocks, so we patch them on the cached payload.
+  (function () {
+    const remote = ctx.window.CBV2.adminMetrics.state();
+    const enriched = Object.assign({}, remote.data, {
+      northStar: {
+        label: "Active placements",
+        sublabel: "Candidates with interview or offer in last 30 days",
+        value: 3,
+        prior: 1,
+        delta: 2,
+        deltaPct: 200,
+        direction: "up",
+        target: 5,
+        progress: 60,
+        progressTone: "blue",
+        healthSignal: "tracking",
+        note: "Self-reported milestones."
+      },
+      aarrr: [
+        { stage: "acquisition", label: "Acquisition", icon: "fa-bullhorn", value: 4, delta: 2, deltaPct: 100, sub: "2 prior 30d", status: "good", why: "Up MoM.", action: "Keep mix.", section: "growth" },
+        { stage: "activation",  label: "Activation",  icon: "fa-bolt",     value: 50, unit: "%", sub: "1 of 2 users",   status: "watch", why: "Below floor.", action: "Fix step.", section: "growth" },
+        { stage: "retention",   label: "Retention",   icon: "fa-arrows-rotate", value: 50, unit: "%", sub: "2 MAU", status: "good", why: "Habit forming.", action: "Protect feature.", section: "users" },
+        { stage: "revenue",     label: "Revenue",     icon: "fa-coins",    value: 0, preFormatted: "Pre-revenue", sub: "AI cost $0.21 / MAU", status: "good", why: "Healthy unit econ.", action: "Launch Pro tier.", section: "ai-cost" },
+        { stage: "referral",    label: "Referral",    icon: "fa-share-nodes", value: 1, sub: "advocates", status: "watch", why: "Some advocates.", action: "Ship referral loop.", section: "users" }
+      ],
+      priorities: [
+        { id: "north-star-gap", title: "2 placements short of target", why: "Below 5 floor.", rootCause: "Conversion below floor.", action: "Open Product Intelligence.", impact: 10, urgency: 8, section: "growth", actionType: "navigate", icon: "fa-bullseye" }
+      ],
+      weeklyChanges: [
+        { metric: "Signups", icon: "fa-user-plus", now: 3, prior: 1, diff: 2, pct: 200, direction: "up", goodDirection: "up" }
+      ],
+      outcomes: {
+        placements30d: 3, placementsPrior30d: 1, placementDelta: 2, placementDeltaPct: 200,
+        interviews30d: 2, offers30d: 1, distinctPlacedUsers30d: 2, attributedShare: 67,
+        byChannel: [{ channel: "linkedin", interviews_30d: 1, offers_30d: 1, placements_30d: 2, distinct_users_30d: 2 }],
+        target: 5, progressPct: 60, sourceNote: "From self-reported milestones"
+      }
+    });
+    ctx.window.CBV2.adminMetrics.applyRemoteSnapshot(enriched);
+  })();
+
   const cloudHtml = ctx.window.CBV2.routes.admin();
   assert.ok(/Admin backend connected/.test(cloudHtml), "remote admin metrics should show cloud status");
-  assert.ok(/Operator alerts/.test(cloudHtml), "remote admin metrics should show operator alerts");
-  assert.ok(/Source truth needs review/.test(cloudHtml), "admin alerts should include backend alerts");
-  assert.ok(/User accounts/.test(cloudHtml), "remote admin metrics should render user KPI");
-  assert.ok(/Activation score/.test(cloudHtml), "remote admin metrics should render activation KPI");
-  assert.ok(/\$0\.4200/.test(cloudHtml), "remote admin metrics should render AI spend");
+  // Phase E1: home is Command Center now.
+  assert.ok(/North star/.test(cloudHtml), "command center should render the North Star kicker");
+  assert.ok(/Active placements/.test(cloudHtml), "command center should render the North Star metric");
+  assert.ok(/Acquisition/.test(cloudHtml) && /Activation/.test(cloudHtml) && /Retention/.test(cloudHtml) && /Revenue/.test(cloudHtml) && /Referral/.test(cloudHtml), "command center should render all five AARRR stages");
+  assert.ok(/Today's priorities/.test(cloudHtml), "command center should render the priorities panel");
+  assert.ok(/Take action/.test(cloudHtml), "priorities should expose a take-action CTA");
+  assert.ok(/What moved this week/.test(cloudHtml), "command center should render weekly changes");
+  assert.ok(/Which channels lead to interviews/.test(cloudHtml), "command center should render outcome attribution");
+
+  // Test the old overview alias redirect: section=overview should serve
+  // the Command Center, not the legacy overview renderer.
+  ctx.window.CBV2.getRouteParams = function () { return { section: "overview" }; };
+  const aliasHtml = ctx.window.CBV2.routes.admin();
+  assert.ok(/Active placements/.test(aliasHtml), "section=overview alias should redirect to Command Center");
+
+  // Reset to default route for subsequent assertions.
+  ctx.window.CBV2.getRouteParams = function () { return {}; };
 
   ctx.window.CBV2.getRouteParams = function () { return { section: "usage" }; };
   const usageHtml = ctx.window.CBV2.routes.admin();

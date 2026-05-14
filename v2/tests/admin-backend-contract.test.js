@@ -92,6 +92,29 @@ function run() {
   assert.ok(/\[functions\.admin-overview\]/.test(config), "Supabase config should register admin-overview");
   assert.ok(/fn:deploy:admin/.test(pkg), "backend package should expose admin deploy script");
 
+  // Phase E1: Command Center contract.
+  const outcomesMigration = read("backend/supabase/migrations/0012_interview_outcomes.sql");
+  assert.ok(/create table if not exists public\.interview_outcomes/.test(outcomesMigration), "outcomes migration should create interview_outcomes table");
+  assert.ok(/outcome_type in \('interview', 'offer'/.test(outcomesMigration), "outcomes migration should constrain outcome_type values");
+  assert.ok(/octet_length\(notes\) <= 4096/.test(outcomesMigration), "outcomes migration should cap notes at 4KB");
+  assert.ok(/alter table public\.interview_outcomes enable row level security/.test(outcomesMigration), "outcomes migration should enable RLS");
+  assert.ok(/force row level security/.test(outcomesMigration), "outcomes migration should force RLS");
+  assert.ok(/interview_outcomes_owner_select/.test(outcomesMigration), "outcomes migration should expose owner select policy");
+  assert.ok(/interview_outcomes_owner_insert/.test(outcomesMigration), "outcomes migration should allow owner inserts");
+  assert.ok(/create or replace view public\.v_admin_outcome_rollup/.test(outcomesMigration), "outcomes migration should expose the admin rollup view");
+  assert.ok(/create or replace view public\.v_admin_outcome_by_channel/.test(outcomesMigration), "outcomes migration should expose the by-channel view");
+  assert.ok(/revoke all on public\.interview_outcomes from anon/.test(outcomesMigration), "outcomes migration should revoke anon access");
+
+  assert.ok(/from\("v_admin_outcome_rollup"\)/.test(fn), "admin-overview should read the outcome rollup view");
+  assert.ok(/from\("v_admin_outcome_by_channel"\)/.test(fn), "admin-overview should read the outcome channel view");
+  assert.ok(/const northStar = \{/.test(fn), "admin-overview should compute the northStar block");
+  assert.ok(/const aarrr = \[/.test(fn), "admin-overview should compute the AARRR pirate-metrics block");
+  assert.ok(/stage: "acquisition"[\s\S]*stage: "activation"[\s\S]*stage: "retention"[\s\S]*stage: "revenue"[\s\S]*stage: "referral"/.test(fn), "AARRR block must include all five stages");
+  assert.ok(/const priorities = priorityCandidates/.test(fn), "admin-overview should compute today's priorities");
+  assert.ok(/const weeklyChanges = \[/.test(fn), "admin-overview should compute weekly changes");
+  assert.ok(/const outcomesBlock = \{/.test(fn), "admin-overview should compute outcomes block");
+  assert.ok(/northStar,\s*aarrr,\s*priorities,\s*weeklyChanges,\s*outcomes: outcomesBlock/.test(fn), "admin-overview response should expose Command Center blocks at top level");
+
   console.log("Admin backend contract tests passed.");
 }
 

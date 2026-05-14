@@ -116,6 +116,11 @@
        sections/*.js each register on window.CBV2.adminSections[<id>];
        admin.route.js (loaded last) wires the dispatcher + fetchers + bindings. -->
   <script src="./src/js/modules/admin/admin-helpers.js"></script>
+  <!-- Phase E1: Command Center replaces the old Overview as the admin home.
+       The old sections/overview.js stays in the tree as a fallback for any
+       caller that still requests section=overview, but it's no longer the
+       primary home — currentSection() redirects "overview" → "command-center". -->
+  <script src="./src/js/modules/admin/sections/command-center.js"></script>
   <script src="./src/js/modules/admin/sections/overview.js"></script>
   <script src="./src/js/modules/admin/sections/usage-engagement.js"></script>
   <script src="./src/js/modules/admin/sections/funnel.js"></script>

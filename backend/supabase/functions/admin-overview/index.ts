@@ -1766,6 +1766,445 @@ Deno.serve(async (req) => {
     })),
   ].sort((a, b) => Date.parse(String(b.at || "")) - Date.parse(String(a.at || ""))).slice(0, 10);
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Phase E1: Command Center blocks — North Star, AARRR, priorities,
+  //           outcomes attribution, weekly changes.
+  //
+  // We read the v_admin_outcome_rollup view first (single round-trip,
+  // window'd in SQL). When the new table is empty (new install / outcomes
+  // not yet self-reported), we fall back to computing placements from the
+  // existing applications.stage snapshot so the metric never shows 0
+  // when there's clearly pipeline activity.
+  // ──────────────────────────────────────────────────────────────────────
+  const { data: outcomeRollupRows, error: outcomeRollupError } = await svc
+    .from("v_admin_outcome_rollup")
+    .select("window_name, outcome_type, event_count, distinct_users, distinct_companies, attributed_count");
+  if (outcomeRollupError) warnings.push("outcome_rollup: " + outcomeRollupError.message);
+
+  const { data: outcomeChannelRows, error: outcomeChannelError } = await svc
+    .from("v_admin_outcome_by_channel")
+    .select("channel, interviews_30d, offers_30d, placements_30d, distinct_users_30d");
+  if (outcomeChannelError) warnings.push("outcome_channel: " + outcomeChannelError.message);
+
+  // Roll up the view rows into a window-keyed map for quick lookup.
+  const outcomeByWindow: Record<string, { interviews: number; offers: number; placements: number; distinctUsers: number; attributed: number }> = {
+    last_30d:  { interviews: 0, offers: 0, placements: 0, distinctUsers: 0, attributed: 0 },
+    prior_30d: { interviews: 0, offers: 0, placements: 0, distinctUsers: 0, attributed: 0 },
+    last_90d:  { interviews: 0, offers: 0, placements: 0, distinctUsers: 0, attributed: 0 },
+  };
+  ((outcomeRollupRows || []) as Array<Record<string, unknown>>).forEach((row) => {
+    const win = String(row.window_name || "");
+    const type = String(row.outcome_type || "");
+    const ev = n(row.event_count);
+    const users = n(row.distinct_users);
+    const attributed = n(row.attributed_count);
+    if (!outcomeByWindow[win]) return;
+    if (type === "interview") outcomeByWindow[win].interviews += ev;
+    if (type === "offer") outcomeByWindow[win].offers += ev;
+    if (type === "interview" || type === "offer") {
+      outcomeByWindow[win].placements += ev;
+      outcomeByWindow[win].distinctUsers += users;
+      outcomeByWindow[win].attributed += attributed;
+    }
+  });
+
+  // Fallback: if outcomes table is empty, derive placements from the
+  // applications.stage snapshot. We count users with at least one app in
+  // "interview" or "offer" stage whose updated_at is in the last 30 days.
+  const placements30dFromApps = (() => {
+    if (outcomeByWindow.last_30d.placements > 0) return 0; // outcomes are the source of truth
+    const cutoff = Date.now() - THIRTY_DAYS_MS;
+    const placedUsers = new Set<string>();
+    ((appRows || []) as Array<Record<string, unknown>>).forEach((app) => {
+      const stage = String(app.stage || "");
+      if (stage !== "interview" && stage !== "offer") return;
+      const updated = Date.parse(String(app.updated_at || app.applied_at || app.created_at || ""));
+      if (!Number.isFinite(updated) || updated < cutoff) return;
+      const uid = String(app.user_id || "");
+      if (uid) placedUsers.add(uid);
+    });
+    return placedUsers.size;
+  })();
+  const placements30d = outcomeByWindow.last_30d.placements || placements30dFromApps;
+  const placementsPrior30d = outcomeByWindow.prior_30d.placements;
+  const placementDelta = placements30d - placementsPrior30d;
+  const placementDeltaPct = placementsPrior30d > 0 ? Math.round((placementDelta / placementsPrior30d) * 100) : (placements30d > 0 ? 100 : 0);
+
+  // Target floor: at minimum 1 placement per 20 active users in 30d.
+  // (A reasonable early-stage hiring-marketplace benchmark; the operator
+  // can tighten this once historical data accumulates.)
+  const placementTarget = Math.max(5, Math.ceil(activeLast30 / 20));
+  const placementProgress = placementTarget > 0 ? Math.min(100, Math.round((placements30d / placementTarget) * 100)) : 0;
+
+  const northStar = {
+    label: "Active placements",
+    sublabel: "Candidates with interview or offer in last 30 days",
+    value: placements30d,
+    prior: placementsPrior30d,
+    delta: placementDelta,
+    deltaPct: placementDeltaPct,
+    direction: placementDelta > 0 ? "up" : (placementDelta < 0 ? "down" : "flat"),
+    target: placementTarget,
+    progress: placementProgress,
+    progressTone: placementProgress >= 100 ? "green" : (placementProgress >= 60 ? "blue" : (placementProgress >= 30 ? "amber" : "red")),
+    healthSignal: placements30d === 0 ? "no-placements" : (placementDelta < 0 ? "declining" : (placementProgress >= 100 ? "exceeding" : "tracking")),
+    note: outcomeByWindow.last_30d.placements === 0 && placements30dFromApps > 0
+      ? "Computed from pipeline stage transitions until candidates self-report outcomes."
+      : "Self-reported interview/offer milestones.",
+  };
+
+  // ─── AARRR (pirate metrics) — five stages of the growth engine ────────
+  // Each stage has: value, label, status (good|watch|bad), why, action,
+  // section (deep-link), action_id (so the UI can render one-click buttons
+  // in later phases). All numbers come from existing aggregates above.
+  const activationRate = activationScore;          // already computed earlier
+  const week1Retention = cohortSummary.avgWeek1Retention || 0;
+  const monthlyActive = activeLast30;
+  // Acquisition: new users in last 30 days, with delta vs prior 30
+  // (computed from auth.users.created_at — same source `newUsers30` uses).
+  const newUsersPrior30 = (() => {
+    const cutoffStart = new Date(Date.now() - 60 * DAY_MS).toISOString();
+    const cutoffEnd = since30; // 30 days ago boundary
+    return ((users || []) as Array<Record<string, unknown>>).filter((u) => {
+      const created = String(u.created_at || "");
+      return created >= cutoffStart && created < cutoffEnd;
+    }).length;
+  })();
+  const acquisitionDelta = newUsers30 - newUsersPrior30;
+  const acquisitionDeltaPct = newUsersPrior30 > 0 ? Math.round((acquisitionDelta / newUsersPrior30) * 100) : (newUsers30 > 0 ? 100 : 0);
+
+  // Revenue: CareerBoost is not currently monetized. The Command Center
+  // displays "Pre-revenue" so the operator sees the gap and the cost-per-
+  // user economics from AI spend instead. Wired up to real billing data
+  // when monetization launches.
+  const aiCostPerActiveUser = activeLast30 > 0 ? Number((aiCost / activeLast30).toFixed(2)) : 0;
+
+  // Referral: we don't have referral instrumentation yet (Phase E2). Show
+  // organic invite signal = users with > 1 saved search OR > 5 saved jobs
+  // (power-user proxy — proxy users tend to recommend the product).
+  const powerUserProxy = ((users || []) as Array<Record<string, unknown>>).filter((u) => {
+    const uid = String(u.id || "");
+    const savedJobsForUser = ((savedRows || []) as Array<Record<string, unknown>>).filter((j) => String(j.user_id || "") === uid).length;
+    return savedJobsForUser >= 5;
+  }).length;
+
+  const aarrr = [
+    {
+      stage: "acquisition",
+      label: "Acquisition",
+      icon: "fa-bullhorn",
+      value: newUsers30,
+      delta: acquisitionDelta,
+      deltaPct: acquisitionDeltaPct,
+      sub: `${newUsersPrior30} prior 30d`,
+      status: newUsers30 === 0 ? "bad" : (acquisitionDelta < 0 ? "watch" : "good"),
+      why: newUsers30 === 0
+        ? "No signups in the last 30 days. The growth engine is not turning."
+        : (acquisitionDelta < 0
+          ? "Signups are slowing month-over-month. Investigate channel performance."
+          : "Signup volume is trending up."),
+      action: newUsers30 === 0
+        ? "Launch a landing-page test, share-on-social campaign, or paid acquisition pilot."
+        : (acquisitionDelta < 0
+          ? "Open Growth board to see which acquisition channel weakened."
+          : "Keep current acquisition mix; explore one new channel."),
+      section: "growth",
+    },
+    {
+      stage: "activation",
+      label: "Activation",
+      icon: "fa-bolt",
+      value: activationRate,
+      unit: "%",
+      sub: `${activationMovedForward.size} of ${users.length} users reached value`,
+      status: activationRate >= 55 ? "good" : (activationRate >= 35 ? "watch" : "bad"),
+      why: activationRate < 35
+        ? "Most new signups never reach the value moment (resume ready + first job + tailored asset)."
+        : (activationRate < 55
+          ? "Activation is below the 55% floor that compounds organic growth."
+          : "Activation is healthy — new users are reaching value."),
+      action: activationRate < 35
+        ? "Add an onboarding nudge after signup → drive users to Resume Lab + Job Search in their first session."
+        : (activationRate < 55
+          ? "Examine the largest funnel drop-off in the Growth board and fix that one step."
+          : "Audit the funnel quarterly; activation tends to drift without attention."),
+      section: "growth",
+    },
+    {
+      stage: "retention",
+      label: "Retention",
+      icon: "fa-arrows-rotate",
+      value: week1Retention,
+      unit: "%",
+      sub: `${monthlyActive} monthly active users`,
+      status: week1Retention >= 35 ? "good" : (week1Retention >= 20 ? "watch" : "bad"),
+      why: week1Retention < 20
+        ? "Most new users don't return in week 1. The product isn't sticky enough yet."
+        : (week1Retention < 35
+          ? "Week 1 return rate is below the 35% threshold for habitual products."
+          : "Retention is solid — users are forming a return habit."),
+      action: week1Retention < 20
+        ? "Add a high-value email or in-app notification 24-48h after signup. Pin a 'next action' card to the dashboard."
+        : (week1Retention < 35
+          ? "Identify which feature predicts return (Product Intelligence) and surface it earlier."
+          : "Document what's driving retention; protect those features when refactoring."),
+      section: "users",
+    },
+    {
+      stage: "revenue",
+      label: "Revenue",
+      icon: "fa-coins",
+      value: 0,
+      preFormatted: "Pre-revenue",
+      sub: `AI cost $${aiCostPerActiveUser.toFixed(2)} / monthly active user`,
+      status: aiCostPerActiveUser > 5 ? "watch" : "good",
+      why: aiCostPerActiveUser > 5
+        ? "AI cost per active user is above $5/month. Unit economics will be tight at scale."
+        : "Unit economics are healthy. AI spend is a small fraction of expected ARPU at any plausible price.",
+      action: "Launch monetization: a Pro tier (priority AI, unlimited cover letters, mock interviews). Set price at $9.99 - $19/mo.",
+      section: "ai-cost",
+    },
+    {
+      stage: "referral",
+      label: "Referral",
+      icon: "fa-share-nodes",
+      value: powerUserProxy,
+      sub: "users with 5+ saved jobs (advocate proxy)",
+      status: powerUserProxy >= 3 ? "good" : (powerUserProxy >= 1 ? "watch" : "bad"),
+      why: powerUserProxy === 0
+        ? "No power users yet. The product isn't being adopted deeply enough to drive word-of-mouth."
+        : (powerUserProxy < 3
+          ? "A small number of power users exist but no referral loop is in place to convert them into advocates."
+          : "Power-user base is forming — referral mechanics will compound from here."),
+      action: powerUserProxy === 0
+        ? "Focus on activation + retention first; referrals only work after users see value."
+        : "Ship a referral loop: 'Invite a friend, both get Pro free for a month' or 'Share your win' template.",
+      section: "users",
+    },
+  ];
+
+  // ─── Today's 3 priorities — algorithmic top-3 selection ───────────────
+  // We score every candidate issue across the dashboard by impact (how much
+  // revenue/growth/users it gates) × urgency (how recent/active) and return
+  // the top 3 with an explicit action + deep-link. The operator should be
+  // able to clear today's work in three clicks.
+  type PriorityCandidate = {
+    id: string;
+    title: string;
+    why: string;             // why it matters (business consequence)
+    rootCause: string;       // why it's happening
+    action: string;          // what to do (specific, time-boxed)
+    impact: number;          // 1..10 (revenue/growth gating)
+    urgency: number;         // 1..10 (decay over time)
+    section: string;
+    actionType: string;      // "navigate" | "campaign" | "resolve-incident" | "broadcast"
+    icon: string;
+  };
+  const priorityCandidates: PriorityCandidate[] = [];
+
+  // ① North Star gap
+  if (placements30d < placementTarget) {
+    const gap = placementTarget - placements30d;
+    priorityCandidates.push({
+      id: "north-star-gap",
+      title: `${gap} placements short of target`,
+      why: `North Star floor is ${placementTarget} placements per 30 days. Currently at ${placements30d}.`,
+      rootCause: placements30d === 0
+        ? "No candidates have reached interview/offer yet. The full funnel from signup to interview is underperforming."
+        : "Pipeline conversion from applied → interview is below floor.",
+      action: placements30d === 0
+        ? "Audit the entire funnel — start with activation (Growth board)."
+        : "Open Product Intelligence to see which module candidates use before interviews, then double down on it.",
+      impact: 10,
+      urgency: 8,
+      section: "growth",
+      actionType: "navigate",
+      icon: "fa-bullseye",
+    });
+  }
+
+  // ② Critical incidents (already ranked)
+  incidents.filter((i) => (i as Record<string, unknown>).status === "open" && (i as Record<string, unknown>).severity === "critical").slice(0, 2).forEach((inc) => {
+    const incRecord = inc as Record<string, unknown>;
+    priorityCandidates.push({
+      id: "incident-" + String(incRecord.id || ""),
+      title: String(incRecord.title || "Critical incident open"),
+      why: String(incRecord.body || "A critical service-level incident is open and unresolved."),
+      rootCause: String(incRecord.affectedArea || "system") + " is degraded.",
+      action: String(incRecord.action || "Open Risk Center to acknowledge or resolve."),
+      impact: 9,
+      urgency: 10,
+      section: "risk-center",
+      actionType: "resolve-incident",
+      icon: "fa-triangle-exclamation",
+    });
+  });
+
+  // ③ Activation below floor
+  if (activationRate < 55) {
+    priorityCandidates.push({
+      id: "activation-low",
+      title: `Activation at ${activationRate}% (floor: 55%)`,
+      why: "Below 55% activation, signups don't compound into a growing user base — the product becomes a leaky bucket.",
+      rootCause: largestDropOff && (largestDropOff as Record<string, unknown>).label
+        ? `Biggest drop-off: ${String((largestDropOff as Record<string, unknown>).label)}.`
+        : "Multiple funnel steps are underperforming.",
+      action: largestDropOff && (largestDropOff as Record<string, unknown>).action
+        ? String((largestDropOff as Record<string, unknown>).action)
+        : "Open Growth board to see the funnel drop-off chart and fix the biggest leak.",
+      impact: 9,
+      urgency: 7,
+      section: "growth",
+      actionType: "navigate",
+      icon: "fa-bolt",
+    });
+  }
+
+  // ④ Week-1 retention below floor
+  if (week1Retention > 0 && week1Retention < 20) {
+    priorityCandidates.push({
+      id: "retention-low",
+      title: `Week-1 retention at ${week1Retention}%`,
+      why: "Below 20% week-1 retention, organic growth via word-of-mouth is impossible. Every signup leaks away.",
+      rootCause: "New users aren't returning in their first week — likely no compelling reason to come back yet.",
+      action: "Ship a 24-hour and 7-day nudge sequence (in-app + email). Pin a 'next action' card to the dashboard.",
+      impact: 9,
+      urgency: 7,
+      section: "users",
+      actionType: "campaign",
+      icon: "fa-arrows-rotate",
+    });
+  }
+
+  // ⑤ Stuck users (proxy: at-risk accounts)
+  const supportSummary = (support as Record<string, unknown>).summary as Record<string, unknown> | undefined;
+  const atRiskCount = n(supportSummary?.atRisk);
+  if (atRiskCount >= 3) {
+    priorityCandidates.push({
+      id: "stuck-users",
+      title: `${atRiskCount} users stuck below 55% health`,
+      why: "Stuck users are the highest churn risk. Each one represents a CAC investment that may not return.",
+      rootCause: "Users with low health typically can't get past Resume Lab or Job Search without help.",
+      action: "Open User Support, filter to at-risk, and send a guided re-engagement message to the top 5.",
+      impact: 7,
+      urgency: 7,
+      section: "user-support",
+      actionType: "campaign",
+      icon: "fa-user-clock",
+    });
+  }
+
+  // ⑥ AI failure rate above tolerance
+  if (failureRate > 10) {
+    priorityCandidates.push({
+      id: "ai-failures",
+      title: `AI failure rate at ${failureRate}%`,
+      why: "Every AI failure is a candidate who tried something and got nothing. Trust erodes fast.",
+      rootCause: "Provider-side rate limiting, model outage, or prompt regression.",
+      action: "Open AI Cost monitor → check the recent failures table → switch provider if a pattern shows.",
+      impact: 8,
+      urgency: 8,
+      section: "ai-cost",
+      actionType: "navigate",
+      icon: "fa-wand-magic-sparkles",
+    });
+  }
+
+  // ⑦ Source-truth incidents
+  if (qualityIssueRate > 10) {
+    priorityCandidates.push({
+      id: "source-truth",
+      title: `Source mismatch at ${qualityIssueRate}%`,
+      why: "Wrong source attribution breaks both candidate trust and our acquisition analytics.",
+      rootCause: "Provider labels don't match the canonical job listing host (extension or import pipeline).",
+      action: "Open Job Feed Health → review the mismatch list → fix the normalization rule in the import pipeline.",
+      impact: 6,
+      urgency: 6,
+      section: "job-feed",
+      actionType: "navigate",
+      icon: "fa-link-slash",
+    });
+  }
+
+  // Top 3 by impact × urgency.
+  const priorities = priorityCandidates
+    .sort((a, b) => (b.impact * b.urgency) - (a.impact * a.urgency))
+    .slice(0, 3);
+
+  if (priorities.length === 0) {
+    priorities.push({
+      id: "all-clear",
+      title: "All systems healthy",
+      why: "No priority issues detected across activation, retention, incidents, AI, or source truth.",
+      rootCause: "The current cohort is performing within target ranges.",
+      action: "Use this calm to ship a marketing experiment or a referral loop while incidents are quiet.",
+      impact: 1,
+      urgency: 1,
+      section: "growth",
+      actionType: "navigate",
+      icon: "fa-circle-check",
+    });
+  }
+
+  // ─── Weekly changes — what moved week-over-week on key metrics ────────
+  // We compute "this week vs prior week" for: signups, applications,
+  // saved jobs, AI requests, and placements. Each row tells the operator
+  // what changed and whether it's a win, a loss, or noise.
+  const oneWeekAgo = Date.now() - WEEK_MS;
+  const twoWeeksAgo = Date.now() - 2 * WEEK_MS;
+  function countInWindow<T extends Record<string, unknown>>(rows: T[], field: string, since: number, until: number): number {
+    return rows.filter((row) => {
+      const t = Date.parse(String(row[field] || ""));
+      return Number.isFinite(t) && t >= since && t < until;
+    }).length;
+  }
+  const signupsThisWeek = countInWindow(users as Array<Record<string, unknown>>, "created_at", oneWeekAgo, Date.now());
+  const signupsPriorWeek = countInWindow(users as Array<Record<string, unknown>>, "created_at", twoWeeksAgo, oneWeekAgo);
+  const appsThisWeek = countInWindow(appRows as Array<Record<string, unknown>> || [], "created_at", oneWeekAgo, Date.now());
+  const appsPriorWeek = countInWindow(appRows as Array<Record<string, unknown>> || [], "created_at", twoWeeksAgo, oneWeekAgo);
+  const savedThisWeek = countInWindow(savedRows as Array<Record<string, unknown>> || [], "saved_at", oneWeekAgo, Date.now());
+  const savedPriorWeek = countInWindow(savedRows as Array<Record<string, unknown>> || [], "saved_at", twoWeeksAgo, oneWeekAgo);
+  const aiThisWeek = countInWindow(ai as Array<Record<string, unknown>>, "created_at", oneWeekAgo, Date.now());
+  const aiPriorWeek = countInWindow(ai as Array<Record<string, unknown>>, "created_at", twoWeeksAgo, oneWeekAgo);
+
+  function delta(now: number, prior: number) {
+    const diff = now - prior;
+    const pctChange = prior > 0 ? Math.round((diff / prior) * 100) : (now > 0 ? 100 : 0);
+    return {
+      now,
+      prior,
+      diff,
+      pct: pctChange,
+      direction: diff > 0 ? "up" : (diff < 0 ? "down" : "flat"),
+    };
+  }
+  const weeklyChanges = [
+    { metric: "Signups", icon: "fa-user-plus", ...delta(signupsThisWeek, signupsPriorWeek), goodDirection: "up" },
+    { metric: "Applications", icon: "fa-briefcase", ...delta(appsThisWeek, appsPriorWeek), goodDirection: "up" },
+    { metric: "Saved jobs", icon: "fa-bookmark", ...delta(savedThisWeek, savedPriorWeek), goodDirection: "up" },
+    { metric: "AI requests", icon: "fa-wand-magic-sparkles", ...delta(aiThisWeek, aiPriorWeek), goodDirection: "up" },
+  ];
+
+  // ─── Outcomes block (for the Command Center + Growth board) ───────────
+  const outcomesBlock = {
+    placements30d,
+    placementsPrior30d,
+    placementDelta,
+    placementDeltaPct,
+    interviews30d: outcomeByWindow.last_30d.interviews,
+    offers30d: outcomeByWindow.last_30d.offers,
+    distinctPlacedUsers30d: outcomeByWindow.last_30d.distinctUsers || placements30dFromApps,
+    attributedShare: outcomeByWindow.last_30d.placements > 0
+      ? Math.round((outcomeByWindow.last_30d.attributed / outcomeByWindow.last_30d.placements) * 100)
+      : 0,
+    byChannel: (outcomeChannelRows || []) as Array<Record<string, unknown>>,
+    target: placementTarget,
+    progressPct: placementProgress,
+    sourceNote: outcomeByWindow.last_30d.placements > 0
+      ? "From self-reported interview/offer milestones"
+      : "Estimated from pipeline stage transitions (interview_outcomes is empty)",
+  };
+
   return jsonResponse({
     ok: true,
     generatedAt,
@@ -1896,6 +2335,14 @@ Deno.serve(async (req) => {
     },
     activity,
     alerts,
+    // Phase E1: Command Center top-level blocks. The new Command Center
+    // section reads these directly; older sections continue to read their
+    // own per-section fields untouched.
+    northStar,
+    aarrr,
+    priorities,
+    weeklyChanges,
+    outcomes: outcomesBlock,
     operations: {
       staleSaved: staleSavedRows.length,
       sourceIssueCount: sourceIssues.length,

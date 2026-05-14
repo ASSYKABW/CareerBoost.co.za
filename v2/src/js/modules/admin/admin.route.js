@@ -48,9 +48,17 @@
   // -- Section menu groups (drives the sidebar + currentSection() guard) ---
   const sections = [
     {
+      // Phase E1: "Command center" is the new home. "overview" still works
+      // as an alias (currentSection() coerces it to "command-center" below)
+      // so old bookmarks / deep links don't 404.
+      group: "Command",
+      items: [
+        { id: "command-center", icon: "fa-satellite-dish", label: "Command center" }
+      ]
+    },
+    {
       group: "Analytics",
       items: [
-        { id: "overview", icon: "fa-chart-pie", label: "Overview" },
         { id: "usage", icon: "fa-wave-square", label: "Usage & engagement" },
         { id: "funnel", icon: "fa-filter-circle-dollar", label: "Funnel analytics" }
       ]
@@ -159,11 +167,13 @@
 
   function currentSection() {
     const params = (window.CBV2.getRouteParams && window.CBV2.getRouteParams()) || {};
-    const section = String(params.section || "overview").trim();
+    let section = String(params.section || "command-center").trim();
+    // Phase E1: "overview" is the old home — redirect to command-center.
+    if (section === "overview") section = "command-center";
     const ids = sections.reduce(function (out, group) {
       return out.concat(group.items.map(function (item) { return item.id; }));
     }, []);
-    return ids.indexOf(section) >= 0 ? section : "overview";
+    return ids.indexOf(section) >= 0 ? section : "command-center";
   }
 
   function cloudDataIsFresh() {
@@ -258,7 +268,13 @@
       reports: null,
       actionQueue: [],
       controlCenter: null,
-      remoteActivity: []
+      remoteActivity: [],
+      // Phase E1: Command Center blocks (filled in from remote snapshot).
+      northStar: null,
+      aarrr: [],
+      priorities: [],
+      weeklyChanges: [],
+      outcomes: null
     };
 
     const remote = adminRemote.data;
@@ -302,6 +318,14 @@
       data.actionQueue = data.reports && Array.isArray(data.reports.actionQueue) ? data.reports.actionQueue : [];
       data.controlCenter = remote.controlCenter || null;
       data.remoteActivity = Array.isArray(remote.activity) ? remote.activity : [];
+      // Phase E1: Command Center blocks. When the function isn't deployed
+      // yet (older snapshot), these read as null/[] and the Command Center
+      // renders a degraded view that still works off the local store.
+      data.northStar = remote.northStar || null;
+      data.aarrr = Array.isArray(remote.aarrr) ? remote.aarrr : [];
+      data.priorities = Array.isArray(remote.priorities) ? remote.priorities : [];
+      data.weeklyChanges = Array.isArray(remote.weeklyChanges) ? remote.weeklyChanges : [];
+      data.outcomes = remote.outcomes || null;
       data.totals.users = numberOr(totals.users, 0);
       data.totals.profiles = numberOr(totals.profiles, 0);
       data.totals.applications = numberOr(totals.applications, data.totals.applications);
