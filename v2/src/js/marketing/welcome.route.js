@@ -24,37 +24,86 @@
   // ─── Content data ──────────────────────────────────────────────────
   // Kept separate from rendering so copy is easy to update.
 
+  // Each feature carries a tone key — the CSS maps tones to distinct
+  // accent colors so the feature grid isn't all one teal shade.
   const FEATURES = [
     {
       icon: "fa-bullseye",
       title: "Role intelligence",
+      tone: "cyan",
       body: "See fit score, seniority, work mode, and timing for every role you save. Spend your energy on the roles that deserve it."
     },
     {
       icon: "fa-wand-magic-sparkles",
       title: "AI tailoring",
+      tone: "violet",
       body: "Turn one resume into role-ready versions. Real experience stays intact — keywords + bullets adapt to the job description."
     },
     {
       icon: "fa-comments",
       title: "Voice mock interviews",
+      tone: "rose",
       body: "Practice with four distinct AI interviewers. Speak your answer, hear the next question, get a structured debrief."
     },
     {
       icon: "fa-table-list",
       title: "Pipeline tracking",
+      tone: "green",
       body: "Saved · Applied · Interview · Offer. Every role flows through six stages with notes, reminders, and outcomes attached."
     },
     {
       icon: "fa-magnifying-glass-chart",
       title: "Company research",
+      tone: "amber",
       body: "Source-backed briefings: process signals, likely questions, prep checklist, and reading list — generated for the exact role."
     },
     {
       icon: "fa-calendar-check",
       title: "Calendar + reminders",
+      tone: "blue",
       body: "Export every event to Google or Apple Calendar. Browser reminders fire before the call — even with the tab in the background."
     }
+  ];
+
+  // Footer sitemap. Real SaaS-style footer with 3 link columns + a
+  // brand column. Anchor links point to in-page sections; full pages
+  // can be added later by routing the href targets.
+  const FOOTER_COLS = [
+    {
+      heading: "Product",
+      links: [
+        { label: "Features",       href: "#features" },
+        { label: "How it works",   href: "#how" },
+        { label: "Pricing",        href: "#pricing" },
+        { label: "Chrome extension", href: "#features" },
+        { label: "Voice interviews", href: "#features" },
+      ]
+    },
+    {
+      heading: "Resources",
+      links: [
+        { label: "FAQ",            href: "#faq" },
+        { label: "Help center",    href: "#faq" },
+        { label: "What's new",     href: "#features" },
+        { label: "Status",         href: "#" },
+      ]
+    },
+    {
+      heading: "Company",
+      links: [
+        { label: "About",          href: "#" },
+        { label: "Contact",        href: "mailto:hello@careerboost.app" },
+        { label: "Privacy",        href: "#" },
+        { label: "Terms",          href: "#" },
+      ]
+    }
+  ];
+
+  const SOCIAL_LINKS = [
+    { label: "LinkedIn",  icon: "fa-linkedin-in", href: "#", brand: true },
+    { label: "Twitter / X", icon: "fa-x-twitter", href: "#", brand: true },
+    { label: "GitHub",    icon: "fa-github",    href: "#", brand: true },
+    { label: "Email",     icon: "fa-envelope",  href: "mailto:hello@careerboost.app", brand: false },
   ];
 
   const STEPS = [
@@ -99,15 +148,45 @@
   ];
 
   // ─── Brand glyph (reused in nav + footer) ──────────────────────────
+  // Logo strategy:
+  //   1. If the user has dropped a `logo.svg` (or .png) into
+  //      `v2/src/assets/`, the <img> tag loads it.
+  //   2. If that file is missing, the browser's onerror swaps in the
+  //      bundled `logo-default.svg` (a more polished mark than the
+  //      flat "CB" square we used before).
+  //   3. We pre-bake the default path into src= so users with
+  //      JavaScript disabled still see a brand mark.
   function renderBrand(showTagline) {
     return (
       '<span class="lp-brand">' +
-        '<span class="lp-brand-mark">CB</span>' +
+        '<span class="lp-brand-mark">' +
+          '<img src="./src/assets/logo.svg" alt="CareerBoost"' +
+          ' onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'./src/assets/logo-default.svg\';}" />' +
+        '</span>' +
         '<span class="lp-brand-text">' +
           '<strong>CareerBoost</strong>' +
           (showTagline ? '<small>Your career operating system</small>' : '') +
         '</span>' +
       '</span>'
+    );
+  }
+
+  // Footer-only larger brand block: logo + tagline + social row.
+  function renderFooterBrand() {
+    const socials = SOCIAL_LINKS.map(function (s) {
+      const cls = s.brand ? "fa-brands" : "fa-solid";
+      return (
+        '<a href="' + s.href + '" class="lp-social" aria-label="' + s.label + '" title="' + s.label + '">' +
+          '<i class="' + cls + ' ' + s.icon + '" aria-hidden="true"></i>' +
+        '</a>'
+      );
+    }).join("");
+    return (
+      '<div class="lp-footer-brand-col">' +
+        renderBrand(true) +
+        '<p class="lp-footer-tagline">A calm, AI-powered workspace for ambitious job seekers. Research roles, tailor every application, rehearse interviews, track every move.</p>' +
+        '<div class="lp-social-row">' + socials + '</div>' +
+      '</div>'
     );
   }
 
@@ -169,8 +248,9 @@
   // ─── Render helpers ────────────────────────────────────────────────
 
   function renderFeature(f) {
+    const tone = f.tone || "cyan";
     return (
-      '<article class="lp-feature">' +
+      '<article class="lp-feature lp-feature--' + tone + '">' +
         '<span class="lp-feature-icon"><i class="fa-solid ' + f.icon + '" aria-hidden="true"></i></span>' +
         '<h3>' + f.title + '</h3>' +
         '<p>' + f.body + '</p>' +
@@ -367,25 +447,58 @@
           '</div>' +
         '</section>' +
 
-        // ── Final CTA ─────────────────────────────────────────────
+        // ── Final CTA — richer panel with stats + dual buttons ────
         '<section class="lp-final">' +
           '<div class="lp-container">' +
             '<div class="lp-final-card">' +
-              '<div>' +
-                '<span class="lp-eyebrow">Start with structure</span>' +
-                '<h2>Run your job search like a professional.</h2>' +
-                '<p>Free workspace. No credit card. Less than a minute to set up.</p>' +
+              '<div class="lp-final-glow lp-final-glow-a" aria-hidden="true"></div>' +
+              '<div class="lp-final-glow lp-final-glow-b" aria-hidden="true"></div>' +
+              '<div class="lp-final-copy">' +
+                '<span class="lp-eyebrow">Ready when you are</span>' +
+                '<h2>Run your job search<br/>like a professional.</h2>' +
+                '<p>One calm workspace for research, tailoring, mock interviews, and follow-ups. Free to start, no credit card required.</p>' +
+                '<div class="lp-final-actions">' +
+                  '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
+                  '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#pricing">See pricing</a>' +
+                '</div>' +
               '</div>' +
-              '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
+              '<div class="lp-final-stats" aria-hidden="true">' +
+                '<article><strong>4</strong><span>AI personas to practice against</span></article>' +
+                '<article><strong>6</strong><span>pipeline stages, fully tracked</span></article>' +
+                '<article><strong>$0</strong><span>to start — no card needed</span></article>' +
+                '<article><strong>∞</strong><span>on Pro: resumes + covers + research</span></article>' +
+              '</div>' +
             '</div>' +
           '</div>' +
         '</section>' +
 
-        // ── Footer ────────────────────────────────────────────────
+        // ── Real footer — 4-column SaaS layout + bottom bar ───────
         '<footer class="lp-footer">' +
-          '<div class="lp-container lp-footer-inner">' +
-            '<a class="lp-nav-brand" href="#/welcome">' + renderBrand(true) + '</a>' +
-            '<p class="lp-footer-copy">&copy; ' + new Date().getFullYear() + ' CareerBoost. Built for ambitious job seekers.</p>' +
+          '<div class="lp-container">' +
+            '<div class="lp-footer-grid">' +
+              renderFooterBrand() +
+              FOOTER_COLS.map(function (col) {
+                return (
+                  '<div class="lp-footer-col">' +
+                    '<h4>' + col.heading + '</h4>' +
+                    '<ul>' +
+                      col.links.map(function (l) {
+                        return '<li><a href="' + l.href + '">' + l.label + '</a></li>';
+                      }).join("") +
+                    '</ul>' +
+                  '</div>'
+                );
+              }).join("") +
+            '</div>' +
+            '<div class="lp-footer-bar">' +
+              '<p>&copy; ' + new Date().getFullYear() + ' CareerBoost. All rights reserved.</p>' +
+              '<div class="lp-footer-legal">' +
+                '<a href="#">Privacy</a>' +
+                '<a href="#">Terms</a>' +
+                '<a href="#">Cookies</a>' +
+                '<a href="#faq">FAQ</a>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
         '</footer>' +
       '</main>'

@@ -5099,20 +5099,25 @@ a.settings-status-card:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px; height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--lp-accent-strong), var(--lp-accent));
-  color: #062018;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  overflow: hidden;
+  /* No background — the logo image carries its own visual weight.
+     Falls back to a subtle gradient frame only if the logo is missing. */
+  background: transparent;
+}
+.lp-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .lp-brand-text {
   display: flex;
   flex-direction: column;
   line-height: 1.15;
 }
-.lp-brand-text strong { color: var(--lp-text); font-size: 15px; font-weight: 700; }
+.lp-brand-text strong { color: var(--lp-text); font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
 .lp-brand-text small { color: var(--lp-text-dim); font-size: 11px; }
 
 /* ── Sticky nav ──────────────────────────────────────────────────── */
@@ -5134,11 +5139,12 @@ a.settings-status-card:hover {
   gap: 16px;
 }
 .lp-nav-brand { display: inline-flex; }
+/* Center the nav links in the available space between brand + actions. */
 .lp-nav-links {
   display: flex;
   gap: 6px;
-  margin-left: 32px;
   flex: 1;
+  justify-content: center;
 }
 .lp-nav-links a {
   font-size: 14px;
@@ -5156,14 +5162,27 @@ a.settings-status-card:hover {
   padding: 80px 0 60px;
   overflow: hidden;
 }
+/* Dual radial gradients give the hero a mix of color without going
+   busy: teal on the right, violet on the left, both very soft so they
+   sit BEHIND the content, not on top of it. */
 .lp-hero::before {
   content: "";
   position: absolute;
   top: -120px; right: -160px;
   width: 540px; height: 540px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(94, 234, 212, 0.16) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(94, 234, 212, 0.18) 0%, transparent 65%);
   filter: blur(60px);
+  pointer-events: none;
+}
+.lp-hero::after {
+  content: "";
+  position: absolute;
+  bottom: -160px; left: -180px;
+  width: 520px; height: 520px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.14) 0%, transparent 65%);
+  filter: blur(70px);
   pointer-events: none;
 }
 .lp-hero-inner {
@@ -5407,6 +5426,21 @@ a.settings-status-card:hover {
   border-radius: 12px;
   font-size: 18px;
 }
+
+/* Per-feature color tones — the grid gets six distinct accent colors
+   so it doesn't feel monochrome teal. Border + icon shift while the
+   card body stays neutral so readability is preserved. */
+.lp-feature--cyan   { /* default — already cyan/teal */ }
+.lp-feature--violet .lp-feature-icon { background: rgba(167, 139, 250, 0.14); color: #c4b5fd; }
+.lp-feature--violet:hover { border-color: rgba(167, 139, 250, 0.42); }
+.lp-feature--rose   .lp-feature-icon { background: rgba(251, 113, 133, 0.14); color: #fda4af; }
+.lp-feature--rose:hover   { border-color: rgba(251, 113, 133, 0.42); }
+.lp-feature--green  .lp-feature-icon { background: rgba(52, 211, 153, 0.14); color: #6ee7b7; }
+.lp-feature--green:hover  { border-color: rgba(52, 211, 153, 0.42); }
+.lp-feature--amber  .lp-feature-icon { background: rgba(251, 191, 36, 0.14); color: #fcd34d; }
+.lp-feature--amber:hover  { border-color: rgba(251, 191, 36, 0.42); }
+.lp-feature--blue   .lp-feature-icon { background: rgba(96, 165, 250, 0.14); color: #93c5fd; }
+.lp-feature--blue:hover   { border-color: rgba(96, 165, 250, 0.42); }
 .lp-feature h3 {
   font-size: 18px;
   font-weight: 700;
@@ -5587,50 +5621,195 @@ a.settings-status-card:hover {
   color: var(--lp-text-muted);
 }
 
-/* ── Final CTA ───────────────────────────────────────────────────── */
+/* ── Final CTA — richer panel with stats row ─────────────────────── */
 .lp-final {
-  padding: 72px 0;
+  padding: 80px 0;
 }
 .lp-final-card {
-  background: linear-gradient(135deg, rgba(94, 234, 212, 0.10) 0%, rgba(34, 227, 255, 0.04) 100%);
-  border: 1px solid rgba(94, 234, 212, 0.28);
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(34, 227, 255, 0.10) 0%, rgba(167, 139, 250, 0.10) 100%);
+  border: 1px solid rgba(94, 234, 212, 0.32);
   border-radius: var(--lp-radius-lg);
-  padding: 48px;
-  display: flex;
+  padding: 56px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 48px;
   align-items: center;
-  justify-content: space-between;
-  gap: 32px;
 }
-.lp-final-card h2 {
-  font-size: clamp(26px, 3vw, 32px);
-  line-height: 1.2;
-  font-weight: 700;
-  color: var(--lp-text);
-  margin: 8px 0;
+.lp-final-glow {
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
 }
-.lp-final-card p {
-  font-size: 15px;
-  color: var(--lp-text-muted);
-  max-width: 500px;
+.lp-final-glow-a {
+  top: -120px; right: -120px;
+  background: radial-gradient(circle, rgba(94, 234, 212, 0.32) 0%, transparent 70%);
 }
-
-/* ── Footer ──────────────────────────────────────────────────────── */
-.lp-footer {
-  padding: 32px 0;
-  border-top: 1px solid var(--lp-border);
-  background: var(--lp-bg-alt);
-  margin-top: auto;
+.lp-final-glow-b {
+  bottom: -160px; left: -120px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.22) 0%, transparent 70%);
 }
-.lp-footer-inner {
+.lp-final-copy {
+  position: relative;
+  z-index: 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 16px;
 }
-.lp-footer-copy {
+.lp-final-copy h2 {
+  font-size: clamp(28px, 3.4vw, 38px);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--lp-text);
+}
+.lp-final-copy p {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--lp-text-muted);
+  max-width: 460px;
+}
+.lp-final-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.lp-final-stats {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.lp-final-stats article {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--lp-border);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lp-final-stats strong {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--lp-accent);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.lp-final-stats span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--lp-text-muted);
+}
+/* Stagger the accent colors on the stats so they pick up the page's
+   colorful palette without overwhelming the panel. */
+.lp-final-stats article:nth-child(1) strong { color: var(--lp-accent); }
+.lp-final-stats article:nth-child(2) strong { color: #c4b5fd; }
+.lp-final-stats article:nth-child(3) strong { color: #fcd34d; }
+.lp-final-stats article:nth-child(4) strong { color: #6ee7b7; }
+
+/* ── Footer — real 4-column SaaS layout ──────────────────────────── */
+.lp-footer {
+  padding: 64px 0 32px;
+  border-top: 1px solid var(--lp-border);
+  background: linear-gradient(180deg, var(--lp-bg-alt) 0%, var(--lp-bg) 100%);
+  margin-top: auto;
+}
+.lp-footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 48px;
+  padding-bottom: 48px;
+  border-bottom: 1px solid var(--lp-border);
+}
+.lp-footer-brand-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 360px;
+}
+.lp-footer-tagline {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lp-text-muted);
+  margin: 0;
+}
+.lp-social-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.lp-social {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--lp-border);
+  color: var(--lp-text-muted);
+  font-size: 14px;
+  transition: transform 140ms ease, color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+.lp-social:hover {
+  transform: translateY(-2px);
+  color: var(--lp-accent);
+  border-color: rgba(94, 234, 212, 0.42);
+  background: var(--lp-accent-glow);
+}
+
+.lp-footer-col h4 {
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--lp-text);
+}
+.lp-footer-col ul {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lp-footer-col a {
+  font-size: 13px;
+  color: var(--lp-text-muted);
+  transition: color 140ms ease;
+}
+.lp-footer-col a:hover { color: var(--lp-accent); }
+
+.lp-footer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 24px;
+  flex-wrap: wrap;
+}
+.lp-footer-bar p {
   font-size: 12px;
   color: var(--lp-text-dim);
+  margin: 0;
 }
+.lp-footer-legal {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.lp-footer-legal a {
+  font-size: 12px;
+  color: var(--lp-text-dim);
+  transition: color 140ms ease;
+}
+.lp-footer-legal a:hover { color: var(--lp-accent); }
 
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
@@ -5640,16 +5819,14 @@ a.settings-status-card:hover {
   .lp-step-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-pricing-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-trust-grid { grid-template-columns: repeat(2, 1fr); }
+  .lp-final-card { grid-template-columns: 1fr; gap: 32px; padding: 40px; }
+  .lp-footer-grid { grid-template-columns: 1fr 1fr 1fr; gap: 32px; }
+  .lp-footer-brand-col { grid-column: 1 / -1; max-width: none; }
 }
 @media (max-width: 768px) {
   .lp-hero { padding: 56px 0 40px; }
   .lp-section { padding: 56px 0; }
   .lp-final { padding: 56px 0; }
-  .lp-final-card {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 32px;
-  }
   .lp-nav-links { display: none; }
   .lp-nav-inner { gap: 12px; }
   .lp-feature-grid { grid-template-columns: 1fr; }
@@ -5665,10 +5842,16 @@ a.settings-status-card:hover {
     overflow-x: auto;
   }
   .lp-mock-cards { grid-template-columns: 1fr; }
-  .lp-footer-inner { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .lp-final-stats { grid-template-columns: 1fr 1fr; }
+  .lp-footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; padding-bottom: 32px; }
+  .lp-footer-brand-col { grid-column: 1 / -1; }
+  .lp-footer-bar { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 480px) {
   .lp-container { padding: 0 16px; }
   .lp-nav-inner { padding: 12px 16px; }
   .lp-hero-actions .lp-btn { width: 100%; justify-content: center; }
+  .lp-final-card { padding: 28px; }
+  .lp-final-stats { grid-template-columns: 1fr; }
+  .lp-footer-grid { grid-template-columns: 1fr; }
 }
