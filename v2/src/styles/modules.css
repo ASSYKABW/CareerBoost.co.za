@@ -4497,3 +4497,312 @@ a.settings-status-card:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Interview Prep layout refresh ──────────────────────────────────
+   Replaces the dense command hero + readiness strip + Phase 4 intel
+   duplicate panel + 2-mode toggle with: slim header + 4-step rail +
+   compact sticky context sidebar + ONE focused panel per step.
+   ──────────────────────────────────────────────────────────────────── */
+
+.interview-page--stepped {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Slim command header (replaces .interview-command-hero on this page) */
+.interview-slim-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: center;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(9, 14, 25, 0.85));
+  border: 1px solid rgba(94, 234, 212, 0.12);
+}
+.interview-slim-head-copy .eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(94, 234, 212, 0.8);
+}
+.interview-slim-head-copy .page-title {
+  margin: 0 0 8px;
+  font-size: 26px;
+  color: #f8fbff;
+}
+.interview-slim-head-copy .page-subtitle {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(248, 251, 255, 0.7);
+  max-width: 640px;
+}
+.interview-slim-header .interview-target-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 6px 12px;
+}
+.interview-slim-header .interview-target-picker span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(248, 251, 255, 0.55);
+}
+.interview-slim-header .interview-target-picker select {
+  background: transparent;
+  border: none;
+  color: #f8fbff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+}
+.interview-readiness-card--compact {
+  padding: 14px 16px;
+  gap: 10px;
+}
+.interview-readiness-card--compact .readiness-summary {
+  font-size: 11px;
+}
+.interview-readiness-card--compact .readiness-summary strong {
+  font-size: 13px;
+}
+
+/* 4-step rail. Buttons are equal-width, horizontal on desktop. */
+.interview-step-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+.interview-step {
+  display: grid;
+  grid-template-columns: 32px 1fr 10px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(248, 251, 255, 0.7);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+.interview-step:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(94, 234, 212, 0.18);
+}
+.interview-step.is-current {
+  background: rgba(94, 234, 212, 0.10);
+  border-color: rgba(94, 234, 212, 0.5);
+  color: #f8fbff;
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.18) inset;
+}
+.interview-step.is-done .interview-step-num {
+  background: #10b981;
+  color: #042a1c;
+}
+.interview-step.is-done.is-current .interview-step-num {
+  background: #5eead4;
+}
+.interview-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(94, 234, 212, 0.14);
+  color: #5eead4;
+  font-weight: 700;
+  font-size: 13px;
+}
+.interview-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.interview-step-body i {
+  font-size: 11px;
+  color: rgba(94, 234, 212, 0.65);
+}
+.interview-step-body strong {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.interview-step.is-current .interview-step-body i,
+.interview-step.is-done .interview-step-body i {
+  color: #5eead4;
+}
+.interview-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(248, 251, 255, 0.15);
+}
+.interview-step.is-done .interview-step-dot { background: #10b981; }
+.interview-step.is-current .interview-step-dot { background: #5eead4; box-shadow: 0 0 0 4px rgba(94, 234, 212, 0.18); }
+
+/* Stepped workbench: sidebar + main, sidebar sticks while user
+   scrolls the main panel. */
+.interview-workbench--stepped {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.interview-context-sidebar {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.interview-context-target h3 {
+  margin: 6px 0 2px;
+  font-size: 16px;
+  color: #f8fbff;
+}
+.interview-context-role {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: rgba(248, 251, 255, 0.65);
+}
+.interview-context-meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.interview-context-meta > div {
+  display: flex;
+  flex-direction: column;
+}
+.interview-context-meta dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(94, 234, 212, 0.75);
+}
+.interview-context-meta dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(248, 251, 255, 0.78);
+}
+.interview-context-readiness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.interview-context-readiness > span {
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.55);
+  width: 100%;
+}
+.interview-context-readiness strong {
+  font-size: 16px;
+  color: #5eead4;
+  flex-shrink: 0;
+}
+.interview-context-meter {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.interview-context-meter b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #22e3ff, #10b981);
+  transition: width 320ms ease;
+}
+.interview-context-flags {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+}
+.interview-context-flags li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.4);
+}
+.interview-context-flags li i {
+  font-size: 10px;
+}
+.interview-context-flags li.is-ready {
+  color: #5eead4;
+}
+.interview-context-flags li.is-ready i {
+  color: #5eead4;
+}
+
+/* Active panel — the main column. ONE panel at a time; no hidden
+   stacks underneath. Existing .interview-panel styling still applies. */
+.interview-workbench--stepped .interview-main-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Debrief empty state */
+.interview-debrief-empty {
+  text-align: center;
+  padding: 36px 24px;
+}
+.interview-debrief-empty-cta {
+  margin-top: 16px;
+}
+
+@media (max-width: 1024px) {
+  .interview-slim-header {
+    grid-template-columns: 1fr;
+  }
+  .interview-step-rail {
+    grid-template-columns: 1fr 1fr;
+  }
+  .interview-step-body strong {
+    white-space: normal;
+  }
+  .interview-workbench--stepped {
+    grid-template-columns: 1fr;
+  }
+  .interview-context-sidebar {
+    position: static;
+  }
+}
+@media (max-width: 640px) {
+  .interview-step-rail {
+    grid-template-columns: 1fr;
+  }
+}

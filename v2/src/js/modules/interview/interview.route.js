@@ -1476,10 +1476,13 @@
     window.CBV2.renderCurrentRoute();
   }
 
+  // Layout refresh: prepMode is now a 4-step journey. Legacy "drill"
+  // and "mock" still work and map onto their corresponding steps so
+  // existing entry points don't break.
+  const PREP_STEPS = ["research", "drill", "mock", "debrief"];
+
   function setPrepMode(mode) {
-    if (mode !== "drill" && mode !== "mock") {
-      return;
-    }
+    if (PREP_STEPS.indexOf(mode) < 0) return;
     viewState.prepMode = mode;
     window.CBV2.renderCurrentRoute();
   }
@@ -2224,6 +2227,157 @@
       </article>`;
   }
 
+  // Layout refresh: slim command header. Drops the duplicate readiness
+  // strip below (orbit already shows readiness) and drops the
+  // drill/mock toggle (replaced by the step rail). Keeps target
+  // picker, the page title, and the readiness orbit only.
+  function renderSlimHeader(target, model) {
+    const st = getSt();
+    const next = model.upcoming
+      ? st((model.upcoming.title || "Interview") + (model.upcoming.date ? " on " + model.upcoming.date : ""))
+      : "No interview date logged";
+    return `
+      <section class="interview-slim-header">
+        <div class="interview-slim-head-copy">
+          <p class="eyebrow">Interview Prep</p>
+          <h1 class="page-title">Interview Command Center</h1>
+          <p class="page-subtitle">A four-step path: research the company, build a question bank, rehearse with an AI interviewer, and review the debrief.</p>
+          <label class="interview-target-picker">
+            <span>Preparing for</span>
+            <select id="interview-target-select" ${target.apps.length ? "" : "disabled"}>
+              ${renderTargetOptions(target)}
+            </select>
+          </label>
+        </div>
+        <aside class="interview-readiness-card interview-readiness-card--compact" aria-label="Interview readiness">
+          <div class="readiness-orbit" style="--score:${model.score}">
+            <strong>${model.score}</strong>
+            <span>readiness</span>
+          </div>
+          <div class="readiness-summary">
+            <span>Next interview</span>
+            <strong>${next}</strong>
+          </div>
+        </aside>
+      </section>`;
+  }
+
+  // Layout refresh: step rail replaces the drill/mock toggle. Each step
+  // shows a number, a label, and a tiny status dot (done/active/todo)
+  // driven by the readiness model. Clicking the rail navigates between
+  // steps WITHOUT losing the form values in the other steps.
+  function renderStepRail(model) {
+    const st = getSt();
+    const step = viewState.prepMode || "research";
+    const stepCfg = [
+      { id: "research", n: 1, label: "Research",     icon: "fa-building-shield", done: !!model.hasIntel },
+      { id: "drill",    n: 2, label: "Question Bank", icon: "fa-list-check",      done: !!model.hasQuestions },
+      { id: "mock",     n: 3, label: "Mock Interview", icon: "fa-microphone-lines", done: !!model.hasMock },
+      { id: "debrief",  n: 4, label: "Debrief",      icon: "fa-clipboard-check", done: !!model.hasDebrief },
+    ];
+    return (
+      '<nav class="interview-step-rail" role="tablist" aria-label="Interview prep steps">' +
+        stepCfg.map(function (s) {
+          const isActive = s.id === step;
+          const status = s.done ? "is-done" : (isActive ? "is-active" : "is-todo");
+          return (
+            '<button type="button" class="interview-step ' + status + (isActive ? " is-current" : "") + '"' +
+              ' id="prep-step-' + s.id + '"' +
+              ' role="tab"' +
+              ' aria-selected="' + (isActive ? "true" : "false") + '"' +
+              ' aria-controls="prep-step-panel-' + s.id + '">' +
+              '<span class="interview-step-num">' + s.n + '</span>' +
+              '<span class="interview-step-body">' +
+                '<i class="fa-solid ' + s.icon + '"></i>' +
+                '<strong>' + st(s.label) + '</strong>' +
+              '</span>' +
+              '<span class="interview-step-dot" aria-hidden="true"></span>' +
+            '</button>'
+          );
+        }).join("") +
+      '</nav>'
+    );
+  }
+
+  // Layout refresh: a single compact sticky sidebar replacing the old
+  // PrepBrief + ActionPlan left rail. Shows the active target compact,
+  // a mini readiness meter, and a short "next action" line keyed off
+  // the current step. The full action plan now lives at the bottom of
+  // the Debrief step where it belongs.
+  function renderContextSidebar(target, model) {
+    const st = getSt();
+    const app = target.app || {};
+    const step = viewState.prepMode || "research";
+    const nextLineByStep = {
+      research: !model.hasIntel
+        ? "Build a research brief — process signals + likely questions."
+        : "Research is complete. Move on to the question bank.",
+      drill: !model.hasQuestions
+        ? "Generate role-specific practice questions."
+        : "Pick a question and shape a STAR answer.",
+      mock: !model.hasMock
+        ? "Start a virtual interview to rehearse under pressure."
+        : "Continue the session or end early for a debrief.",
+      debrief: model.hasDebrief
+        ? "Review the debrief and queue your next drills."
+        : "Complete a mock interview to unlock the debrief.",
+    };
+    return (
+      '<aside class="interview-context-sidebar">' +
+        '<div class="interview-context-target">' +
+          '<div class="interview-panel-kicker"><i class="fa-solid fa-crosshairs"></i> Active target</div>' +
+          '<h3>' + st(target.company) + '</h3>' +
+          '<p class="interview-context-role">' + st(target.role) + '</p>' +
+          '<dl class="interview-context-meta">' +
+            '<div><dt>Stage</dt><dd>' + st(stageLabel(app.stage || target.stage)) + '</dd></div>' +
+            '<div><dt>Next action</dt><dd>' + st(nextLineByStep[step] || "Continue prep.") + '</dd></div>' +
+          '</dl>' +
+        '</div>' +
+        '<div class="interview-context-readiness">' +
+          '<span>Prep coverage</span>' +
+          '<div class="interview-context-meter"><b style="width:' + model.score + '%"></b></div>' +
+          '<strong>' + model.score + '%</strong>' +
+          '<ul class="interview-context-flags">' +
+            '<li class="' + (model.hasIntel ? "is-ready" : "") + '"><i class="fa-solid fa-magnifying-glass-chart"></i> Research</li>' +
+            '<li class="' + (model.hasQuestions ? "is-ready" : "") + '"><i class="fa-solid fa-circle-question"></i> Questions</li>' +
+            '<li class="' + (model.hasMock ? "is-ready" : "") + '"><i class="fa-solid fa-comments"></i> Mock</li>' +
+            '<li class="' + (model.hasResume ? "is-ready" : "") + '"><i class="fa-solid fa-file-lines"></i> Resume</li>' +
+          '</ul>' +
+        '</div>' +
+      '</aside>'
+    );
+  }
+
+  // Layout refresh: Debrief step content. Combines the feedback list
+  // and mock debrief card + the action plan (moved here from the old
+  // left rail since it's the "what to do next" view).
+  function renderDebriefStep(model) {
+    const has = !!viewState.mockDebrief || !!(viewState.feedback && viewState.feedback.length);
+    if (!has && !viewState.mockDebriefBusy) {
+      return (
+        '<article class="interview-panel interview-debrief-empty">' +
+          '<header class="interview-panel-head compact">' +
+            '<div><p class="interview-panel-kicker"><i class="fa-solid fa-clipboard-check"></i> Debrief</p>' +
+            '<h2>Run a mock interview to unlock your debrief.</h2></div>' +
+          '</header>' +
+          '<p class="ai-meta">After a mock session you\'ll see a structured debrief here: overall score, top gaps, sharper answer outlines, and the next drills to focus on.</p>' +
+          '<div class="interview-debrief-empty-cta">' +
+            '<button type="button" class="btn-primary" id="prep-step-mock-jump"><i class="fa-solid fa-microphone-lines"></i> Start a mock interview</button>' +
+          '</div>' +
+        '</article>' +
+        renderActionPlanV2(model)
+      );
+    }
+    return (
+      renderFeedbackV2() +
+      renderMockDebriefCardV2() +
+      renderActionPlanV2(model)
+    );
+  }
+
+  // Layout refresh: new step-based renderer. ONE panel visible at a
+  // time. The step rail provides the navigation; the sticky sidebar
+  // keeps target context + readiness visible across steps.
   function renderViewV2() {
     hydrateMockIfEmpty();
     hydrateIntelIfEmpty();
@@ -2231,24 +2385,30 @@
     hydrateActiveRoleContext(false);
     const target = inferActiveTarget();
     const model = readinessModel(target);
-    const drillHidden = viewState.prepMode !== "drill" ? " hidden" : "";
-    const mockHidden = viewState.prepMode !== "mock" ? " hidden" : "";
+    const step = PREP_STEPS.indexOf(viewState.prepMode) >= 0 ? viewState.prepMode : "research";
+
+    // Build the active panel content. We don't render hidden panels at
+    // all (saves layout work + DOM weight). State persists in viewState
+    // so switching steps doesn't lose form values.
+    let activePanel = "";
+    if (step === "research") {
+      activePanel = renderIntelPanelV2();
+    } else if (step === "drill") {
+      activePanel = renderDrillStackV2("");
+    } else if (step === "mock") {
+      activePanel = '<section class="mock-stack">' + renderMockPanelV2() + '</section>';
+    } else if (step === "debrief") {
+      activePanel = renderDebriefStep(model);
+    }
+
     return `
-      <section class="page-container interview-page">
-        ${renderCommandHeroV2(target, model)}
-        ${renderReadinessStripV2(model)}
-        ${renderPhase4InterviewIntel(target)}
-        <section class="interview-workbench">
-          <aside class="interview-left-rail">
-            ${renderPrepBriefV2(target, model)}
-            ${renderActionPlanV2(model)}
-          </aside>
-          <main class="interview-main-stack">
-            ${renderIntelPanelV2()}
-            ${renderDrillStackV2(drillHidden)}
-            <section class="mock-stack"${mockHidden}>
-              ${renderMockPanelV2()}
-            </section>
+      <section class="page-container interview-page interview-page--stepped">
+        ${renderSlimHeader(target, model)}
+        ${renderStepRail(model)}
+        <section class="interview-workbench interview-workbench--stepped">
+          ${renderContextSidebar(target, model)}
+          <main class="interview-main-stack" id="prep-step-panel-${step}" role="tabpanel">
+            ${activePanel}
           </main>
         </section>
       </section>
@@ -2282,17 +2442,19 @@
     if (clear) {
       clear.addEventListener("click", resetDrillOnly);
     }
-    const drillTab = document.getElementById("prep-mode-drill");
-    const mockTab = document.getElementById("prep-mode-mock");
-    if (drillTab) {
-      drillTab.addEventListener("click", function () {
-        setPrepMode("drill");
-      });
-    }
-    if (mockTab) {
-      mockTab.addEventListener("click", function () {
-        setPrepMode("mock");
-      });
+    // Layout refresh: bind the new 4-step rail. Each button maps to
+    // a prepMode step. Old prep-mode-drill / prep-mode-mock IDs are
+    // gone — the step rail uses prep-step-<id> instead.
+    PREP_STEPS.forEach(function (stepId) {
+      const btn = document.getElementById("prep-step-" + stepId);
+      if (btn) {
+        btn.addEventListener("click", function () { setPrepMode(stepId); });
+      }
+    });
+    // Empty-debrief "Start a mock interview" jump button.
+    const jumpMock = document.getElementById("prep-step-mock-jump");
+    if (jumpMock) {
+      jumpMock.addEventListener("click", function () { setPrepMode("mock"); });
     }
     bindQuestionList();
     bindPracticeControls();
