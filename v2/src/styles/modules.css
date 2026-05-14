@@ -1565,6 +1565,20 @@
   flex-wrap: wrap;
 }
 
+/* Phase 7: calendar-wide actions sit to the right of search. Buttons
+   inherit btn-ghost / btn-primary; we just wrap them so they group
+   nicely and don't collide with the view toggle on narrow screens. */
+.calendar-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.calendar-toolbar-actions .is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .calendar-view-toggle {
   display: inline-flex;
   align-items: center;

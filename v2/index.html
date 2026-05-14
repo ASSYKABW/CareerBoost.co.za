@@ -100,6 +100,13 @@
   <script src="./src/js/modules/job-search/job-search.shared.js"></script>
   <script src="./src/js/modules/job-search/job-search.route.js"></script>
   <script src="./src/js/modules/applications/applications.route.js"></script>
+  <!-- Phase 7: calendar export + integrations. Order matters: ics + gcal
+       must load BEFORE calendar.route.js so the toolbar/card renderers
+       can read window.CBV2.calendarIcs / .calendarGcal at render time.
+       Notifications loads anywhere; its ticker starts on DOMContentLoaded. -->
+  <script src="./src/js/modules/calendar/calendar.ics.js"></script>
+  <script src="./src/js/modules/calendar/calendar.gcal.js"></script>
+  <script src="./src/js/modules/calendar/calendar.notifications.js"></script>
   <script src="./src/js/modules/calendar/calendar.route.js"></script>
   <script src="./src/js/modules/resume/resume.model.js"></script>
   <script src="./src/js/modules/resume/resume.parser.js"></script>

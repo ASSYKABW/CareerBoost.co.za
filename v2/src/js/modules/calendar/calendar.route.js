@@ -259,6 +259,52 @@
     return map;
   }
 
+  // Phase 7: calendar-wide actions in the toolbar. Two buttons:
+  //   - "Export all" → bundles every event into a single .ics file
+  //   - Notifications toggle → on/off, with permission-prompt fallback
+  // The notifications button visually reflects three states:
+  //   active   (notifications enabled + permission granted)
+  //   inactive (disabled or permission default)
+  //   blocked  (permission denied — user must un-block in browser settings)
+  function renderCalendarToolbarActions() {
+    const notif = window.CBV2.calendarNotifications;
+    const permission = notif ? notif.permission() : "unsupported";
+    const enabled = notif ? notif.isEnabled() : false;
+    const isActive = enabled && permission === "granted";
+    const isBlocked = permission === "denied";
+    const isUnsupported = permission === "unsupported";
+    let notifLabel, notifIcon, notifTitle, notifTone;
+    if (isUnsupported) {
+      notifLabel = "Notifications unavailable";
+      notifIcon = "fa-bell-slash";
+      notifTitle = "Browser doesn't support notifications.";
+      notifTone = "btn-ghost is-disabled";
+    } else if (isBlocked) {
+      notifLabel = "Notifications blocked";
+      notifIcon = "fa-bell-slash";
+      notifTitle = "Notifications were denied. Re-enable in browser settings.";
+      notifTone = "btn-ghost is-disabled";
+    } else if (isActive) {
+      notifLabel = "Notifications on";
+      notifIcon = "fa-bell";
+      notifTitle = "Browser reminders are on. Click to disable.";
+      notifTone = "btn-primary";
+    } else {
+      notifLabel = "Enable notifications";
+      notifIcon = "fa-bell";
+      notifTitle = "Get a browser reminder before events.";
+      notifTone = "btn-ghost";
+    }
+    return (
+      '<button type="button" class="btn-ghost" id="calendar-export-all" title="Download all events as one .ics file">' +
+        '<i class="fa-solid fa-file-arrow-down"></i> Export all' +
+      '</button>' +
+      '<button type="button" class="' + notifTone + '" id="calendar-notifications-toggle" title="' + notifTitle + '"' + (isUnsupported || isBlocked ? ' aria-disabled="true"' : '') + '>' +
+        '<i class="fa-solid ' + notifIcon + '"></i> ' + notifLabel +
+      '</button>'
+    );
+  }
+
   function renderTimeRange(event) {
     const start = parseDate(event.start || (event.date + "T09:00"));
     const end = parseDate(event.end || event.start || (event.date + "T10:00"));
@@ -392,6 +438,11 @@
       conflict +
       '<div class="event-actions">' +
       '<button type="button" class="btn-ghost" data-calendar-edit="' + st(normalized.sourceId || normalized.id) + '">Edit</button>' +
+      // Phase 7: ICS export + Google Calendar push. Both work for any
+      // event with a start time; the buttons are always rendered so the
+      // user can rely on them being there.
+      '<button type="button" class="btn-ghost" data-calendar-export="' + st(normalized.sourceId || normalized.id) + '" title="Download as .ics for any calendar app"><i class="fa-solid fa-file-arrow-down"></i> .ics</button>' +
+      '<button type="button" class="btn-ghost" data-calendar-gcal="' + st(normalized.sourceId || normalized.id) + '" title="Add to Google Calendar"><i class="fa-brands fa-google"></i> Google</button>' +
       '<button type="button" class="btn-ghost" data-calendar-email="' + st(normalized.sourceId || normalized.id) + '">Email</button>' +
       '<button type="button" class="btn-ghost" data-calendar-delete="' + st(normalized.sourceId || normalized.id) + '">Delete</button>' +
       "</div>" +
@@ -695,6 +746,10 @@
                 value="${window.CBV2.sanitizeText(state.query)}"
               />
             </label>
+            <!-- Phase 7: calendar-wide actions live to the right of search. -->
+            <div class="calendar-toolbar-actions">
+              ${renderCalendarToolbarActions()}
+            </div>
           </div>
           <div class="calendar-filter-row">
             ${renderFilterChips()}
@@ -1091,6 +1146,53 @@
     const editButtons = document.querySelectorAll("[data-calendar-edit]");
     const emailButtons = document.querySelectorAll("[data-calendar-email]");
     const deleteButtons = document.querySelectorAll("[data-calendar-delete]");
+    // Phase 7: per-event ICS download + Google Calendar template link.
+    const exportButtons = document.querySelectorAll("[data-calendar-export]");
+    const gcalButtons = document.querySelectorAll("[data-calendar-gcal]");
+    const ics = window.CBV2.calendarIcs;
+    const gcal = window.CBV2.calendarGcal;
+    function findEvent(id) {
+      if (!id) return null;
+      const events = (window.CBV2.store && window.CBV2.store.getEvents()) || [];
+      return events.find(function (e) { return e.id === id || e.sourceId === id; }) || null;
+    }
+    exportButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const id = String(button.getAttribute("data-calendar-export") || "");
+        const event = findEvent(id);
+        if (!event || !ics) {
+          if (window.CBV2.toast) window.CBV2.toast.error("Cannot export event.");
+          return;
+        }
+        const body = ics.buildEventIcs(normalizeEvent(event));
+        if (!body) {
+          if (window.CBV2.toast) window.CBV2.toast.error("Event is missing a start time.");
+          return;
+        }
+        // Safe filename: lowercased title with non-alphanumerics → "-".
+        const slug = String(event.title || "event").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "event";
+        ics.downloadIcs("careerboost-" + slug + ".ics", body);
+        if (window.CBV2.toast) window.CBV2.toast.success(".ics downloaded.");
+      });
+    });
+    gcalButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const id = String(button.getAttribute("data-calendar-gcal") || "");
+        const event = findEvent(id);
+        if (!event || !gcal) {
+          if (window.CBV2.toast) window.CBV2.toast.error("Cannot build Google Calendar link.");
+          return;
+        }
+        const url = gcal.buildGoogleCalUrl(normalizeEvent(event));
+        if (!url) {
+          if (window.CBV2.toast) window.CBV2.toast.error("Event is missing a title or start time.");
+          return;
+        }
+        // Open in a new tab; user confirms with one click in Google's
+        // template page. No OAuth, no scope grants.
+        window.open(url, "_blank", "noopener,noreferrer");
+      });
+    });
     editButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         const id = String(button.getAttribute("data-calendar-edit") || "");
@@ -1129,6 +1231,61 @@
     });
   }
 
+  // Phase 7: bind the toolbar action buttons (Export all + notifications).
+  function bindToolbarActions() {
+    const exportAll = document.getElementById("calendar-export-all");
+    const notifBtn = document.getElementById("calendar-notifications-toggle");
+    const ics = window.CBV2.calendarIcs;
+    const notif = window.CBV2.calendarNotifications;
+    if (exportAll && ics) {
+      exportAll.addEventListener("click", function () {
+        const events = (window.CBV2.store && window.CBV2.store.getEvents()) || [];
+        if (!events.length) {
+          if (window.CBV2.toast) window.CBV2.toast.info("No events to export.");
+          return;
+        }
+        const normalized = events.map(normalizeEvent);
+        const body = ics.buildEventsIcs(normalized, { calendarName: "CareerBoost" });
+        ics.downloadIcs("careerboost-calendar.ics", body);
+        if (window.CBV2.toast) window.CBV2.toast.success("Exported " + events.length + " event" + (events.length === 1 ? "" : "s") + ".");
+      });
+    }
+    if (notifBtn && notif) {
+      const permission = notif.permission();
+      const blocked = permission === "denied" || permission === "unsupported";
+      if (blocked) {
+        // Button is informational only when blocked/unsupported. Clicking
+        // shows a toast explaining what to do.
+        notifBtn.addEventListener("click", function () {
+          if (!window.CBV2.toast) return;
+          if (permission === "unsupported") {
+            window.CBV2.toast.info("This browser doesn't support notifications.");
+          } else {
+            window.CBV2.toast.info("Notifications are blocked. Re-enable in your browser site settings.");
+          }
+        });
+        return;
+      }
+      notifBtn.addEventListener("click", async function () {
+        if (notif.isEnabled() && notif.permission() === "granted") {
+          notif.setEnabled(false);
+          if (window.CBV2.toast) window.CBV2.toast.info("Event notifications disabled.");
+          window.CBV2.renderCurrentRoute();
+          return;
+        }
+        // Not enabled (or no permission yet) → request + enable.
+        const state = await notif.requestPermission();
+        if (state === "granted") {
+          notif.setEnabled(true);
+          if (window.CBV2.toast) window.CBV2.toast.success("Notifications enabled. You'll get reminders before events.");
+        } else if (state === "denied") {
+          if (window.CBV2.toast) window.CBV2.toast.error("Notifications denied. Update your browser site settings to re-enable.");
+        }
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+  }
+
   window.CBV2.routes.calendar = renderView;
   window.CBV2.afterRender.calendar = function () {
     bindViewToggle();
@@ -1138,5 +1295,6 @@
     bindModalActions();
     bindCardActions();
     bindDragAndDrop();
+    bindToolbarActions();
   };
 })();
