@@ -851,10 +851,20 @@
   function bindDelete() {
     const buttons = document.querySelectorAll('[data-action="delete"][data-app-id]');
     buttons.forEach(function (btn) {
-      btn.addEventListener("click", function (event) {
+      btn.addEventListener("click", async function (event) {
         event.stopPropagation();
         const id = btn.getAttribute("data-app-id");
-        if (confirm("Delete this application?")) {
+        // Phase 4.5: in-app modal replaces native confirm.
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Delete this application?",
+              body: "This removes the record from your pipeline. Linked events stay on your calendar without the application link.",
+              confirmLabel: "Delete",
+              tone: "danger",
+            })
+          : confirm("Delete this application?");
+        if (ok) {
           window.CBV2.store.deleteApplication(id);
           window.CBV2.renderCurrentRoute();
         }
@@ -1066,10 +1076,19 @@
 
     const deleteBtn = document.querySelector("[data-bulk-delete]");
     if (deleteBtn) {
-      deleteBtn.addEventListener("click", function () {
+      deleteBtn.addEventListener("click", async function () {
         const ids = selectedAppIds();
         if (!ids.length) return;
-        const ok = confirm("Delete " + ids.length + " application" + (ids.length === 1 ? "" : "s") + "? This can't be undone.");
+        // Phase 4.5: in-app modal replaces native confirm for bulk delete.
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Delete " + ids.length + " application" + (ids.length === 1 ? "" : "s") + "?",
+              body: "This removes " + ids.length + " record" + (ids.length === 1 ? "" : "s") + " from your pipeline. Linked events stay on your calendar. This can't be undone.",
+              confirmLabel: "Delete all",
+              tone: "danger",
+            })
+          : confirm("Delete " + ids.length + " application" + (ids.length === 1 ? "" : "s") + "? This can't be undone.");
         if (!ok) return;
         ids.forEach(function (id) { window.CBV2.store.deleteApplication(id); });
         if (window.CBV2.toast) window.CBV2.toast.success("Deleted " + ids.length + " application" + (ids.length === 1 ? "" : "s") + ".");

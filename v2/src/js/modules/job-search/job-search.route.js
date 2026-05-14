@@ -2162,12 +2162,22 @@
     const root = document.getElementById("job-search-saved-root");
     if (!root || root.getAttribute("data-job-search-saved-bound") === "1") return;
     root.setAttribute("data-job-search-saved-bound", "1");
-    root.addEventListener("click", function (e) {
+    root.addEventListener("click", async function (e) {
       const btn = e.target && e.target.closest ? e.target.closest("[data-delete-saved]") : null;
       if (!btn) return;
       const id = btn.getAttribute("data-delete-saved");
       if (!id) return;
-      if (!window.confirm("Remove this saved search from your picks and digest list?")) return;
+      // Phase 4.5: in-app modal replaces native confirm.
+      const modal = window.CBV2 && window.CBV2.modal;
+      const ok = modal && modal.confirm
+        ? await modal.confirm({
+            title: "Remove saved search?",
+            body: "It will be removed from your picks and from the digest email list. You can save it again later.",
+            confirmLabel: "Remove",
+            tone: "danger",
+          })
+        : window.confirm("Remove this saved search from your picks and digest list?");
+      if (!ok) return;
       const store = window.CBV2.store;
       if (!store || typeof store.deleteSavedSearch !== "function") return;
       store.deleteSavedSearch(id);

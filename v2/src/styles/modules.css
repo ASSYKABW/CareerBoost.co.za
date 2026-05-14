@@ -1024,6 +1024,82 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Phase 4.5: interviewer persona chip selector. Sits inside the mock
+   setup form, full-width row above the JD textarea. */
+.interview-persona-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.interview-persona-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.interview-persona-head span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong, #f8fbff);
+}
+.interview-persona-head .ai-meta {
+  font-size: 12px;
+}
+.interview-persona-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.interview-persona-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-strong, #f8fbff);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.interview-persona-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(94, 234, 212, 0.32);
+}
+.interview-persona-chip.is-active {
+  background: rgba(94, 234, 212, 0.10);
+  border-color: rgba(94, 234, 212, 0.6);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.2) inset;
+}
+.interview-persona-chip i {
+  font-size: 16px;
+  color: #5eead4;
+}
+.interview-persona-chip--cyan i { color: #22e3ff; }
+.interview-persona-chip--blue i { color: #60a5fa; }
+.interview-persona-chip--violet i { color: #a78bfa; }
+.interview-persona-chip--rose i { color: #fb7185; }
+.interview-persona-chip-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.interview-persona-chip-diff {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(248, 251, 255, 0.55);
+}
+.interview-persona-chip.is-active .interview-persona-chip-diff {
+  color: #5eead4;
+}
+
+@media (max-width: 768px) {
+  .interview-persona-strip { grid-template-columns: 1fr 1fr; }
+}
+
 .interview-page .form-grid label {
   min-width: 0;
 }

@@ -755,8 +755,18 @@
 
     const del = panel.querySelector("[data-drawer-delete]");
     if (del) {
-      del.addEventListener("click", function () {
-        if (!confirm("Delete this application? This cannot be undone.")) return;
+      del.addEventListener("click", async function () {
+        // Phase 4.5: in-app modal replaces native confirm.
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Delete this application?",
+              body: "This removes the application from your pipeline. Linked events stay on your calendar without the application link. This cannot be undone.",
+              confirmLabel: "Delete",
+              tone: "danger",
+            })
+          : confirm("Delete this application? This cannot be undone.");
+        if (!ok) return;
         window.CBV2.store.deleteApplication(app.id);
         if (window.CBV2.toast) window.CBV2.toast.info("Application deleted.");
         close();
@@ -859,10 +869,19 @@
   function bindEventDeletes(app) {
     const panel = container.querySelector(".drawer-panel");
     panel.querySelectorAll("[data-delete-event]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", async function () {
         const id = btn.getAttribute("data-delete-event");
         if (!id) return;
-        if (!confirm("Remove this event from the timeline?")) return;
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Remove this event?",
+              body: "The event will be removed from this application's timeline and from your calendar.",
+              confirmLabel: "Remove",
+              tone: "danger",
+            })
+          : confirm("Remove this event from the timeline?");
+        if (!ok) return;
         if (typeof window.CBV2.store.deleteEvent === "function") {
           window.CBV2.store.deleteEvent(id);
           if (window.CBV2.toast) window.CBV2.toast.info("Event removed.");

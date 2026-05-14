@@ -83,6 +83,10 @@
   <script src="./src/js/components/logos.js"></script>
   <script src="./src/js/components/ui-kit.js"></script>
   <script src="./src/js/services/jobs/job.notes.js"></script>
+  <!-- Phase 4.5: in-app modal service replacing window.confirm/.prompt/.alert.
+       Loads before any module that uses it. Gracefully no-op if not loaded;
+       all callsites fall back to native confirm/prompt. -->
+  <script src="./src/js/components/modal-service.js"></script>
   <script src="./src/js/components/app-drawer.js"></script>
   <script src="./src/js/components/command-palette.js"></script>
 
@@ -121,6 +125,10 @@
   <script src="./src/js/modules/resume/resume.route.js"></script>
   <script src="./src/js/modules/cover-letter/cover-letter.route.js"></script>
   <script src="./src/js/services/interview/company-intel.service.js"></script>
+  <!-- Phase 4.5: interviewer personas. Loads BEFORE interview.route.js
+       so the chip selector + intelStepPayloadBase can read the canonical
+       persona list at render time. -->
+  <script src="./src/js/modules/interview/interview.personas.js"></script>
   <script src="./src/js/modules/interview/interview.route.js"></script>
   <script src="./src/js/modules/analytics/analytics.shared.js"></script>
   <script src="./src/js/modules/analytics/analytics.route.js"></script>

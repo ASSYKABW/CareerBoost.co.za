@@ -2939,8 +2939,18 @@ Built analytics dashboard used by 3 teams"></textarea>
     // Toolbar buttons
     const reupload = document.getElementById("resume-reupload");
     if (reupload) {
-      reupload.addEventListener("click", function () {
-        if (!confirm("Upload a new CV? Your current structured resume will be replaced.")) return;
+      reupload.addEventListener("click", async function () {
+        // Phase 4.5: in-app modal replaces native confirm.
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Upload a new CV?",
+              body: "Your current structured resume will be replaced. Tailored variants stay in your career assets.",
+              confirmLabel: "Replace",
+              tone: "danger",
+            })
+          : confirm("Upload a new CV? Your current structured resume will be replaced.");
+        if (!ok) return;
         window.CBV2.store.clearResume && window.CBV2.store.clearResume();
         view.mode = "empty";
         view.tailorResult = null;
@@ -2949,8 +2959,17 @@ Built analytics dashboard used by 3 teams"></textarea>
     }
     const reset = document.getElementById("resume-reset");
     if (reset) {
-      reset.addEventListener("click", function () {
-        if (!confirm("Clear your resume? This cannot be undone.")) return;
+      reset.addEventListener("click", async function () {
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Clear your resume?",
+              body: "This wipes the base resume from your account. Tailored variants stay in your career assets. This cannot be undone.",
+              confirmLabel: "Clear",
+              tone: "danger",
+            })
+          : confirm("Clear your resume? This cannot be undone.");
+        if (!ok) return;
         window.CBV2.store.clearResume && window.CBV2.store.clearResume();
         view.mode = "empty";
         view.tailorResult = null;
@@ -3341,10 +3360,20 @@ Built analytics dashboard used by 3 teams"></textarea>
     rerenderEditor();
   }
 
-  function deleteCareerAsset(id) {
+  async function deleteCareerAsset(id) {
     const store = window.CBV2.store;
     if (!store || typeof store.deleteCareerAsset !== "function") return;
-    if (!window.confirm("Delete this career asset?")) return;
+    // Phase 4.5: in-app modal replaces native confirm.
+    const modal = window.CBV2 && window.CBV2.modal;
+    const ok = modal && modal.confirm
+      ? await modal.confirm({
+          title: "Delete this career asset?",
+          body: "The tailored resume / cover letter / interview pack will be removed from your assets. The base resume is unaffected.",
+          confirmLabel: "Delete",
+          tone: "danger",
+        })
+      : window.confirm("Delete this career asset?");
+    if (!ok) return;
     store.deleteCareerAsset(id);
     toast("success", "Career asset deleted.");
     rerenderSidebar();

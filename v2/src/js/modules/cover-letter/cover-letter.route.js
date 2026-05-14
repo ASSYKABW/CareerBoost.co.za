@@ -1110,11 +1110,22 @@
       });
     }
     if (printBtn) {
-      printBtn.addEventListener("click", function () {
+      printBtn.addEventListener("click", async function () {
         const f = readFields();
         const pf = computeCoverPreflight(f.subject, f.body);
         if (pf.blockers.length) {
-          const proceed = window.confirm("Preflight warning:\n- " + pf.blockers.join("\n- ") + "\n\nContinue export anyway?");
+          // Phase 4.5: in-app modal replaces native confirm. Preflight
+          // blockers render as a bulleted body rather than a "\n-" hack.
+          const modal = window.CBV2 && window.CBV2.modal;
+          const blockerList = pf.blockers.map(function (b) { return "• " + b; }).join("\n");
+          const proceed = modal && modal.confirm
+            ? await modal.confirm({
+                title: "Preflight warnings",
+                body: blockerList + "\n\nContinue export anyway?",
+                confirmLabel: "Export anyway",
+                tone: "danger",
+              })
+            : window.confirm("Preflight warning:\n- " + pf.blockers.join("\n- ") + "\n\nContinue export anyway?");
           if (!proceed) return;
         }
         const html = buildCoverHtml(f.subject, f.body, viewState.coverTemplate).replace(

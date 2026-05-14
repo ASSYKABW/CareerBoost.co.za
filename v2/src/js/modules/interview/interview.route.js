@@ -27,7 +27,11 @@
       stage: "first",
       focus: "",
       jd: "",
-      useResume: true
+      useResume: true,
+      // Phase 4.5: which interviewer persona to play. Defaults to
+      // technical_lead — the most generally useful for practice. The
+      // selector lives in the mock setup form.
+      persona: "technical_lead"
     },
     mockDebrief: null,
     mockDebriefBusy: false,
@@ -204,6 +208,11 @@
   function intelStepPayloadBase() {
     const m = viewState.mockMeta;
     const brief = getIntelBriefForMock();
+    // Phase 4.5: pass the persona id. Backend validates it against
+    // INTERVIEW_PERSONAS in prompts.ts and injects the matching
+    // directive into the system prompt. Unknown ids fall back to
+    // technical_lead server-side.
+    const persona = m.persona || "technical_lead";
     return {
       company: m.company,
       role: m.role,
@@ -211,6 +220,7 @@
       focus: m.focus,
       jobDescription: m.jd,
       candidateBackground: buildCandidateBackground(m.useResume !== false),
+      interviewerPersona: persona,
       ...(brief ? { companyIntelBrief: brief } : {})
     };
   }
@@ -944,17 +954,86 @@
     window.CBV2.renderCurrentRoute();
   }
 
+  // Phase 4.5: persona selector chip strip for the mock setup form.
+  // Reads canonical persona list from window.CBV2.interviewPersonas
+  // (registered by interview.personas.js loaded before this file).
+  // Renders one chip per persona + a hidden input that FormData reads
+  // back via readMockMetaFromForm.
+  function renderPersonaSelector(activeId) {
+    const st = getSt();
+    const reg = window.CBV2 && window.CBV2.interviewPersonas;
+    if (!reg) {
+      // Personas module not loaded — silently fall back to no selector.
+      // The hidden input still appears so the form data round-trips.
+      return '<input type="hidden" name="mockPersona" value="' + st(activeId || "") + '" />';
+    }
+    const personas = reg.list();
+    const chips = personas.map(function (p) {
+      const isActive = p.id === activeId;
+      return (
+        '<button type="button" class="interview-persona-chip interview-persona-chip--' + st(p.tone || "blue") + (isActive ? " is-active" : "") + '"' +
+          ' data-persona-pick="' + st(p.id) + '"' +
+          ' title="' + st(p.tagline) + '"' +
+        '>' +
+          '<i class="fa-solid ' + st(p.icon || "fa-user") + '" aria-hidden="true"></i>' +
+          '<span class="interview-persona-chip-label">' + st(p.label) + '</span>' +
+          '<small class="interview-persona-chip-diff">' + st(p.difficulty || "") + '</small>' +
+        '</button>'
+      );
+    }).join("");
+    return (
+      '<div class="form-row-full interview-persona-row">' +
+        '<div class="interview-persona-head">' +
+          '<span>Interviewer persona</span>' +
+          '<small class="ai-meta">Pick the style you want to practice. The AI adopts that voice end-to-end.</small>' +
+        '</div>' +
+        '<div class="interview-persona-strip" role="radiogroup" aria-label="Interviewer persona">' +
+          chips +
+        '</div>' +
+        '<input type="hidden" name="mockPersona" id="mock-persona-hidden" value="' + st(activeId || "technical_lead") + '" />' +
+      '</div>'
+    );
+  }
+
+  function bindPersonaSelector() {
+    const buttons = document.querySelectorAll("[data-persona-pick]");
+    const hidden = document.getElementById("mock-persona-hidden");
+    buttons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-persona-pick") || "";
+        if (!id) return;
+        // Update hidden field + toggle active class in place — no full
+        // re-render needed so the user's form values + scroll position
+        // stay put.
+        if (hidden) hidden.value = id;
+        viewState.mockMeta.persona = id;
+        buttons.forEach(function (b) { b.classList.remove("is-active"); });
+        btn.classList.add("is-active");
+      });
+    });
+  }
+
   function readMockMetaFromForm() {
     const form = document.getElementById("mock-session-form");
     if (!form) return;
     const fd = new FormData(form);
+    // Phase 4.5: persona is a hidden field driven by the chip selector.
+    // Falls back to the prior selection if the chips haven't rendered
+    // yet (race during streaming re-renders).
+    const personaFromForm = String(fd.get("mockPersona") || "").trim();
+    const prior = (viewState.mockMeta && viewState.mockMeta.persona) || "technical_lead";
+    const validIds = window.CBV2.interviewPersonas && window.CBV2.interviewPersonas._persona_ids;
+    const persona = personaFromForm && validIds && validIds.indexOf(personaFromForm) >= 0
+      ? personaFromForm
+      : prior;
     viewState.mockMeta = {
       company: String(fd.get("mockCompany") || "").trim(),
       role: String(fd.get("mockRole") || "").trim(),
       stage: String(fd.get("mockStage") || "first"),
       focus: String(fd.get("mockFocus") || "").trim(),
       jd: String(fd.get("mockJd") || "").trim(),
-      useResume: fd.get("mockUseResume") === "on"
+      useResume: fd.get("mockUseResume") === "on",
+      persona: persona
     };
   }
 
@@ -1914,6 +1993,7 @@
             <label class="form-row-full">Focus areas
               <input name="mockFocus" placeholder="Behavioral, system design, leadership..." value="${st(m.focus)}" />
             </label>
+            ${renderPersonaSelector(m.persona || "technical_lead")}
             <label class="form-row-full">Job description
               <textarea name="mockJd" rows="4" placeholder="Paste JD excerpt or key requirements.">${st(m.jd)}</textarea>
             </label>
@@ -1987,6 +2067,9 @@
 
   window.CBV2.routes.interview = renderViewV2;
   window.CBV2.afterRender.interview = function () {
+    // Phase 4.5: persona chip selector lives inside the mock setup form
+    // and is rendered on every interview-route render.
+    bindPersonaSelector();
     const targetSelect = document.getElementById("interview-target-select");
     if (targetSelect) {
       targetSelect.addEventListener("change", function () {

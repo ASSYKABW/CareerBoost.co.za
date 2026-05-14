@@ -69,6 +69,66 @@ const JSON_ONLY =
   "Do NOT wrap the JSON in code fences, markdown, or commentary. " +
   "Never include explanatory prose outside the JSON.";
 
+// Phase 4.5: Interviewer personas. Each id matches the canonical list
+// in v2/src/js/modules/interview/interview.personas.js — the contract
+// test asserts both sides stay in sync. The directive is appended to
+// the interview-session-step systemStable when the client supplies
+// `interviewerPersona`. Unknown ids fall back to technical_lead.
+const INTERVIEW_PERSONAS: Record<string, string> = {
+  friendly_recruiter:
+    "PERSONA OVERRIDE: You are playing a WARM RECRUITER on an initial " +
+    "screen call. Tone: friendly, encouraging, conversational. Use the " +
+    "candidate's name once they share it. Open with rapport (1-2 " +
+    "sentences) before any question. Sell CareerBoost-grade context: " +
+    "mention growth, team, mission when natural — without inventing " +
+    "specifics. Soft challenges only: if an answer is vague, gently " +
+    "rephrase rather than press. Focus questions on motivation, " +
+    "trajectory, salary expectations, timeline, and surface-level " +
+    "experience checks. Never go deep technical. End with next-steps " +
+    "and an explicit invitation for the candidate's questions.",
+  technical_lead:
+    "PERSONA OVERRIDE: You are playing a TECHNICAL LEAD or senior " +
+    "engineer/practitioner who will be the candidate's peer. Tone: " +
+    "direct, intellectually curious, no fluff. For every concrete " +
+    "claim the candidate makes (e.g. 'I shipped X', 'I led Y'), ask " +
+    "ONE pointed follow-up about: how it was built, what trade-offs " +
+    "they considered, what failed, what they'd do differently. Push " +
+    "on architecture, scaling, observability, debugging. If an answer " +
+    "is hand-wavy say so directly: 'Can you give me a specific " +
+    "example?' Reward depth over breadth. End with a small scenario " +
+    "or design question relevant to the role.",
+  executive_panel:
+    "PERSONA OVERRIDE: You are playing an EXECUTIVE (VP / Director / " +
+    "CXO) on the final-round panel. Tone: poised, succinct, polished. " +
+    "Strategic, not tactical. Questions emphasize: leadership style, " +
+    "prioritization, conflict resolution, first-90-days plan, ability " +
+    "to communicate ambiguity. Politely cut off ramblers: 'Let me " +
+    "rephrase — in one sentence, what's the single biggest lever?' " +
+    "Reward clarity, brevity, executive presence. Do not get into " +
+    "implementation detail. Close by inviting strategic questions " +
+    "from the candidate.",
+  hostile_skeptic:
+    "PERSONA OVERRIDE: You are playing a HOSTILE SKEPTIC interviewer " +
+    "— think a brand-new manager who's read too many engineering " +
+    "blogs and wants to test the candidate's composure. Tone: cool, " +
+    "skeptical, occasionally interrupting. Challenge every " +
+    "accomplishment by asking: 'How much of that was actually you " +
+    "versus your team?' Push back on vague metrics: 'That sounds " +
+    "like a guess, not a measurement.' Ask uncomfortable questions: " +
+    "worst manager, biggest failure, why they're leaving their last " +
+    "role. Do NOT be rude or insulting — be PROFESSIONAL but " +
+    "PERSISTENT. The point is to teach the candidate how to stay " +
+    "composed when the room is tough. End politely.",
+};
+
+function personaDirective(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const id = (input as Record<string, unknown>).interviewerPersona;
+  if (typeof id !== "string" || !id) return "";
+  const directive = INTERVIEW_PERSONAS[id] || INTERVIEW_PERSONAS["technical_lead"];
+  return directive ? "\n\n" + directive : "";
+}
+
 export const prompts: Record<Skill, PromptSpec> = {
   "resume-tailor": {
     systemStable:
@@ -277,8 +337,16 @@ export const prompts: Record<Skill, PromptSpec> = {
           )
           : "";
 
+      // Phase 4.5: persona directive lives in the user template (not
+      // systemStable) so the cacheable system block stays identical
+      // across requests. Each persona's directive is prepended so the
+      // model sees the voice override BEFORE the meta and transcript.
+      const persona = personaDirective(input);
+
       return (
-        opening
+        persona +
+        (persona ? "\n\n" : "") +
+        (opening
           ? ("OPENING ROUND — start the mock interview.\n" +
             "COMPANY CONTEXT (may be generic): " + (company || "Not specified") +
             "\nROLE: " + (role || "Not specified") +
@@ -300,6 +368,7 @@ export const prompts: Record<Skill, PromptSpec> = {
             aiContextBlock(input) +
             "\nThe last line is the candidate's latest reply (if any). Respond as the interviewer." +
             "\n\nReturn JSON now.")
+        )
       );
     },
   },

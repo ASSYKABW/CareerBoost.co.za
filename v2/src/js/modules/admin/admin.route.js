@@ -1183,15 +1183,21 @@
       });
     }
     document.querySelectorAll("[data-admin-demote]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", async function () {
         const userId = btn.getAttribute("data-admin-demote") || "";
         const email = btn.getAttribute("data-admin-demote-email") || "";
         if (!userId) return;
-        const ok = confirm(
-          "Remove admin role from " + (email || userId) + "?\n\n" +
-          "They will lose access to the admin console immediately. " +
-          "This is audit-logged."
-        );
+        // Phase 4.5: in-app modal replaces native confirm. Destructive
+        // admin actions use the danger tone so the button is clearly red.
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Remove admin role?",
+              body: "Demote " + (email || userId) + ". They will lose access to the admin console immediately. This is audit-logged.",
+              confirmLabel: "Remove admin",
+              tone: "danger",
+            })
+          : confirm("Remove admin role from " + (email || userId) + "? They will lose access immediately.");
         if (!ok) return;
         promoteOperator({ targetUserId: userId, targetEmail: email, roles: [], note: "demoted via UI" });
       });
@@ -1312,18 +1318,43 @@
       });
     });
     document.querySelectorAll("[data-incident-resolve]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", async function () {
         const id = btn.getAttribute("data-incident-resolve");
         if (!id) return;
-        const note = prompt("Optional resolution note (saved to audit log):", "") || "";
-        mutateIncident(id, "resolve", { note: note });
+        const modal = window.CBV2 && window.CBV2.modal;
+        const note = modal && modal.prompt
+          ? await modal.prompt({
+              title: "Resolve incident",
+              body: "Add an optional resolution note. This is saved to the audit log.",
+              placeholder: "e.g. \"Provider normalization rule deployed.\"",
+              confirmLabel: "Resolve",
+              multiline: true,
+            })
+          : (prompt("Optional resolution note (saved to audit log):", "") || "");
+        if (note === null) return; // user cancelled
+        mutateIncident(id, "resolve", { note: note || "" });
       });
     });
     document.querySelectorAll("[data-incident-snooze]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", async function () {
         const id = btn.getAttribute("data-incident-snooze");
         if (!id) return;
-        const hoursStr = prompt("Snooze for how many hours?", "24") || "24";
+        const modal = window.CBV2 && window.CBV2.modal;
+        const hoursStr = modal && modal.prompt
+          ? await modal.prompt({
+              title: "Snooze incident",
+              body: "How many hours should this incident stay quiet? It will reopen automatically at that time.",
+              defaultValue: "24",
+              placeholder: "1 - 168 hours",
+              confirmLabel: "Snooze",
+              validate: function (v) {
+                const n = Number(v);
+                if (!Number.isFinite(n) || n < 1 || n > 168) return "Enter a number between 1 and 168 hours.";
+                return null;
+              }
+            })
+          : (prompt("Snooze for how many hours?", "24") || "24");
+        if (hoursStr === null) return; // cancelled
         const hours = Math.max(1, Math.min(168, Number(hoursStr) || 24));
         mutateIncident(id, "snooze", { snoozeHours: hours, note: "snoozed " + hours + "h via UI" });
       });
