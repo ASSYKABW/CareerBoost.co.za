@@ -2317,6 +2317,109 @@ Deno.serve(async (req) => {
     recommendations: growthRecommendations,
   };
 
+  // ─── Phase E3: User segments ──────────────────────────────────────────
+  // Counts per segment from v_admin_user_segments. Drives the segment
+  // cards on the admin Users board: power, new, at_risk, churned, active.
+  const { data: segmentRows, error: segmentErr } = await svc
+    .from("v_admin_user_segments")
+    .select("user_id, segment, application_count, saved_job_count, placement_count, last_activity_at, country_code, utm_source, plan");
+  if (segmentErr) warnings.push("user_segments: " + segmentErr.message);
+
+  const segments = (segmentRows || []) as Array<Record<string, unknown>>;
+  const segmentCounts = { power: 0, new: 0, at_risk: 0, churned: 0, active: 0 };
+  segments.forEach((row) => {
+    const seg = String(row.segment || "active");
+    if (segmentCounts[seg as keyof typeof segmentCounts] != null) {
+      segmentCounts[seg as keyof typeof segmentCounts] += 1;
+    }
+  });
+  // Sample top users per segment (5 each) for the table drill-down.
+  // Note: param renamed to `limit` so it doesn't shadow the outer n() helper.
+  function topN(seg: string, limit: number) {
+    return segments
+      .filter((row) => String(row.segment) === seg)
+      .slice(0, limit)
+      .map((row) => ({
+        user_id: row.user_id,
+        application_count: n(row.application_count),
+        saved_job_count: n(row.saved_job_count),
+        placement_count: n(row.placement_count),
+        last_activity_at: row.last_activity_at || null,
+        country_code: row.country_code || null,
+        utm_source: row.utm_source || null,
+        plan: row.plan || null,
+      }));
+  }
+  const userSegments = {
+    counts: segmentCounts,
+    total: segments.length,
+    // Per-segment narrative for the Users board cards.
+    cards: [
+      {
+        id: "power",
+        label: "Power users",
+        icon: "fa-star",
+        count: segmentCounts.power,
+        tone: "green",
+        narrative: segmentCounts.power === 0
+          ? "No power users yet. Activation hasn't produced advocates."
+          : `${segmentCounts.power} user${segmentCounts.power === 1 ? "" : "s"} placed or with 3+ applications and 5+ saved jobs — your advocates.`,
+        action: segmentCounts.power === 0
+          ? "Focus on activation first; power users emerge from activated users."
+          : "Ship a referral loop now; these users are the most likely to invite others.",
+      },
+      {
+        id: "new",
+        label: "New users (7d)",
+        icon: "fa-user-plus",
+        count: segmentCounts.new,
+        tone: "blue",
+        narrative: segmentCounts.new === 0
+          ? "No new signups in the last 7 days. Acquisition is the priority."
+          : `${segmentCounts.new} user${segmentCounts.new === 1 ? "" : "s"} signed up this week. Don't lose them.`,
+        action: "Send a welcome nudge + pin a 'next action' card to their dashboard.",
+      },
+      {
+        id: "at_risk",
+        label: "At risk",
+        icon: "fa-user-clock",
+        count: segmentCounts.at_risk,
+        tone: "amber",
+        narrative: segmentCounts.at_risk === 0
+          ? "No users stuck — activation is working."
+          : `${segmentCounts.at_risk} user${segmentCounts.at_risk === 1 ? "" : "s"} signed up but never saved a job or created an application.`,
+        action: "Send a guided re-engagement: 'We noticed you signed up but haven't saved a role yet.'",
+      },
+      {
+        id: "churned",
+        label: "Churned (30d)",
+        icon: "fa-user-slash",
+        count: segmentCounts.churned,
+        tone: "rose",
+        narrative: segmentCounts.churned === 0
+          ? "No churned users — retention is strong."
+          : `${segmentCounts.churned} user${segmentCounts.churned === 1 ? "" : "s"} haven't returned in 30+ days.`,
+        action: "Run a winback email with a specific benefit ('here's a new feature you missed').",
+      },
+      {
+        id: "active",
+        label: "Active",
+        icon: "fa-user-check",
+        count: segmentCounts.active,
+        tone: "cyan",
+        narrative: `${segmentCounts.active} user${segmentCounts.active === 1 ? "" : "s"} engaging in the last 30 days.`,
+        action: "Track which features predict retention; double down on those.",
+      },
+    ],
+    samples: {
+      power:   topN("power", 5),
+      new:     topN("new", 5),
+      at_risk: topN("at_risk", 5),
+      churned: topN("churned", 5),
+      active:  topN("active", 5),
+    },
+  };
+
   // ─── Outcomes block (for the Command Center + Growth board) ───────────
   const outcomesBlock = {
     placements30d,
@@ -2477,6 +2580,8 @@ Deno.serve(async (req) => {
     outcomes: outcomesBlock,
     // Phase E2: Growth & Acquisition board reads this.
     growth: growthBlock,
+    // Phase E3: Users board segment classification + per-segment samples.
+    userSegments,
     operations: {
       staleSaved: staleSavedRows.length,
       sourceIssueCount: sourceIssues.length,

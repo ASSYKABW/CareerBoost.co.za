@@ -66,6 +66,23 @@
     targetEmailFilter: ""
   };
 
+  // Phase E3: per-user timeline state. activeUserId is the user whose
+  // expanded drawer is open in the Users board; the fetcher writes the
+  // result here, the section reads it on render.
+  const adminUserTimelineRemote = {
+    status: "idle",        // idle | loading | ready | error
+    error: "",
+    activeUserId: "",
+    activeUserEmail: "",
+    data: null,            // raw timeline JSON from the RPC
+    loadedAt: 0,
+    inFlight: false,
+    // Active segment chip ("power" | "new" | "at_risk" | "churned" |
+    // "active" | "") — section.js writes this when the operator clicks
+    // a segment card to filter the table.
+    activeSegment: ""
+  };
+
   // -- Sanitization ---------------------------------------------------------
   function st(value) {
     const sanitize = window.CBV2.sanitizeText || function (x) { return String(x == null ? "" : x); };
@@ -420,6 +437,7 @@
     adminOperatorsRemote: adminOperatorsRemote,
     adminIncidentsRemote: adminIncidentsRemote,
     adminAuditRemote: adminAuditRemote,
+    adminUserTimelineRemote: adminUserTimelineRemote,
     // sanitization + numeric
     st: st,
     numberOr: numberOr,

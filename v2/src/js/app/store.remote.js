@@ -696,6 +696,58 @@
         fromStage: from,
         toStage: stage
       }, { module: "pipeline", route: "applications" });
+
+      // Phase E3: auto-record a milestone in interview_outcomes when the
+      // candidate moves an app to interview or offer. This is what makes
+      // the admin North Star ("active placements 30d") a real, attributed
+      // metric instead of a derived-from-stage approximation. We dedupe
+      // by checking if an outcome of the same type for this application
+      // already exists this calendar day — drag-and-drop oopses don't
+      // create duplicate rows. Other outcome types (rejected_after_*,
+      // withdrew_after_*) are NOT auto-recorded because they're richer
+      // milestones the candidate adds explicitly.
+      if (stage === "interview" || stage === "offer") {
+        // userId is the module-level variable captured on signin — same
+        // one used by every other remote-store operation in this file.
+        if (!userId) return;
+        const ownerUserId = userId;
+        // sourceChannel: prefer host of source_url (acquisition channel
+        // attribution for the placement). Falls back to null.
+        let sourceChannel = null;
+        try {
+          if (app.sourceUrl || app.source_url) {
+            const u = new URL(app.sourceUrl || app.source_url);
+            sourceChannel = u.host.replace(/^www\./, "").toLowerCase().slice(0, 256);
+          }
+        } catch (e) { /* invalid URL — fine */ }
+        const occurredAt = new Date().toISOString();
+        const todayPrefix = occurredAt.slice(0, 10); // YYYY-MM-DD
+        // Check-then-insert. Soft race condition (two stage flips in same
+        // second) is harmless: at worst two rows for the same milestone,
+        // which the rollup view dedups per outcome_type per window. Not
+        // worth a server-side UNIQUE constraint.
+        fireAndForget((async function () {
+          const { data: existing } = await client
+            .from("interview_outcomes")
+            .select("id")
+            .eq("user_id", ownerUserId)
+            .eq("application_id", id)
+            .eq("outcome_type", stage)
+            .gte("occurred_at", todayPrefix + "T00:00:00Z")
+            .limit(1);
+          if (existing && existing.length) return null;
+          return client.from("interview_outcomes").insert({
+            user_id: ownerUserId,
+            application_id: id,
+            outcome_type: stage,
+            occurred_at: occurredAt,
+            company: app.company || null,
+            role: app.role || null,
+            source_channel: sourceChannel,
+            notes: null
+          });
+        })(), "recordOutcome");
+      }
     },
     getEventsForApplication: function (id) {
       return cache.events.filter(function (e) { return e.appId === id; });

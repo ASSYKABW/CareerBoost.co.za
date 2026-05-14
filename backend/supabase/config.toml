@@ -113,3 +113,9 @@ verify_jwt = false
 # own profile, so platform JWT verification is bypassed here too.
 [functions.signup-attribution]
 verify_jwt = false
+
+# Phase E3: admin-only per-user timeline drill-down. Calls the
+# admin_user_timeline SECURITY DEFINER RPC, which double-checks the
+# admin role server-side.
+[functions.admin-user-timeline]
+verify_jwt = false

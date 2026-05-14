@@ -44,6 +44,7 @@
   const adminOperatorsRemote = helpers.adminOperatorsRemote;
   const adminIncidentsRemote = helpers.adminIncidentsRemote;
   const adminAuditRemote = helpers.adminAuditRemote;
+  const adminUserTimelineRemote = helpers.adminUserTimelineRemote;
 
   // -- Section menu groups (drives the sidebar + currentSection() guard) ---
   const sections = [
@@ -71,8 +72,11 @@
     {
       group: "Management",
       items: [
-        { id: "users", icon: "fa-users", label: "User accounts" },
-        { id: "user-support", icon: "fa-user-check", label: "User support" },
+        // Phase E3: Users board is the consolidated home for everything
+        // user-shaped: segments, account health queue, per-user timeline
+        // drill-down. The old section=user-support route still works as
+        // an alias (the section renderer is registered against both IDs).
+        { id: "users", icon: "fa-users", label: "Users & outcomes" },
         { id: "job-feed", icon: "fa-magnifying-glass-chart", label: "Job feed health", badge: "Live" }
       ]
     },
@@ -175,6 +179,10 @@
     let section = String(params.section || "command-center").trim();
     // Phase E1: "overview" is the old home — redirect to command-center.
     if (section === "overview") section = "command-center";
+    // Phase E3: "user-support" is folded into "users". The renderer is
+    // registered against both IDs, so this is a hardening alias for the
+    // ID set guard below.
+    if (section === "user-support") section = "users";
     const ids = sections.reduce(function (out, group) {
       return out.concat(group.items.map(function (item) { return item.id; }));
     }, []);
@@ -281,7 +289,9 @@
       weeklyChanges: [],
       outcomes: null,
       // Phase E2: Growth & Acquisition block.
-      growth: null
+      growth: null,
+      // Phase E3: Users board segments + timeline state.
+      userSegments: null
     };
 
     const remote = adminRemote.data;
@@ -335,6 +345,8 @@
       data.outcomes = remote.outcomes || null;
       // Phase E2: Growth & Acquisition block.
       data.growth = remote.growth || null;
+      // Phase E3: Users board segments.
+      data.userSegments = remote.userSegments || null;
       data.totals.users = numberOr(totals.users, 0);
       data.totals.profiles = numberOr(totals.profiles, 0);
       data.totals.applications = numberOr(totals.applications, data.totals.applications);
@@ -932,6 +944,52 @@
     state: function () { return Object.assign({}, adminAuditRemote); }
   };
 
+  // Phase E3: per-user timeline drill-down fetcher. Calls
+  // /admin-user-timeline which wraps the admin_user_timeline RPC
+  // (SECURITY DEFINER + admin role gate). Pulls profile, applications,
+  // outcomes, recent sessions for one user — drives the inline drawer
+  // in the consolidated Users board.
+  async function fetchAdminUserTimeline(userId, email) {
+    if (!userId) return null;
+    if (adminUserTimelineRemote.inFlight) return null;
+    adminUserTimelineRemote.inFlight = true;
+    adminUserTimelineRemote.status = "loading";
+    adminUserTimelineRemote.error = "";
+    adminUserTimelineRemote.activeUserId = userId;
+    adminUserTimelineRemote.activeUserEmail = email || "";
+    window.CBV2.renderCurrentRoute();
+    try {
+      const result = await callAdminEndpoint("admin-user-timeline", { userId: userId });
+      adminUserTimelineRemote.data = (result && result.timeline) || null;
+      adminUserTimelineRemote.status = "ready";
+      adminUserTimelineRemote.loadedAt = Date.now();
+      return adminUserTimelineRemote.data;
+    } catch (err) {
+      adminUserTimelineRemote.status = "error";
+      adminUserTimelineRemote.error = (err && err.message) || "Timeline fetch failed.";
+      adminUserTimelineRemote.data = null;
+      return null;
+    } finally {
+      adminUserTimelineRemote.inFlight = false;
+      window.CBV2.renderCurrentRoute();
+    }
+  }
+
+  function closeAdminUserTimeline() {
+    adminUserTimelineRemote.activeUserId = "";
+    adminUserTimelineRemote.activeUserEmail = "";
+    adminUserTimelineRemote.data = null;
+    adminUserTimelineRemote.status = "idle";
+    adminUserTimelineRemote.error = "";
+    window.CBV2.renderCurrentRoute();
+  }
+
+  window.CBV2.adminUserTimeline = {
+    fetch: fetchAdminUserTimeline,
+    close: closeAdminUserTimeline,
+    state: function () { return Object.assign({}, adminUserTimelineRemote); }
+  };
+
   // -- Toolbar refresh + staleness ticker -----------------------------------
 
   // Phase A: staleness ticker. Updates the toolbar chip every 10s so the
@@ -1007,10 +1065,22 @@
     ) {
       fetchAdminUsers({});
     }
+    // Phase E3: when navigating AWAY from users, close any open timeline
+    // drawer so it doesn't leak across section changes.
+    if (activeSection !== "users" && activeSection !== "user-support" && adminUserTimelineRemote.activeUserId) {
+      adminUserTimelineRemote.activeUserId = "";
+      adminUserTimelineRemote.activeUserEmail = "";
+      adminUserTimelineRemote.data = null;
+      adminUserTimelineRemote.status = "idle";
+      adminUserTimelineRemote.activeSegment = "";
+    }
 
-    // Phase B.1: bind toolbar controls when on the User Support section.
-    if (activeSection === "user-support") {
+    // Phase B.1 + E3: bind toolbar controls when on the Users board
+    // (which now also serves the legacy user-support section ID).
+    if (activeSection === "users" || activeSection === "user-support") {
       bindUserSupportControls();
+      bindUserSegmentControls();
+      bindUserTimelineControls();
     }
 
     // Phase C.2: bind Risk Center incident buttons.
@@ -1139,6 +1209,59 @@
           filterInput.setSelectionRange(len, len);
         } catch (e) { /* ignore */ }
       }
+    }
+  }
+
+  // Phase E3: segment chip click → set activeSegment, re-render. Click
+  // the same chip again to clear the filter. The filtering itself is
+  // done client-side in sections/users.js renderSupportTable.
+  function bindUserSegmentControls() {
+    document.querySelectorAll("[data-admin-segment]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const seg = btn.getAttribute("data-admin-segment") || "";
+        if (adminUserTimelineRemote.activeSegment === seg) {
+          adminUserTimelineRemote.activeSegment = "";
+        } else {
+          adminUserTimelineRemote.activeSegment = seg;
+        }
+        // Close any open timeline drawer when switching segments —
+        // the row may scroll out of the filtered view.
+        adminUserTimelineRemote.activeUserId = "";
+        adminUserTimelineRemote.activeUserEmail = "";
+        adminUserTimelineRemote.data = null;
+        adminUserTimelineRemote.status = "idle";
+        window.CBV2.renderCurrentRoute();
+      });
+    });
+    const clear = document.querySelector("[data-admin-segment-clear]");
+    if (clear) {
+      clear.addEventListener("click", function () {
+        adminUserTimelineRemote.activeSegment = "";
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+  }
+
+  // Phase E3: timeline expand/collapse for per-user drill-down.
+  function bindUserTimelineControls() {
+    document.querySelectorAll("[data-admin-user-expand]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const userId = btn.getAttribute("data-admin-user-expand") || "";
+        const email = btn.getAttribute("data-admin-user-email") || "";
+        if (!userId) return;
+        // Toggle: clicking the same row closes the drawer.
+        if (adminUserTimelineRemote.activeUserId === userId) {
+          closeAdminUserTimeline();
+          return;
+        }
+        fetchAdminUserTimeline(userId, email);
+      });
+    });
+    const closeBtn = document.querySelector("[data-admin-user-close]");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        closeAdminUserTimeline();
+      });
     }
   }
 

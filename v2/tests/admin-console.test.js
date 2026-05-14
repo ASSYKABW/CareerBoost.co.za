@@ -72,9 +72,11 @@ function run() {
   // Phase D: helpers + section files load first, then the route dispatcher.
   // Phase E1: command-center is loaded too (new admin home).
   loadScript(ctx, "src/js/modules/admin/admin-helpers.js");
+  // Phase E3: user-support.js deleted (folded into users.js which
+  // registers both "users" and the legacy "user-support" section IDs).
   [
     "command-center", "growth", "overview", "usage-engagement", "funnel",
-    "users", "user-support", "job-feed", "ai-cost", "extension", "sync",
+    "users", "job-feed", "ai-cost", "extension", "sync",
     "risk-center", "reports", "logs", "settings"
   ].forEach(function (name) {
     loadScript(ctx, "src/js/modules/admin/sections/" + name + ".js");
@@ -497,6 +499,18 @@ function run() {
         recommendations: [
           { severity: "info", title: "Invest more in linkedin", body: "50% of linkedin signups placed.", action: "Double down on LinkedIn." }
         ]
+      },
+      userSegments: {
+        counts: { power: 1, new: 1, at_risk: 1, churned: 0, active: 1 },
+        total: 4,
+        cards: [
+          { id: "power",   label: "Power users",  icon: "fa-star",       count: 1, tone: "green", narrative: "1 user placed.", action: "Ship referral loop." },
+          { id: "new",     label: "New users (7d)", icon: "fa-user-plus", count: 1, tone: "blue",  narrative: "1 user signed up.", action: "Send welcome nudge." },
+          { id: "at_risk", label: "At risk",      icon: "fa-user-clock", count: 1, tone: "amber", narrative: "1 stuck user.", action: "Send re-engagement." },
+          { id: "churned", label: "Churned (30d)", icon: "fa-user-slash", count: 0, tone: "rose",  narrative: "No churned users.", action: "Run winback." },
+          { id: "active",  label: "Active",       icon: "fa-user-check", count: 1, tone: "cyan",  narrative: "1 active user.", action: "Track patterns." }
+        ],
+        samples: { power: [], new: [], at_risk: [], churned: [], active: [] }
       }
     });
     ctx.window.CBV2.adminMetrics.applyRemoteSnapshot(enriched);
@@ -513,18 +527,22 @@ function run() {
   assert.ok(/Quality/.test(growthHtml), "growth section should render channel quality column");
   assert.ok(/Invest more in linkedin/.test(growthHtml), "growth section should render specific recommendations");
 
-  ctx.window.CBV2.getRouteParams = function () { return { section: "users" }; };
-  const usersHtml = ctx.window.CBV2.routes.admin();
-  assert.ok(/Recent user accounts/.test(usersHtml), "users section should render");
-  assert.ok(/operator@example\.com/.test(usersHtml), "users section should include recent users");
-  assert.ok(/Pipeline/.test(usersHtml), "users section should include user work counts");
-
+  // Phase E3: user-support is folded into the Users board. Both section
+  // IDs route to the same renderer, with segment cards + timeline drawer.
   ctx.window.CBV2.getRouteParams = function () { return { section: "user-support" }; };
   const supportHtml = ctx.window.CBV2.routes.admin();
-  assert.ok(/User support/.test(supportHtml), "user support section should render");
-  assert.ok(/Account health queue/.test(supportHtml), "user support should render account health queue");
-  assert.ok(/candidate@example\.com/.test(supportHtml), "user support should include monitored accounts");
-  assert.ok(/Resume readiness follow-up/.test(supportHtml), "user support should render support playbooks");
+  assert.ok(/Account health queue/.test(supportHtml), "user-support alias should render account health queue");
+  assert.ok(/Power users/.test(supportHtml), "user-support alias should render segment cards");
+  assert.ok(/candidate@example\.com/.test(supportHtml), "user-support alias should include monitored accounts");
+  assert.ok(/Resume readiness follow-up/.test(supportHtml), "user-support alias should still render support playbooks");
+
+  ctx.window.CBV2.getRouteParams = function () { return { section: "users" }; };
+  const usersBoardHtml = ctx.window.CBV2.routes.admin();
+  assert.ok(/Power users/.test(usersBoardHtml), "users board should render segment cards");
+  assert.ok(/At risk/.test(usersBoardHtml), "users board should render at-risk segment");
+  assert.ok(/Churned/.test(usersBoardHtml), "users board should render churned segment");
+  assert.ok(/Account health queue/.test(usersBoardHtml), "users board should render account health queue");
+  assert.ok(/data-admin-segment="power"/.test(usersBoardHtml), "users board segment cards should be clickable filters");
 
   ctx.window.CBV2.getRouteParams = function () { return { section: "job-feed" }; };
   const feedHtml = ctx.window.CBV2.routes.admin();

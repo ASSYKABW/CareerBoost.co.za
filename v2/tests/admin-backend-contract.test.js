@@ -149,6 +149,30 @@ function run() {
   assert.ok(/\[functions\.signup-attribution\]/.test(config), "Supabase config should register signup-attribution");
   assert.ok(/fn:deploy:signup-attribution/.test(pkg), "backend package should expose signup-attribution deploy script");
 
+  // Phase E3: Users board contract.
+  const userTimelineMigration = read("backend/supabase/migrations/0014_admin_user_timeline.sql");
+  assert.ok(/create or replace view public\.v_admin_user_segments/.test(userTimelineMigration), "E3 migration should expose user segments view");
+  assert.ok(/'power'/.test(userTimelineMigration), "user segments view should classify power users");
+  assert.ok(/'new'/.test(userTimelineMigration), "user segments view should classify new users");
+  assert.ok(/'at_risk'/.test(userTimelineMigration), "user segments view should classify at-risk users");
+  assert.ok(/'churned'/.test(userTimelineMigration), "user segments view should classify churned users");
+  assert.ok(/create or replace function public\.admin_user_timeline/.test(userTimelineMigration), "E3 migration should expose admin_user_timeline RPC");
+  assert.ok(/security definer/.test(userTimelineMigration), "admin_user_timeline should be SECURITY DEFINER");
+  assert.ok(/admin role required/.test(userTimelineMigration), "admin_user_timeline should enforce admin role gate");
+  assert.ok(/revoke all on function public\.admin_user_timeline\(uuid\) from public, anon/.test(userTimelineMigration), "admin_user_timeline should revoke public/anon execute");
+
+  const userTimelineFn = read("backend/supabase/functions/admin-user-timeline/index.ts");
+  assert.ok(/getAuthedAdmin\(req\)/.test(userTimelineFn), "admin-user-timeline should verify admin access");
+  assert.ok(/admin_user_timeline/.test(userTimelineFn), "admin-user-timeline should call the RPC");
+  assert.ok(/0-9a-f\]\{8\}/.test(userTimelineFn), "admin-user-timeline should validate the uuid format");
+
+  assert.ok(/from\("v_admin_user_segments"\)/.test(fn), "admin-overview should read the user segments view");
+  assert.ok(/const userSegments = \{/.test(fn), "admin-overview should compute the userSegments block");
+  assert.ok(/userSegments,/.test(fn), "admin-overview should expose userSegments at the top level");
+
+  assert.ok(/\[functions\.admin-user-timeline\]/.test(config), "Supabase config should register admin-user-timeline");
+  assert.ok(/fn:deploy:admin-user-timeline/.test(pkg), "backend package should expose admin-user-timeline deploy script");
+
   console.log("Admin backend contract tests passed.");
 }
 

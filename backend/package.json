@@ -26,7 +26,8 @@
     "fn:deploy:embeddings": "supabase functions deploy embeddings --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:rerank": "supabase functions deploy jobs-rerank --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:signup-attribution": "supabase functions deploy signup-attribution --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
-    "fn:deploy": "npm run fn:deploy:ai && npm run fn:deploy:jobs && npm run fn:deploy:import && npm run fn:deploy:external && npm run fn:deploy:company-intel && npm run fn:deploy:admin && npm run fn:deploy:admin-users && npm run fn:deploy:admin-list-operators && npm run fn:deploy:admin-promote-user && npm run fn:deploy:admin-incident-update && npm run fn:deploy:admin-list-audit && npm run fn:deploy:embeddings && npm run fn:deploy:rerank && npm run fn:deploy:signup-attribution",
+    "fn:deploy:admin-user-timeline": "supabase functions deploy admin-user-timeline --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy": "npm run fn:deploy:ai && npm run fn:deploy:jobs && npm run fn:deploy:import && npm run fn:deploy:external && npm run fn:deploy:company-intel && npm run fn:deploy:admin && npm run fn:deploy:admin-users && npm run fn:deploy:admin-list-operators && npm run fn:deploy:admin-promote-user && npm run fn:deploy:admin-incident-update && npm run fn:deploy:admin-list-audit && npm run fn:deploy:embeddings && npm run fn:deploy:rerank && npm run fn:deploy:signup-attribution && npm run fn:deploy:admin-user-timeline",
     "secrets:push": "supabase secrets set --env-file ./.env",
     "link": "echo \"Run: supabase link --project-ref <YOUR_PROJECT_REF>\""
   },
