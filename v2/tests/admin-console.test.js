@@ -75,9 +75,9 @@ function run() {
   // Phase E3: user-support.js deleted (folded into users.js which
   // registers both "users" and the legacy "user-support" section IDs).
   [
-    "command-center", "growth", "overview", "usage-engagement", "funnel",
-    "users", "job-feed", "ai-cost", "extension", "sync",
-    "risk-center", "reports", "logs", "settings"
+    "command-center", "growth", "product-intelligence", "overview",
+    "usage-engagement", "funnel", "users", "job-feed", "ai-cost",
+    "extension", "sync", "risk-center", "reports", "logs", "settings"
   ].forEach(function (name) {
     loadScript(ctx, "src/js/modules/admin/sections/" + name + ".js");
   });
@@ -511,6 +511,25 @@ function run() {
           { id: "active",  label: "Active",       icon: "fa-user-check", count: 1, tone: "cyan",  narrative: "1 active user.", action: "Track patterns." }
         ],
         samples: { power: [], new: [], at_risk: [], churned: [], active: [] }
+      },
+      productIntelligence: {
+        summary: { coreModules: 1, underusedModules: 1, noDataModules: 0, biggestLeak: null, expensiveSkills: 0, unreliableSkills: 0 },
+        moduleRoi: [
+          { id: "job-search", label: "Job Search", touched: 2, placedTouched: 2, placementRateInModule: 100, overallPlacementRate: 50, lift: 100, coverage: 100, verdict: "core", recommendation: "Core feature: 100% of placed users." },
+          { id: "resume", label: "Resume Lab", touched: 1, placedTouched: 0, placementRateInModule: 0, overallPlacementRate: 50, lift: -100, coverage: 0, verdict: "underused", recommendation: "Underused." }
+        ],
+        aiEconomics: {
+          spendMonthlyRunRate: 0.42, costPerActiveUser: 0.21, costPerPlacement: 0.21, costPerOutcome: 0.14,
+          costPerRequest: 0.035, avgLatencyMs: 900, requestsTotal: 12, placements30d: 2, outcomes30d: 3,
+          healthSignal: "healthy", benchmark: "Healthy < $20 / placement.",
+          skillRoi: [
+            { label: "resume-tailor", count: 6, failed: 0, failureRate: 0, cost: 0.2, costShare: 48, costPerCall: 0.033, verdict: "expensive", action: "Optimize prompt length." }
+          ]
+        },
+        dropOffImpact: [
+          { id: "resume-ready", label: "Resume ready", droppedUsers: 1, conversion: 50, stepConversion: 50, estimatedExtraPlacements: 0, estimatedValueUsd: 0, action: "Push toward Resume Lab." }
+        ],
+        extension: { captures: 2, jobImportCalls: 3, jobImportFailed: 0, sourceConflicts: 1, overallStatus: "watch" }
       }
     });
     ctx.window.CBV2.adminMetrics.applyRemoteSnapshot(enriched);
@@ -526,6 +545,18 @@ function run() {
   assert.ok(/ZA/.test(growthHtml), "growth section should include country codes");
   assert.ok(/Quality/.test(growthHtml), "growth section should render channel quality column");
   assert.ok(/Invest more in linkedin/.test(growthHtml), "growth section should render specific recommendations");
+
+  // Phase E4: Product Intelligence board.
+  ctx.window.CBV2.getRouteParams = function () { return { section: "product-intelligence" }; };
+  const piHtml = ctx.window.CBV2.routes.admin();
+  assert.ok(/Cost per placement/.test(piHtml), "product intelligence should render the cost-per-placement hero");
+  assert.ok(/Module ROI/.test(piHtml), "product intelligence should render the module ROI panel");
+  assert.ok(/Which modules predict placement/.test(piHtml), "product intelligence should explain module ROI");
+  assert.ok(/Job Search/.test(piHtml), "product intelligence should include tracked modules");
+  assert.ok(/AI skill ROI/.test(piHtml), "product intelligence should render the AI skill ROI panel");
+  assert.ok(/Drop-off impact/.test(piHtml) || /Where the money leaks/.test(piHtml), "product intelligence should render drop-off impact");
+  assert.ok(/Extension capture pipeline/.test(piHtml), "product intelligence should render extension summary");
+  assert.ok(/Core modules/.test(piHtml), "product intelligence should render the summary stat grid");
 
   // Phase E3: user-support is folded into the Users board. Both section
   // IDs route to the same renderer, with segment cards + timeline drawer.

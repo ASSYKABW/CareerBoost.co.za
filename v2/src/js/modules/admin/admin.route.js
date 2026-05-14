@@ -58,14 +58,15 @@
       ]
     },
     {
+      // Phase E4: Analytics group now leads with Product Intelligence —
+      // the ROI lens that connects engagement to placements + AI cost.
+      // Growth (acquisition lens) and Pipeline funnel (placement lens)
+      // sit next to it. The raw engagement / AI-cost / extension boards
+      // moved down to the "Deep dives" group below.
       group: "Analytics",
       items: [
-        // Phase E2: Growth & Acquisition is the new marketing-side board.
-        // It answers "where do users come from and which channels deliver
-        // QUALITY signups". The original pipeline funnel still lives at
-        // section=funnel so existing links don't break.
-        { id: "growth", icon: "fa-chart-line", label: "Growth", badge: "New" },
-        { id: "usage", icon: "fa-wave-square", label: "Usage & engagement" },
+        { id: "product-intelligence", icon: "fa-chart-mixed", label: "Product intelligence", badge: "ROI" },
+        { id: "growth", icon: "fa-chart-line", label: "Growth & acquisition" },
         { id: "funnel", icon: "fa-filter-circle-dollar", label: "Pipeline funnel" }
       ]
     },
@@ -81,8 +82,11 @@
       ]
     },
     {
-      group: "Product Health",
+      // Phase E4: deep-dive sections kept accessible for analyst-mode
+      // troubleshooting but no longer the primary entry point.
+      group: "Deep dives",
       items: [
+        { id: "usage", icon: "fa-wave-square", label: "Usage & engagement" },
         { id: "ai-cost", icon: "fa-wand-magic-sparkles", label: "AI cost monitor" },
         { id: "extension", icon: "fa-puzzle-piece", label: "Extension health" },
         { id: "sync", icon: "fa-arrows-rotate", label: "Sync health" }
@@ -291,7 +295,9 @@
       // Phase E2: Growth & Acquisition block.
       growth: null,
       // Phase E3: Users board segments + timeline state.
-      userSegments: null
+      userSegments: null,
+      // Phase E4: Product Intelligence.
+      productIntelligence: null
     };
 
     const remote = adminRemote.data;
@@ -347,6 +353,8 @@
       data.growth = remote.growth || null;
       // Phase E3: Users board segments.
       data.userSegments = remote.userSegments || null;
+      // Phase E4: Product Intelligence — module ROI, AI economics, drop-offs.
+      data.productIntelligence = remote.productIntelligence || null;
       data.totals.users = numberOr(totals.users, 0);
       data.totals.profiles = numberOr(totals.profiles, 0);
       data.totals.applications = numberOr(totals.applications, data.totals.applications);

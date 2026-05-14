@@ -173,6 +173,18 @@ function run() {
   assert.ok(/\[functions\.admin-user-timeline\]/.test(config), "Supabase config should register admin-user-timeline");
   assert.ok(/fn:deploy:admin-user-timeline/.test(pkg), "backend package should expose admin-user-timeline deploy script");
 
+  // Phase E4: Product Intelligence contract.
+  assert.ok(/const moduleRoi = MODULE_CATALOG\.map/.test(fn), "admin-overview should compute moduleRoi from MODULE_CATALOG");
+  assert.ok(/const aiEconomics = \{/.test(fn), "admin-overview should compute the aiEconomics block");
+  assert.ok(/costPerPlacement/.test(fn), "aiEconomics should compute cost per placement");
+  assert.ok(/costPerActiveUser/.test(fn), "aiEconomics should compute cost per active user");
+  assert.ok(/costPerOutcome/.test(fn), "aiEconomics should compute cost per outcome");
+  assert.ok(/const skillRoi = aiBySkill\.map/.test(fn), "admin-overview should compute per-skill ROI verdicts");
+  assert.ok(/const dropOffImpact = activationFunnel\.map/.test(fn), "admin-overview should compute drop-off impact per funnel step");
+  assert.ok(/estimatedExtraPlacements/.test(fn), "drop-off impact should estimate recovered placements");
+  assert.ok(/const productIntelligence = \{/.test(fn), "admin-overview should assemble the productIntelligence block");
+  assert.ok(/productIntelligence,/.test(fn), "admin-overview response should expose productIntelligence at the top level");
+
   console.log("Admin backend contract tests passed.");
 }
 

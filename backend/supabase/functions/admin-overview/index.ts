@@ -2420,6 +2420,198 @@ Deno.serve(async (req) => {
     },
   };
 
+  // ─── Phase E4: Product Intelligence ──────────────────────────────────
+  // Connects engagement to outcomes. Answers four questions:
+  //   1. Which modules predict placement? (module ROI)
+  //   2. What does each placement cost in AI spend? (AI economics)
+  //   3. Where are the highest-$ funnel drops? (drop-off impact)
+  //   4. Which AI skills deliver disproportionate value? (skill ROI)
+  //
+  // All numbers below derive from data we already aggregated — no extra
+  // round-trips. The placements counts from E1 (placements30d /
+  // placements30dFromApps) anchor every economic ratio.
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Heuristic for "module touched by placed users": for each placed user
+  // we look at which modules they touched in their usage sessions.
+  // Without per-session module fingerprinting (Phase E2.5 work), we
+  // approximate via the module touch counts from MODULE_CATALOG.
+  // Placed-user set = users with applications in interview/offer stage.
+  const placedUserSet = new Set<string>();
+  ((appRows || []) as Array<Record<string, unknown>>).forEach((app) => {
+    const stage = String(app.stage || "");
+    if (stage !== "interview" && stage !== "offer") return;
+    const uid = String(app.user_id || "");
+    if (uid) placedUserSet.add(uid);
+  });
+  // Build "users who touched each module" from usage_sessions.modules.
+  const usersByModule: Record<string, Set<string>> = {};
+  const placedUsersByModule: Record<string, Set<string>> = {};
+  ((usageSessionRows || []) as Array<Record<string, unknown>>).forEach((session) => {
+    const uid = String(session.user_id || "");
+    if (!uid) return;
+    const modules = Array.isArray(session.modules) ? session.modules : [];
+    modules.forEach((mod) => {
+      const key = String(mod || "").toLowerCase();
+      if (!key) return;
+      if (!usersByModule[key]) usersByModule[key] = new Set();
+      usersByModule[key].add(uid);
+      if (placedUserSet.has(uid)) {
+        if (!placedUsersByModule[key]) placedUsersByModule[key] = new Set();
+        placedUsersByModule[key].add(uid);
+      }
+    });
+  });
+
+  const totalPlacedUsers = placedUserSet.size || Math.max(1, placements30dFromApps);
+
+  const moduleRoi = MODULE_CATALOG.map((module) => {
+    const touched = usersByModule[module.id]?.size || 0;
+    const placedTouched = placedUsersByModule[module.id]?.size || 0;
+    // Placement rate among module users vs overall — the lift signal.
+    const placementRateInModule = touched > 0 ? Math.round((placedTouched / touched) * 100) : 0;
+    const overallPlacementRate = users.length > 0 ? Math.round((totalPlacedUsers / users.length) * 100) : 0;
+    const lift = overallPlacementRate > 0 ? Math.round(((placementRateInModule - overallPlacementRate) / overallPlacementRate) * 100) : 0;
+    // Coverage = % of placed users who used this module.
+    const coverage = totalPlacedUsers > 0 ? Math.round((placedTouched / totalPlacedUsers) * 100) : 0;
+    let verdict: "core" | "supporting" | "underused" | "no-data";
+    let recommendation: string;
+    if (touched === 0) {
+      verdict = "no-data";
+      recommendation = `No tracked sessions for ${module.label}. ${module.recommendation}`;
+    } else if (coverage >= 50 && lift >= 20) {
+      verdict = "core";
+      recommendation = `Core feature: ${coverage}% of placed users used this. Protect it during refactors and highlight it in onboarding.`;
+    } else if (coverage >= 25 || lift >= 10) {
+      verdict = "supporting";
+      recommendation = `Supporting feature: ${coverage}% of placed users used this. Look for cross-promotion opportunities into core modules.`;
+    } else {
+      verdict = "underused";
+      recommendation = `Underused by placed users: only ${coverage}% touched this. Either improve placement of CTAs or consider scoping the feature down.`;
+    }
+    return {
+      id: module.id,
+      label: module.label,
+      touched,
+      placedTouched,
+      placementRateInModule,
+      overallPlacementRate,
+      lift,                  // % above/below baseline placement rate
+      coverage,              // % of placed users who used this module
+      verdict,
+      recommendation,
+    };
+  }).sort((a, b) => b.coverage - a.coverage);
+
+  // ─── AI economics ─────────────────────────────────────────────────────
+  // Cost per active user (already in AARRR but recomputed here for the
+  // detail panel), cost per placement (the real CAC analog), cost per
+  // outcome (interviews + offers combined).
+  const totalOutcomes = (outcomeByWindow.last_30d.interviews || 0) + (outcomeByWindow.last_30d.offers || 0);
+  const costPerActiveUserMonthly = activeLast30 > 0 ? Number((aiCost / activeLast30).toFixed(2)) : 0;
+  const costPerPlacement = placements30d > 0 ? Number((aiCost / placements30d).toFixed(2)) : null;
+  const costPerOutcome = totalOutcomes > 0 ? Number((aiCost / totalOutcomes).toFixed(2)) : null;
+  const aiSpendMonthlyRunRate = Number(aiCost.toFixed(2));
+  // Per-skill economic ROI. Cost per call + share of total spend +
+  // failure rate. We don't have outcome attribution per skill yet —
+  // that needs ai_usage.application_id or session-level joins — so for
+  // now we surface the cost vector + failure rate only.
+  const skillRoi = aiBySkill.map((row) => {
+    const total = n(row.count);
+    const failed = n(row.failed);
+    const cost = n(row.costUsd);
+    const failureRate = total > 0 ? Math.round((failed / total) * 100) : 0;
+    const costShare = aiCost > 0 ? Math.round((cost / aiCost) * 100) : 0;
+    const costPerCall = total > 0 ? Number((cost / total).toFixed(4)) : 0;
+    let verdict: "efficient" | "expensive" | "unreliable" | "low-volume";
+    let action: string;
+    if (total < 5) {
+      verdict = "low-volume";
+      action = "Not enough volume to judge. Watch the next 30 days.";
+    } else if (failureRate > 15) {
+      verdict = "unreliable";
+      action = `Failure rate at ${failureRate}%. Audit prompt/provider — switch or fix before scaling.`;
+    } else if (costShare > 40) {
+      verdict = "expensive";
+      action = `Burning ${costShare}% of total AI spend. Optimize prompt length or switch to a cheaper model for this skill.`;
+    } else {
+      verdict = "efficient";
+      action = "Cost and reliability are in range. Maintain as-is.";
+    }
+    return { label: row.label, count: total, failed, failureRate, cost, costShare, costPerCall, verdict, action };
+  });
+
+  const aiEconomics = {
+    spendMonthlyRunRate: aiSpendMonthlyRunRate,
+    costPerActiveUser: costPerActiveUserMonthly,
+    costPerPlacement,        // null if no placements yet — UI shows "—"
+    costPerOutcome,
+    costPerRequest: ai.length > 0 ? Number((aiCost / ai.length).toFixed(4)) : 0,
+    avgLatencyMs: avgLatency,
+    requestsTotal: ai.length,
+    placements30d,
+    outcomes30d: totalOutcomes,
+    healthSignal: costPerPlacement == null
+      ? "no-placements-yet"
+      : costPerPlacement > 50
+      ? "unsustainable"
+      : costPerPlacement > 20
+      ? "watch"
+      : "healthy",
+    benchmark: "Healthy < $20 / placement. Watch $20-50. Above $50 is unsustainable at scale.",
+    skillRoi,
+  };
+
+  // ─── Drop-off impact ─────────────────────────────────────────────────
+  // For each activation funnel step, estimate "if we fixed this drop-off,
+  // how many additional placements would we expect?" We multiply the
+  // dropped users by the historical placement conversion rate of users
+  // who DID pass the step.
+  const baselinePlacementRate = users.length > 0 ? totalPlacedUsers / users.length : 0;
+  const dropOffImpact = activationFunnel.map((step) => {
+    const dropped = n((step as Record<string, unknown>).dropOff);
+    const estimatedExtraPlacements = Math.round(dropped * baselinePlacementRate);
+    // Rough dollar value of an extra placement. We don't have revenue
+    // (pre-monetization), so we proxy with "candidate LTV equivalent" —
+    // operator can replace this with real ARPU when monetization launches.
+    const proxyValueUsdPerPlacement = 150;
+    const estimatedValueUsd = estimatedExtraPlacements * proxyValueUsdPerPlacement;
+    return {
+      id: (step as Record<string, unknown>).id,
+      label: (step as Record<string, unknown>).label,
+      droppedUsers: dropped,
+      conversion: (step as Record<string, unknown>).conversion,
+      stepConversion: (step as Record<string, unknown>).stepConversion,
+      estimatedExtraPlacements,
+      estimatedValueUsd,
+      action: (step as Record<string, unknown>).action || "Investigate why users leave at this step.",
+    };
+  }).sort((a, b) => b.estimatedExtraPlacements - a.estimatedExtraPlacements);
+
+  // ─── Extension health summary (compacted for Product Intelligence) ───
+  const extensionSummary = {
+    captures: sourceRowsWithDiagnostics.filter((s) => String(s.label || "").toLowerCase().indexOf("linkedin") >= 0).reduce((sum, s) => sum + n(s.count), 0),
+    jobImportCalls: aiBySkill.find((s) => String(s.label || "").toLowerCase() === "job-import")?.count || 0,
+    jobImportFailed: aiBySkill.find((s) => String(s.label || "").toLowerCase() === "job-import")?.failed || 0,
+    sourceConflicts: sourceIssues.length,
+    overallStatus: sourceIssues.length > 5 ? "attention" : sourceIssues.length > 0 ? "watch" : "healthy",
+  };
+
+  const productIntelligence = {
+    moduleRoi,
+    aiEconomics,
+    dropOffImpact,
+    extension: extensionSummary,
+    summary: {
+      coreModules: moduleRoi.filter((m) => m.verdict === "core").length,
+      underusedModules: moduleRoi.filter((m) => m.verdict === "underused").length,
+      noDataModules: moduleRoi.filter((m) => m.verdict === "no-data").length,
+      biggestLeak: dropOffImpact[0] || null,
+      expensiveSkills: skillRoi.filter((s) => s.verdict === "expensive").length,
+      unreliableSkills: skillRoi.filter((s) => s.verdict === "unreliable").length,
+    },
+  };
+
   // ─── Outcomes block (for the Command Center + Growth board) ───────────
   const outcomesBlock = {
     placements30d,
@@ -2582,6 +2774,10 @@ Deno.serve(async (req) => {
     growth: growthBlock,
     // Phase E3: Users board segment classification + per-segment samples.
     userSegments,
+    // Phase E4: Product Intelligence — module ROI, AI economics, drop-off
+    // impact, extension summary. Reads the same engagement + outcome
+    // data as the other boards but reframes it through an ROI lens.
+    productIntelligence,
     operations: {
       staleSaved: staleSavedRows.length,
       sourceIssueCount: sourceIssues.length,

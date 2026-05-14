@@ -2732,3 +2732,108 @@
 @media (max-width: 640px) {
   .admin-segment-grid { grid-template-columns: 1fr; }
 }
+
+/* ─── Phase E4: Product Intelligence ─────────────────────────────── */
+
+.admin-econ-hero {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 2fr;
+  align-items: center;
+  gap: 24px;
+  padding: 28px;
+  margin: 0 0 20px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.10), rgba(34, 227, 255, 0.08));
+  border: 1px solid rgba(94, 234, 212, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+.admin-econ-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 100% 0%, rgba(94, 234, 212, 0.14), transparent 55%);
+  pointer-events: none;
+}
+.admin-econ-hero--green { border-color: rgba(16, 185, 129, 0.42); }
+.admin-econ-hero--amber { border-color: rgba(251, 191, 36, 0.40); background: linear-gradient(135deg, rgba(251, 191, 36, 0.10), rgba(34, 227, 255, 0.06)); }
+.admin-econ-hero--rose  { border-color: rgba(244, 63, 94, 0.42);  background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(251, 191, 36, 0.06)); }
+.admin-econ-hero--subtle{ opacity: 0.85; }
+.admin-econ-hero-copy h2 {
+  margin: 6px 0 8px;
+  color: #f8fbff;
+  font-size: 26px;
+}
+.admin-econ-hero-copy p {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(248, 251, 255, 0.6);
+}
+.admin-econ-hero-value {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  z-index: 1;
+}
+.admin-econ-hero-value strong {
+  font-size: 56px;
+  line-height: 1;
+  color: #f8fbff;
+  font-weight: 700;
+}
+.admin-econ-hero-sub {
+  font-size: 12px;
+  color: rgba(248, 251, 255, 0.65);
+}
+.admin-econ-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+.admin-econ-hero-stats span {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 10px;
+}
+.admin-econ-hero-stats strong { font-size: 18px; color: #5eead4; }
+.admin-econ-hero-stats em {
+  font-size: 11px;
+  font-style: normal;
+  color: rgba(248, 251, 255, 0.55);
+}
+
+.admin-table-row--roi {
+  grid-template-columns: 1.5fr 1fr 1fr 0.8fr 1fr 1fr;
+}
+.admin-table-row--roi-skill {
+  grid-template-columns: 1.2fr 0.7fr 0.7fr 0.8fr 0.7fr 0.9fr 2fr;
+}
+.admin-coverage-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  background: rgba(94, 234, 212, 0.12);
+  color: #5eead4;
+  font-weight: 700;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.admin-skill-action {
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.6);
+  line-height: 1.4;
+}
+
+@media (max-width: 1024px) {
+  .admin-econ-hero { grid-template-columns: 1fr; gap: 16px; padding: 20px; }
+  .admin-econ-hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .admin-table-row--roi { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .admin-table-row--roi-skill { grid-template-columns: 1fr 1fr; gap: 6px; }
+}
+@media (max-width: 640px) {
+  .admin-econ-hero-stats { grid-template-columns: 1fr; }
+}
