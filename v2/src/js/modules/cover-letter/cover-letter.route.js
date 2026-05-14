@@ -909,6 +909,13 @@
       return;
     }
 
+    // Phase Billing: entitlement gate.
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_covers");
+      if (!ok) return;
+    }
+
     viewState.busy = true;
     viewState.error = "";
     viewState.result = null;
@@ -940,6 +947,9 @@
       }
       viewState.result = result;
       window.CBV2.store.setCoverLetterResult(result);
+      // Phase Billing: optimistic decrement.
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && ent.recordConsumption) ent.recordConsumption("ai_covers");
     } catch (error) {
       viewState.error = error && error.message ? error.message : "AI action failed";
     } finally {

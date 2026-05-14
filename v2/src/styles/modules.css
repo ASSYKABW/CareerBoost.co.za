@@ -4806,3 +4806,173 @@ a.settings-status-card:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Phase Billing: pricing grid + billing tab ──────────────────────── */
+
+.cb8-pricing-grid--four {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.cb8-pricing-foot {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(248, 251, 255, 0.55);
+}
+@media (max-width: 1024px) {
+  .cb8-pricing-grid--four { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .cb8-pricing-grid--four { grid-template-columns: 1fr; }
+}
+
+/* Settings → Billing tab */
+.billing-plan-card {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+.billing-plan-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.billing-plan-head h3 {
+  margin: 4px 0;
+  font-size: 22px;
+  color: #f8fbff;
+}
+.billing-plan-id {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(248, 251, 255, 0.5);
+}
+.billing-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.billing-features {
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 12px;
+}
+.billing-features ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.billing-feature-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.billing-feature-row--on { color: #5eead4; }
+.billing-feature-row--off { color: rgba(248, 251, 255, 0.35); }
+
+.billing-usage-card {
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.billing-usage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.billing-usage-head h3 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: #f8fbff;
+}
+.billing-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.billing-quota-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 10px;
+}
+.billing-quota-row--unlimited {
+  grid-template-columns: 1fr auto;
+}
+.billing-quota-row strong {
+  display: block;
+  font-size: 13px;
+  color: #f8fbff;
+}
+.billing-quota-row span {
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.55);
+}
+.billing-quota-meter {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.billing-quota-meter i {
+  display: block;
+  height: 100%;
+  width: var(--bar, 0%);
+  border-radius: 999px;
+  transition: width 280ms ease;
+}
+.billing-quota-meter-fill--green { background: linear-gradient(90deg, #22e3ff, #10b981); }
+.billing-quota-meter-fill--amber { background: #f59e0b; }
+.billing-quota-meter-fill--rose  { background: #f43f5e; }
+.billing-quota-value {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+  color: #5eead4;
+}
+.billing-quota-value small {
+  font-weight: 400;
+  color: rgba(248, 251, 255, 0.55);
+  font-size: 11px;
+}
+
+.billing-upgrade-cta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.10), rgba(34, 227, 255, 0.06));
+  border: 1px solid rgba(94, 234, 212, 0.32);
+}
+.billing-upgrade-cta h3 { margin: 0 0 4px; color: #f8fbff; }
+.billing-upgrade-cta .ai-meta { margin: 0; }
+
+@media (max-width: 768px) {
+  .billing-plan-head, .billing-usage-head, .billing-upgrade-cta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .billing-quota-row {
+    grid-template-columns: 1fr;
+  }
+  .billing-quota-row .billing-quota-meter { width: 100%; }
+}

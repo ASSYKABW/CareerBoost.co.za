@@ -126,3 +126,22 @@ verify_jwt = false
 # (tryAuthedUser) and rate-limits in-memory per (user/anon/IP).
 [functions.client-telemetry]
 verify_jwt = false
+
+# Phase Billing: Stripe checkout session creator. Authenticated only.
+# Validates against caller's JWT.
+[functions.stripe-checkout]
+verify_jwt = false
+
+# Phase Billing: Stripe webhook receiver. Verifies the Stripe-Signature
+# header in code — must NOT have JWT verification (Stripe doesn't send a JWT).
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Phase Billing: Stripe Customer Portal session creator. Authenticated.
+[functions.stripe-portal]
+verify_jwt = false
+
+# Phase Billing: returns merged plan + usage + remaining for the caller.
+# Wraps the get_user_entitlements RPC.
+[functions.get-entitlements]
+verify_jwt = false

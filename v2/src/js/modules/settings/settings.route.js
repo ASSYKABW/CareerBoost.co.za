@@ -1416,6 +1416,8 @@
     const showAi = activeTab === "ai";
     const showData = activeTab === "data-privacy";
     const showAccount = activeTab === "account";
+    // Phase Billing: dedicated tab for plan + usage + portal.
+    const showBilling = activeTab === "billing";
     const showAdvanced = canAccessAdvanced && activeTab === "advanced";
 
     const keys = showAdvanced ? window.CBV2.store.getApiKeys() : {};
@@ -1461,6 +1463,10 @@
             ${showAi ? renderAiPersonalizationSection() : ""}
 
             ${showAccount ? renderAccountIdentitySection() : ""}
+
+            ${showBilling && window.CBV2.settingsBilling && window.CBV2.settingsBilling.render
+              ? window.CBV2.settingsBilling.render()
+              : ""}
 
             ${showAdvanced ? renderDiagnosticsSection() : ""}
             ${showAdvanced ? renderJobSearchPathSection() : ""}
@@ -2750,6 +2756,11 @@
     bindSavedCvSettings();
     bindCareerAssetsSettings();
     bindAppearance();
+    // Phase Billing: bind handlers for the Billing & Plan tab when it's
+    // the active section.
+    if (window.CBV2.settingsBilling && typeof window.CBV2.settingsBilling.bind === "function") {
+      window.CBV2.settingsBilling.bind();
+    }
 
     // If the user clicked "Profile & avatar" in the user menu we arrive at
     // #/settings?tab=profile. Scroll-focus the profile card so it's obvious.

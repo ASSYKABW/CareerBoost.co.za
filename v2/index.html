@@ -87,6 +87,15 @@
        Loads before any module that uses it. Gracefully no-op if not loaded;
        all callsites fall back to native confirm/prompt. -->
   <script src="./src/js/components/modal-service.js"></script>
+  <!-- Phase Billing: entitlements + upgrade modal + gate helper. Must
+       load AFTER auth.service.js (consumed via window.CBV2.auth) but
+       BEFORE the feature modules that gate behavior (resume, cover-
+       letter, interview). Order inside this block matters: entitlements
+       first, then upgrade-modal (uses entitlements.upgradeNeededFor),
+       then entitlement-gate (uses both). -->
+  <script src="./src/js/services/entitlements/entitlements.js"></script>
+  <script src="./src/js/components/upgrade-modal.js"></script>
+  <script src="./src/js/services/entitlements/entitlement-gate.js"></script>
   <script src="./src/js/components/app-drawer.js"></script>
   <script src="./src/js/components/command-palette.js"></script>
 
@@ -137,6 +146,9 @@
   <script src="./src/js/modules/analytics/analytics.shared.js"></script>
   <script src="./src/js/modules/analytics/analytics.route.js"></script>
   <script src="./src/js/modules/settings/settings.meta.js"></script>
+  <!-- Phase Billing: settings → Billing tab renderer. Loads before
+       settings.route.js which calls window.CBV2.settingsBilling.render(). -->
+  <script src="./src/js/modules/settings/settings.billing.js"></script>
   <script src="./src/js/modules/settings/settings.route.js"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);

@@ -3789,6 +3789,14 @@ Built analytics dashboard used by 3 teams"></textarea>
     }
     const resumeText = r ? model.toPlainText(r) : "";
 
+    // Phase Billing: entitlement gate. Returns false if quota
+    // exhausted; the upgrade modal has already been shown.
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_resumes");
+      if (!ok) return;
+    }
+
     view.tailorBusy = true;
     view.tailorError = "";
     rerenderSidebar();
@@ -3804,6 +3812,10 @@ Built analytics dashboard used by 3 teams"></textarea>
       });
       view.tailorResult = result;
       window.CBV2.store.setResumeTailored(result);
+      // Phase Billing: optimistic decrement so the next click sees the
+      // new remaining count without waiting for backend reconciliation.
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && ent.recordConsumption) ent.recordConsumption("ai_resumes");
       toast("success", "Tailor complete — review the suggestions on the right.");
     } catch (err) {
       view.tailorError = (err && err.message) || "AI tailor failed.";

@@ -522,6 +522,12 @@
       window.CBV2.renderCurrentRoute();
       return;
     }
+    // Phase Billing: entitlement gate (research).
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_research");
+      if (!ok) return;
+    }
     viewState.intelBusy = true;
     viewState.intelError = "";
     viewState.intelWarnings = [];
@@ -559,6 +565,9 @@
         webFindings: JSON.stringify(viewState.intelHits)
       });
       viewState.intelPackEnvelope = env;
+      // Phase Billing: optimistic decrement.
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && ent.recordConsumption) ent.recordConsumption("ai_research");
     } catch (err) {
       viewState.intelPackEnvelope = null;
       viewState.intelError = err && err.message ? String(err.message) : "Research failed.";
@@ -840,6 +849,12 @@
         '<p class="ai-error">' + viewState.error + "</p>";
       return;
     }
+    // Phase Billing: entitlement gate (question bank).
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_question_banks");
+      if (!ok) return;
+    }
     // Phase 2: pipe JD + candidate background into drill mode so questions
     // reflect the actual posting (e.g. "the JD emphasizes observability —
     // they'll likely ask about debugging a production outage"). Falls back
@@ -872,6 +887,9 @@
       const result = await ai.runSkill("interview-coach", input);
       viewState.questions = result.data.questions;
       viewState.feedback = result.data.feedback;
+      // Phase Billing: optimistic decrement.
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && ent.recordConsumption) ent.recordConsumption("ai_question_banks");
       window.CBV2.store.setInterviewSet(result);
     } catch (error) {
       viewState.error = error && error.message ? error.message : "AI action failed";
@@ -1132,7 +1150,7 @@
     viewState.voiceInterim = "";
   }
 
-  function toggleVoiceMode() {
+  async function toggleVoiceMode() {
     const voice = window.CBV2 && window.CBV2.interviewVoice;
     if (!voice) return;
     if (!voice.isFullySupported()) {
@@ -1141,6 +1159,16 @@
         : "Speech synthesis isn't available in this browser.";
       window.CBV2.renderCurrentRoute();
       return;
+    }
+    // Phase Billing: voice mode is gated to Pro / Career. Free + Plus
+    // get an upgrade modal pointing at Pro. Turning OFF doesn't need
+    // a check.
+    if (!viewState.voiceMode) {
+      const gate = window.CBV2 && window.CBV2.entitlementGate;
+      if (gate) {
+        const ok = await gate.checkFeature("voice_mode");
+        if (!ok) return;
+      }
     }
     viewState.voiceMode = !viewState.voiceMode;
     viewState.voiceError = "";
@@ -1282,6 +1310,14 @@
       window.CBV2.renderCurrentRoute();
       return;
     }
+    // Phase Billing: entitlement gate. Mock interviews count against
+    // a monthly quota. Voice mode is also gated separately when the
+    // user toggles voice — see toggleVoiceMode below.
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_mocks");
+      if (!ok) return;
+    }
     viewState.mockBusy = true;
     viewState.mockError = "";
     viewState.mockTranscript = [];
@@ -1299,6 +1335,11 @@
     };
     viewState.mockTranscript.push(streamingBubble);
     const streamCallbacks = createStreamCallbacks(streamingBubble);
+    // Phase Billing: optimistic decrement once the session is starting.
+    // Done after the entitlement gate so we only decrement when the
+    // user has actually committed to this session.
+    const entOpt = window.CBV2 && window.CBV2.entitlements;
+    if (entOpt && entOpt.recordConsumption) entOpt.recordConsumption("ai_mocks");
     try {
       const env = await runInterviewStep(
         Object.assign({}, intelStepPayloadBase(), {

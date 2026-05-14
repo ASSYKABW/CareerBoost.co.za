@@ -2,7 +2,9 @@
 (function () {
   window.CBV2 = window.CBV2 || {};
 
-  const TABS = ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "advanced"];
+  // Phase Billing: "billing" is a new sibling tab between Account and
+  // Advanced. Houses current plan + usage meters + Stripe portal link.
+  const TABS = ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "billing", "advanced"];
   const ADMIN_ROLES = ["admin", "owner", "developer"];
   const LEGACY_ALIASES = {
     home: "overview",
@@ -27,6 +29,8 @@
     { id: "data-privacy", icon: "fa-shield-halved", label: "Data & Privacy" },
     { id: "appearance", icon: "fa-palette", label: "Appearance" },
     { id: "account", icon: "fa-id-badge", label: "Account" },
+    // Phase Billing.
+    { id: "billing", icon: "fa-credit-card", label: "Billing & Plan" },
     { id: "advanced", icon: "fa-screwdriver-wrench", label: "Advanced" }
   ];
   const TAB_SUMMARY = {
@@ -38,6 +42,7 @@
     ai: "Control AI personalization behavior and usage consent.",
     "data-privacy": "Control cloud sync, exports, and data safety actions.",
     account: "Review sign-in identity and account-level sync context.",
+    billing: "Your current plan, this month's usage, and the Stripe billing portal.",
     advanced: "Technical controls for app operators only."
   };
 

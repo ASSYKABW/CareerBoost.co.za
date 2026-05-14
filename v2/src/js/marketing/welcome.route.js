@@ -279,6 +279,42 @@
     } catch (error) {
       // Do not block landing UX on telemetry.
     }
+
+    // Phase Billing: pricing CTA wiring. If the user is already signed
+    // in and clicks a paid plan, jump straight to the upgrade modal
+    // (which routes to Stripe Checkout). Otherwise leave the default
+    // signup link behavior — auth flow returns them to the pricing
+    // page and they can pick again. Telemetry fires on every click.
+    document.querySelectorAll("[data-plan-cta]").forEach(function (link) {
+      link.addEventListener("click", function (event) {
+        const planId = link.getAttribute("data-plan-cta") || "";
+        try {
+          const telemetry = window.CBAI && window.CBAI.telemetry;
+          if (telemetry && typeof telemetry.track === "function") {
+            telemetry.track({ type: "landing", event: "pricing_cta_click", planId: planId, status: "success" });
+          }
+        } catch (e) { /* ignore */ }
+        if (planId === "free") return; // default signup link is fine
+        const auth = window.CBV2 && window.CBV2.auth;
+        const modal = window.CBV2 && window.CBV2.upgradeModal;
+        if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) {
+          // Let the default href run — signup, then they'll see the
+          // upgrade prompt the first time they hit a quota. We could
+          // also push them to checkout post-signup; that's a future
+          // refinement.
+          return;
+        }
+        if (!modal || !modal.startCheckout) return;
+        event.preventDefault();
+        modal.startCheckout(planId, "monthly").then(function (url) {
+          window.location.href = url;
+        }).catch(function (err) {
+          if (window.CBV2.toast) {
+            window.CBV2.toast.error(err && err.message ? err.message : "Checkout failed. Try again.");
+          }
+        });
+      });
+    });
   }
 
   function renderView() {
@@ -392,25 +428,71 @@
           '<div class="cb8-section-head">' +
             '<p class="cb8-eyebrow">Pricing</p>' +
             '<h2>Start free. Upgrade when your search needs more power.</h2>' +
-            '<p>No pressure at the start. Build your workspace first, then scale when you are applying weekly.</p>' +
+            '<p>Cancel anytime. Annual billing saves ~17%. All paid plans unlock more AI tailoring and unlimited mock interviews.</p>' +
           "</div>" +
-          '<div class="cb8-pricing-grid">' +
+          '<div class="cb8-pricing-grid cb8-pricing-grid--four">' +
+            // Free
             '<article class="cb8-price-card">' +
               '<h3>Free</h3>' +
-              '<p class="cb8-plan-fit">For getting organized and building your first pipeline.</p>' +
+              '<p class="cb8-plan-fit">Try the workflow. Limited monthly AI.</p>' +
               '<p class="cb8-price">$0<span>/month</span></p>' +
-              '<ul><li>Application pipeline</li><li>Resume and cover letter basics</li><li>Interview prep workspace</li></ul>' +
-              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup">Start free</a>' +
+              '<ul>' +
+                '<li>1 AI resume tailor / mo</li>' +
+                '<li>2 cover letters / mo</li>' +
+                '<li>1 mock interview / mo (text)</li>' +
+                '<li>1 company research / mo</li>' +
+                '<li>5 saved jobs</li>' +
+                '<li>Full pipeline + Chrome extension</li>' +
+              '</ul>' +
+              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup" data-plan-cta="free">Start free</a>' +
             "</article>" +
+            // Plus
+            '<article class="cb8-price-card">' +
+              '<h3>Plus</h3>' +
+              '<p class="cb8-plan-fit">For active job seekers, 1–2 apps/week.</p>' +
+              '<p class="cb8-price">$9.99<span>/month</span></p>' +
+              '<ul>' +
+                '<li>10 resume tailorings / mo</li>' +
+                '<li>15 cover letters / mo</li>' +
+                '<li>3 mock interviews / mo</li>' +
+                '<li>5 company research / mo</li>' +
+                '<li>100 saved jobs</li>' +
+                '<li>All 4 personas (text mode)</li>' +
+              '</ul>' +
+              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup&plan=plus" data-plan-cta="plus">Get Plus</a>' +
+            "</article>" +
+            // Pro (featured)
             '<article class="cb8-price-card cb8-price-featured">' +
-              '<p class="cb8-badge">Most useful</p>' +
+              '<p class="cb8-badge">Most popular</p>' +
               '<h3>Pro</h3>' +
-              '<p class="cb8-plan-fit">For active job seekers tailoring and tracking every week.</p>' +
-              '<p class="cb8-price">$19<span>/month</span></p>' +
-              '<ul><li>Higher AI usage limits</li><li>Advanced role-fit insights</li><li>More saved roles and exports</li></ul>' +
-              '<a class="cb8-btn cb8-btn-primary" href="#/auth?mode=signup">Start free</a>' +
+              '<p class="cb8-plan-fit">Daily applications. Voice mock interviews.</p>' +
+              '<p class="cb8-price">$19.99<span>/month</span></p>' +
+              '<ul>' +
+                '<li><b>Unlimited</b> resumes + covers</li>' +
+                '<li>10 voice mock interviews / mo</li>' +
+                '<li><b>Unlimited</b> company research</li>' +
+                '<li><b>Unlimited</b> saved jobs</li>' +
+                '<li>Voice mode + all personas</li>' +
+                '<li>Personal analytics</li>' +
+              '</ul>' +
+              '<a class="cb8-btn cb8-btn-primary" href="#/auth?mode=signup&plan=pro" data-plan-cta="pro">Get Pro</a>' +
+            "</article>" +
+            // Career
+            '<article class="cb8-price-card">' +
+              '<h3>Career</h3>' +
+              '<p class="cb8-plan-fit">Executives + career changers. Unlimited everything.</p>' +
+              '<p class="cb8-price">$39.99<span>/month</span></p>' +
+              '<ul>' +
+                '<li>Everything unlimited</li>' +
+                '<li>Unlimited voice mocks</li>' +
+                '<li>Priority AI (faster + smarter)</li>' +
+                '<li>Personal analytics</li>' +
+                '<li>Priority support (&lt;24h)</li>' +
+              '</ul>' +
+              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup&plan=career" data-plan-cta="career">Get Career</a>' +
             "</article>" +
           "</div>" +
+          '<p class="cb8-pricing-foot">Secure payment via Stripe. USD pricing. Cancel anytime from Billing settings.</p>' +
         "</section>" +
 
         '<section class="cb8-section cb8-faq" id="faq">' +
