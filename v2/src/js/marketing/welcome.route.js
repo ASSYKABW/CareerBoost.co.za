@@ -1,274 +1,400 @@
 // Public landing page shown to signed-out visitors.
-// CareerBoost v8 landing: futuristic, product-led, and trust-focused.
+//
+// Redesigned for a clean, modern, presentable layout:
+//   1. Slim sticky nav — logo + 4 anchor links + 2 CTAs
+//   2. Hero — eyebrow + bold H1 + subtitle + dual CTA + product mock
+//   3. Trust strip — 4 stat chips (no credit card, etc.)
+//   4. Features — 3-up large cards, clean icons, no decorative chrome
+//   5. How it works — 4 numbered steps in a row
+//   6. Pricing — 4-card grid (Free / Plus / Pro / Career)
+//   7. FAQ — collapsible details
+//   8. Final CTA — gradient panel, single bold button
+//   9. Footer — minimal
+//
+// Class prefix changed cb8- → lp- (landing page) so the new styles
+// don't conflict with the legacy cb8-* CSS still living in
+// styles/phase1.css. Once the new design is verified the cb8-* rules
+// can be deleted in a cleanup pass.
+
 (function () {
   window.CBV2 = window.CBV2 || {};
   window.CBV2.routes = window.CBV2.routes || {};
   window.CBV2.afterRender = window.CBV2.afterRender || {};
 
-  const MODULES = [
+  // ─── Content data ──────────────────────────────────────────────────
+  // Kept separate from rendering so copy is easy to update.
+
+  const FEATURES = [
     {
       icon: "fa-bullseye",
-      tone: "cyan",
-      size: "wide",
-      kicker: "Role Intelligence",
-      title: "Prioritize the roles that deserve your energy.",
-      body: "Compare fit, seniority, work mode, timing, and next action before you spend time tailoring.",
-      metric: "Fit signals, not guesswork"
+      title: "Role intelligence",
+      body: "See fit score, seniority, work mode, and timing for every role you save. Spend your energy on the roles that deserve it."
     },
     {
       icon: "fa-wand-magic-sparkles",
-      tone: "violet",
-      size: "tall",
-      kicker: "Resume Tailoring",
-      title: "Turn one resume into role-ready versions.",
-      body: "Create focused drafts that keep your real experience intact while aligning with the job description.",
-      metric: "Human approved"
-    },
-    {
-      icon: "fa-table-list",
-      tone: "green",
-      size: "compact",
-      kicker: "Pipeline",
-      title: "Keep every opportunity moving.",
-      body: "Track shortlist, tailor, applied, follow-up, interview, and outcome stages in one view.",
-      metric: "6 stages"
-    },
-    {
-      icon: "fa-envelope-open-text",
-      tone: "amber",
-      size: "compact",
-      kicker: "Letters",
-      title: "Draft with company context.",
-      body: "Create useful first drafts you can review, edit, and send with confidence.",
-      metric: "No blank page"
+      title: "AI tailoring",
+      body: "Turn one resume into role-ready versions. Real experience stays intact — keywords + bullets adapt to the job description."
     },
     {
       icon: "fa-comments",
-      tone: "blue",
-      size: "compact",
-      kicker: "Interview Prep",
-      title: "Prepare stronger stories.",
-      body: "Convert requirements into practice prompts, talking points, and sharper interview narratives.",
-      metric: "Ready answers"
+      title: "Voice mock interviews",
+      body: "Practice with four distinct AI interviewers. Speak your answer, hear the next question, get a structured debrief."
     },
     {
-      icon: "fa-chart-line",
-      tone: "rose",
-      size: "wide",
-      kicker: "Progress Review",
-      title: "Know what changed this week.",
-      body: "See stalled roles, pending follow-ups, prepared assets, and the highest-value next action.",
-      metric: "Weekly momentum"
-    }
-  ];
-
-  const TRUST = [
-    {
-      icon: "fa-user-check",
-      title: "You stay in control",
-      body: "CareerBoost helps you draft, organize, and decide. It does not submit applications for you."
+      icon: "fa-table-list",
+      title: "Pipeline tracking",
+      body: "Saved · Applied · Interview · Offer. Every role flows through six stages with notes, reminders, and outcomes attached."
     },
     {
-      icon: "fa-eye",
-      title: "Explainable fit",
-      body: "Role recommendations surface the signals behind the score so you can judge the advice."
+      icon: "fa-magnifying-glass-chart",
+      title: "Company research",
+      body: "Source-backed briefings: process signals, likely questions, prep checklist, and reading list — generated for the exact role."
     },
     {
-      icon: "fa-lock",
-      title: "Private workspace",
-      body: "Resumes, notes, roles, and drafts stay organized around your personal job-search records."
-    },
-    {
-      icon: "fa-file-export",
-      title: "Portable history",
-      body: "Keep structured records you can review, reuse, and export as your search develops."
+      icon: "fa-calendar-check",
+      title: "Calendar + reminders",
+      body: "Export every event to Google or Apple Calendar. Browser reminders fire before the call — even with the tab in the background."
     }
   ];
 
   const STEPS = [
-    {
-      n: "01",
-      title: "Define your target",
-      body: "Set roles, location, work mode, preferences, and your current resume."
-    },
-    {
-      n: "02",
-      title: "Shortlist with signal",
-      body: "Rank opportunities by fit and effort before tailoring anything."
-    },
-    {
-      n: "03",
-      title: "Create role assets",
-      body: "Draft resumes, letters, and prep notes from the same context."
-    },
-    {
-      n: "04",
-      title: "Follow through",
-      body: "Move roles forward with reminders, notes, interviews, and outcomes."
-    }
+    { n: "1", title: "Sign up free", body: "30 seconds. No card required. Set your role target and import your resume." },
+    { n: "2", title: "Research the role", body: "Build a source-backed brief: process, likely questions, what to prep." },
+    { n: "3", title: "Tailor + practice", body: "Generate role-ready resumes and cover letters. Rehearse with the AI interviewer." },
+    { n: "4", title: "Track every move", body: "Pipeline + reminders keep follow-ups visible. Mark interviews + offers as they happen." }
+  ];
+
+  const TRUST_STRIP = [
+    { icon: "fa-credit-card", title: "$0 to start", sub: "No card required" },
+    { icon: "fa-user-check",  title: "Human-in-control", sub: "You approve every move" },
+    { icon: "fa-shield-halved", title: "Private by default", sub: "Your data, your records" },
+    { icon: "fa-file-export", title: "Export anytime", sub: "Portable + structured" }
   ];
 
   const FAQS = [
     {
       q: "Who is CareerBoost for?",
-      a: "CareerBoost is for job seekers who want a more organized, professional system for applications, resumes, cover letters, follow-ups, and interviews."
+      a: "Active job seekers who want one organized system for research, tailoring, applications, follow-ups, and interview prep — without auto-apply spam."
     },
     {
-      q: "Does CareerBoost submit applications for me?",
-      a: "No. CareerBoost is human-in-control by design. It helps you prepare and organize, while you review and submit every application."
+      q: "Does it submit applications for me?",
+      a: "No. CareerBoost is human-in-control by design. We help you research, tailor, and rehearse — you review and submit every application yourself."
     },
     {
       q: "Can I use my existing resume?",
-      a: "Yes. Start with your current resume, then create role-specific versions for the opportunities you choose."
+      a: "Yes. Upload your current resume or paste it as text. Every tailored variant starts from your real experience — we don't invent things."
     },
     {
-      q: "Can I start without a credit card?",
-      a: "Yes. You can create a free workspace and upgrade only when your search needs more power."
+      q: "What's included in the free plan?",
+      a: "Full pipeline tracking, the Chrome extension, calendar reminders, plus monthly AI quotas: 1 resume tailor, 2 cover letters, 1 mock interview, 1 research brief, 5 saved jobs."
+    },
+    {
+      q: "Can I cancel anytime?",
+      a: "Yes. Cancel from Billing Settings — you keep access until the end of your billing period. Refunds within 14 days, no questions."
+    },
+    {
+      q: "Do you have voice mock interviews?",
+      a: "Yes — on the Pro and Career plans. Pick a persona (friendly recruiter, technical lead, executive panel, or hostile skeptic), then speak your answers and hear the AI respond in real time."
     }
   ];
 
-  function renderBrand(tagline) {
-    if (window.CBV2.brandKit && typeof window.CBV2.brandKit.logo === "function") {
-      return window.CBV2.brandKit.logo({ compact: false, tagline: !!tagline });
-    }
-    return "Career<span>Boost</span>";
-  }
-
-  function moduleCard(item) {
+  // ─── Brand glyph (reused in nav + footer) ──────────────────────────
+  function renderBrand(showTagline) {
     return (
-      '<article class="cb8-bento-card cb8-bento-' + item.size + ' cb8-tone-' + item.tone + '">' +
-        '<div class="cb8-card-top">' +
-          '<span class="cb8-icon"><i class="fa-solid ' + item.icon + '" aria-hidden="true"></i></span>' +
-          '<span class="cb8-card-metric">' + item.metric + "</span>" +
-        "</div>" +
-        '<p class="cb8-kicker">' + item.kicker + "</p>" +
-        "<h3>" + item.title + "</h3>" +
-        "<p>" + item.body + "</p>" +
-        moduleVisual(item.kicker) +
-      "</article>"
+      '<span class="lp-brand">' +
+        '<span class="lp-brand-mark">CB</span>' +
+        '<span class="lp-brand-text">' +
+          '<strong>CareerBoost</strong>' +
+          (showTagline ? '<small>Your career operating system</small>' : '') +
+        '</span>' +
+      '</span>'
     );
   }
 
-  function moduleVisual(kicker) {
-    if (kicker === "Role Intelligence") {
-      return (
-        '<div class="cb8-card-bars" aria-hidden="true">' +
-          '<label><span>Signal match</span><b style="width: 92%"></b></label>' +
-          '<label><span>Role effort</span><b style="width: 68%"></b></label>' +
-          '<label><span>Response timing</span><b style="width: 78%"></b></label>' +
-        "</div>"
-      );
-    }
-
-    if (kicker === "Resume Tailoring") {
-      return (
-        '<div class="cb8-resume-preview" aria-hidden="true">' +
-          '<span>Tailoring pass</span>' +
-          '<strong>Evidence locked</strong>' +
-          '<p><i class="fa-solid fa-check"></i> 8 matched skills</p>' +
-          '<p><i class="fa-solid fa-check"></i> 3 proof points</p>' +
-          '<p><i class="fa-solid fa-check"></i> Human review required</p>' +
-        "</div>"
-      );
-    }
-
-    if (kicker === "Progress Review") {
-      return (
-        '<div class="cb8-review-strip" aria-hidden="true">' +
-          '<span><b>3</b> follow-ups</span>' +
-          '<span><b>2</b> interviews</span>' +
-          '<span><b>5</b> next actions</span>' +
-        "</div>"
-      );
-    }
-
-    return "";
-  }
-
-  function trustCard(item) {
+  // ─── Hero visual: clean dashboard preview, no busy chrome ─────────
+  function renderHeroMock() {
     return (
-      '<article class="cb8-trust-card">' +
-        '<span class="cb8-icon cb8-icon-small"><i class="fa-solid ' + item.icon + '" aria-hidden="true"></i></span>' +
-        '<div><h3>' + item.title + "</h3><p>" + item.body + "</p></div>" +
-      "</article>"
+      '<div class="lp-hero-mock" aria-hidden="true">' +
+        '<div class="lp-mock-window">' +
+          '<div class="lp-mock-bar">' +
+            '<span></span><span></span><span></span>' +
+            '<em>careerboost.app</em>' +
+          '</div>' +
+          '<div class="lp-mock-body">' +
+            '<div class="lp-mock-rail">' +
+              '<b class="is-active"><i class="fa-solid fa-table-columns"></i> Pipeline</b>' +
+              '<b><i class="fa-solid fa-file-lines"></i> Resume</b>' +
+              '<b><i class="fa-solid fa-comments"></i> Interview</b>' +
+              '<b><i class="fa-solid fa-calendar"></i> Calendar</b>' +
+            '</div>' +
+            '<div class="lp-mock-main">' +
+              '<div class="lp-mock-head">' +
+                '<div>' +
+                  '<span>This week</span>' +
+                  '<strong>Move 5 high-fit roles forward</strong>' +
+                '</div>' +
+                '<span class="lp-mock-pill">94% ready</span>' +
+              '</div>' +
+              '<div class="lp-mock-stages">' +
+                '<span class="is-done">Saved</span>' +
+                '<span class="is-done">Tailor</span>' +
+                '<span class="is-active">Apply</span>' +
+                '<span>Interview</span>' +
+                '<span>Offer</span>' +
+              '</div>' +
+              '<div class="lp-mock-cards">' +
+                '<article class="lp-mock-card lp-mock-card--score">' +
+                  '<span>Top role fit</span>' +
+                  '<strong>94%</strong>' +
+                  '<small>Product Engineer · Remote</small>' +
+                '</article>' +
+                '<article class="lp-mock-card lp-mock-card--action">' +
+                  '<span>Next best action</span>' +
+                  '<strong>Tailor resume before Friday</strong>' +
+                  '<small>3 matched skills, 1 proof point</small>' +
+                '</article>' +
+              '</div>' +
+              '<ul class="lp-mock-roles">' +
+                '<li><b>89%</b> Frontend Engineer · Hybrid <em>Follow up</em></li>' +
+                '<li><b>84%</b> Growth Analyst · Remote <em>Prep stories</em></li>' +
+                '<li><b>78%</b> Operations Associate · On-site <em>Review fit</em></li>' +
+              '</ul>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
     );
   }
 
-  function stepCard(item) {
+  // ─── Render helpers ────────────────────────────────────────────────
+
+  function renderFeature(f) {
     return (
-      '<article class="cb8-step-card">' +
-        '<span>' + item.n + "</span>" +
-        "<h3>" + item.title + "</h3>" +
-        "<p>" + item.body + "</p>" +
-      "</article>"
+      '<article class="lp-feature">' +
+        '<span class="lp-feature-icon"><i class="fa-solid ' + f.icon + '" aria-hidden="true"></i></span>' +
+        '<h3>' + f.title + '</h3>' +
+        '<p>' + f.body + '</p>' +
+      '</article>'
     );
   }
 
-  function faqItem(item) {
+  function renderStep(s, index) {
     return (
-      '<details class="cb8-faq-item">' +
-        "<summary>" + item.q + "</summary>" +
-        "<p>" + item.a + "</p>" +
-      "</details>"
+      '<article class="lp-step">' +
+        '<span class="lp-step-num">' + s.n + '</span>' +
+        '<h3>' + s.title + '</h3>' +
+        '<p>' + s.body + '</p>' +
+      '</article>'
     );
   }
 
-  function renderCockpit() {
+  function renderTrustChip(t) {
     return (
-      '<div class="cb8-cockpit" aria-hidden="true">' +
-        '<div class="cb8-cockpit-glow"></div>' +
-        '<div class="cb8-cockpit-bar">' +
-          '<span></span><span></span><span></span>' +
-          '<strong>careerboost.app / command-center</strong>' +
-          '<em>LIVE WORKSPACE</em>' +
-        "</div>" +
-        '<div class="cb8-cockpit-body">' +
-          '<aside class="cb8-cockpit-rail">' +
-            '<b>Workspace</b>' +
-            '<span class="is-active"><i class="fa-solid fa-table-columns"></i> Pipeline</span>' +
-            '<span><i class="fa-solid fa-file-lines"></i> Resume Lab</span>' +
-            '<span><i class="fa-solid fa-envelope"></i> Letters</span>' +
-            '<span><i class="fa-solid fa-comments"></i> Interview</span>' +
-          "</aside>" +
-          '<section class="cb8-cockpit-main">' +
-            '<div class="cb8-cockpit-head">' +
-              '<div><span>Weekly command</span><strong>Move 5 high-fit roles forward</strong></div>' +
-              '<b>94% ready</b>' +
-            "</div>" +
-            '<div class="cb8-stage-map">' +
-              '<span class="done">Shortlist</span>' +
-              '<span class="active">Tailor</span>' +
-              '<span>Apply</span>' +
-              '<span>Follow up</span>' +
-              '<span>Interview</span>' +
-            "</div>" +
-            '<div class="cb8-command-grid">' +
-              '<article class="cb8-score-panel">' +
-                '<span>Top role fit</span>' +
-                '<strong>94%</strong>' +
-                '<p>Product Engineer &middot; Remote</p>' +
-              "</article>" +
-              '<article class="cb8-action-panel">' +
-                '<span>Next best action</span>' +
-                '<strong>Tailor resume before Friday</strong>' +
-                '<p>Use matched skills, project evidence, and role keywords.</p>' +
-              "</article>" +
-              '<article class="cb8-mini-panel cb8-mini-violet"><span>Resume</span><strong>Draft ready</strong></article>' +
-              '<article class="cb8-mini-panel cb8-mini-green"><span>Follow-up</span><strong>3 due soon</strong></article>' +
-            "</div>" +
-            '<div class="cb8-role-feed">' +
-              '<div><b>89%</b><span>Frontend Engineer &middot; Hybrid</span><em>Follow up</em></div>' +
-              '<div><b>84%</b><span>Growth Analyst &middot; Remote</span><em>Prep stories</em></div>' +
-              '<div><b>78%</b><span>Operations Associate &middot; On-site</span><em>Review fit</em></div>' +
-            "</div>" +
-          "</section>" +
-        "</div>" +
-      "</div>"
+      '<article class="lp-trust-chip">' +
+        '<i class="fa-solid ' + t.icon + '" aria-hidden="true"></i>' +
+        '<div><strong>' + t.title + '</strong><span>' + t.sub + '</span></div>' +
+      '</article>'
     );
   }
 
+  function renderFaq(f) {
+    return (
+      '<details class="lp-faq">' +
+        '<summary>' + f.q + '<i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>' +
+        '<p>' + f.a + '</p>' +
+      '</details>'
+    );
+  }
+
+  // ─── Page render ───────────────────────────────────────────────────
+
+  function renderView() {
+    const features = FEATURES.map(renderFeature).join("");
+    const steps = STEPS.map(renderStep).join("");
+    const trustChips = TRUST_STRIP.map(renderTrustChip).join("");
+    const faqs = FAQS.map(renderFaq).join("");
+
+    return (
+      '<main class="lp-page">' +
+
+        // ── Sticky nav ─────────────────────────────────────────────
+        '<header class="lp-nav">' +
+          '<div class="lp-nav-inner">' +
+            '<a class="lp-nav-brand" href="#/welcome" aria-label="CareerBoost home">' + renderBrand(false) + '</a>' +
+            '<nav class="lp-nav-links" aria-label="Landing navigation">' +
+              '<a href="#features">Features</a>' +
+              '<a href="#how">How it works</a>' +
+              '<a href="#pricing">Pricing</a>' +
+              '<a href="#faq">FAQ</a>' +
+            '</nav>' +
+            '<div class="lp-nav-actions">' +
+              '<a class="lp-nav-link" href="#/auth">Sign in</a>' +
+              '<a class="lp-btn lp-btn--primary lp-btn--sm" href="#/auth?mode=signup">Start free</a>' +
+            '</div>' +
+          '</div>' +
+        '</header>' +
+
+        // ── Hero ───────────────────────────────────────────────────
+        '<section class="lp-hero" id="hero">' +
+          '<div class="lp-hero-inner">' +
+            '<div class="lp-hero-copy">' +
+              '<span class="lp-eyebrow"><i class="fa-solid fa-shield-halved"></i> Private AI career operating system</span>' +
+              '<h1>Your job search,<br/>engineered like a command center.</h1>' +
+              '<p class="lp-hero-sub">Research the role. Tailor the resume. Rehearse the interview. Track every move. One calm workspace — designed for serious job seekers, not auto-apply spam.</p>' +
+              '<div class="lp-hero-actions">' +
+                '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
+                '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#features">See how it works <i class="fa-solid fa-arrow-down"></i></a>' +
+              '</div>' +
+              '<p class="lp-hero-meta">No credit card required · Cancel anytime · USD pricing</p>' +
+            '</div>' +
+            '<div class="lp-hero-visual">' + renderHeroMock() + '</div>' +
+          '</div>' +
+        '</section>' +
+
+        // ── Trust strip ────────────────────────────────────────────
+        '<section class="lp-trust-strip" aria-label="Trust signals">' +
+          '<div class="lp-container">' +
+            '<div class="lp-trust-grid">' + trustChips + '</div>' +
+          '</div>' +
+        '</section>' +
+
+        // ── Features ───────────────────────────────────────────────
+        '<section class="lp-section" id="features">' +
+          '<div class="lp-container">' +
+            '<header class="lp-section-head">' +
+              '<span class="lp-eyebrow">Features</span>' +
+              '<h2>Everything your job search needs, in one place.</h2>' +
+              '<p>Stop juggling tabs, spreadsheets, and AI prompts. CareerBoost is the workspace where research, tailoring, practice, and tracking actually connect.</p>' +
+            '</header>' +
+            '<div class="lp-feature-grid">' + features + '</div>' +
+          '</div>' +
+        '</section>' +
+
+        // ── How it works ───────────────────────────────────────────
+        '<section class="lp-section lp-section--alt" id="how">' +
+          '<div class="lp-container">' +
+            '<header class="lp-section-head">' +
+              '<span class="lp-eyebrow">How it works</span>' +
+              '<h2>Four steps from signup to offer.</h2>' +
+              '<p>A weekly rhythm built around action — not data entry.</p>' +
+            '</header>' +
+            '<div class="lp-step-grid">' + steps + '</div>' +
+          '</div>' +
+        '</section>' +
+
+        // ── Pricing ────────────────────────────────────────────────
+        '<section class="lp-section" id="pricing">' +
+          '<div class="lp-container">' +
+            '<header class="lp-section-head">' +
+              '<span class="lp-eyebrow">Pricing</span>' +
+              '<h2>Start free. Upgrade when your search needs more power.</h2>' +
+              '<p>Cancel anytime. Annual billing saves ~17%. All paid plans unlock more AI tailoring and voice mock interviews.</p>' +
+            '</header>' +
+            '<div class="lp-pricing-grid">' +
+              // Free
+              '<article class="lp-price-card">' +
+                '<h3>Free</h3>' +
+                '<p class="lp-price-fit">Try the workflow.</p>' +
+                '<div class="lp-price-amount"><strong>$0</strong><span>/month</span></div>' +
+                '<ul class="lp-price-list">' +
+                  '<li>1 AI resume tailor / mo</li>' +
+                  '<li>2 cover letters / mo</li>' +
+                  '<li>1 mock interview / mo (text)</li>' +
+                  '<li>1 company research / mo</li>' +
+                  '<li>5 saved jobs</li>' +
+                  '<li>Full pipeline + extension</li>' +
+                '</ul>' +
+                '<a class="lp-btn lp-btn--ghost lp-btn--block" href="#/auth?mode=signup" data-plan-cta="free">Start free</a>' +
+              '</article>' +
+              // Plus
+              '<article class="lp-price-card">' +
+                '<h3>Plus</h3>' +
+                '<p class="lp-price-fit">For active job seekers.</p>' +
+                '<div class="lp-price-amount"><strong>$9.99</strong><span>/month</span></div>' +
+                '<ul class="lp-price-list">' +
+                  '<li>10 resume tailorings / mo</li>' +
+                  '<li>15 cover letters / mo</li>' +
+                  '<li>3 mock interviews / mo</li>' +
+                  '<li>5 company research / mo</li>' +
+                  '<li>100 saved jobs</li>' +
+                  '<li>All 4 personas (text)</li>' +
+                '</ul>' +
+                '<a class="lp-btn lp-btn--ghost lp-btn--block" href="#/auth?mode=signup&plan=plus" data-plan-cta="plus">Get Plus</a>' +
+              '</article>' +
+              // Pro (featured)
+              '<article class="lp-price-card lp-price-card--featured">' +
+                '<span class="lp-price-badge">Most popular</span>' +
+                '<h3>Pro</h3>' +
+                '<p class="lp-price-fit">Daily applications + voice mock.</p>' +
+                '<div class="lp-price-amount"><strong>$19.99</strong><span>/month</span></div>' +
+                '<ul class="lp-price-list">' +
+                  '<li><b>Unlimited</b> resumes + covers</li>' +
+                  '<li>10 voice mock interviews / mo</li>' +
+                  '<li><b>Unlimited</b> research</li>' +
+                  '<li><b>Unlimited</b> saved jobs</li>' +
+                  '<li>Voice mode + all personas</li>' +
+                  '<li>Personal analytics</li>' +
+                '</ul>' +
+                '<a class="lp-btn lp-btn--primary lp-btn--block" href="#/auth?mode=signup&plan=pro" data-plan-cta="pro">Get Pro</a>' +
+              '</article>' +
+              // Career
+              '<article class="lp-price-card">' +
+                '<h3>Career</h3>' +
+                '<p class="lp-price-fit">Executives + career changers.</p>' +
+                '<div class="lp-price-amount"><strong>$39.99</strong><span>/month</span></div>' +
+                '<ul class="lp-price-list">' +
+                  '<li>Everything unlimited</li>' +
+                  '<li>Unlimited voice mocks</li>' +
+                  '<li>Priority AI (faster + smarter)</li>' +
+                  '<li>Personal analytics</li>' +
+                  '<li>Priority support (&lt;24h)</li>' +
+                '</ul>' +
+                '<a class="lp-btn lp-btn--ghost lp-btn--block" href="#/auth?mode=signup&plan=career" data-plan-cta="career">Get Career</a>' +
+              '</article>' +
+            '</div>' +
+            '<p class="lp-pricing-foot">Secure payment via Stripe. USD pricing. Cancel anytime from Billing settings.</p>' +
+          '</div>' +
+        '</section>' +
+
+        // ── FAQ ────────────────────────────────────────────────────
+        '<section class="lp-section lp-section--alt" id="faq">' +
+          '<div class="lp-container lp-container--narrow">' +
+            '<header class="lp-section-head lp-section-head--left">' +
+              '<span class="lp-eyebrow">FAQ</span>' +
+              '<h2>Questions before you start.</h2>' +
+            '</header>' +
+            '<div class="lp-faq-list">' + faqs + '</div>' +
+          '</div>' +
+        '</section>' +
+
+        // ── Final CTA ─────────────────────────────────────────────
+        '<section class="lp-final">' +
+          '<div class="lp-container">' +
+            '<div class="lp-final-card">' +
+              '<div>' +
+                '<span class="lp-eyebrow">Start with structure</span>' +
+                '<h2>Run your job search like a professional.</h2>' +
+                '<p>Free workspace. No credit card. Less than a minute to set up.</p>' +
+              '</div>' +
+              '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+
+        // ── Footer ────────────────────────────────────────────────
+        '<footer class="lp-footer">' +
+          '<div class="lp-container lp-footer-inner">' +
+            '<a class="lp-nav-brand" href="#/welcome">' + renderBrand(true) + '</a>' +
+            '<p class="lp-footer-copy">&copy; ' + new Date().getFullYear() + ' CareerBoost. Built for ambitious job seekers.</p>' +
+          '</div>' +
+        '</footer>' +
+      '</main>'
+    );
+  }
+
+  // ─── Tracking + pricing CTA wiring (preserved from prior pass) ────
   function bindLandingTracking() {
-    const root = document.querySelector(".cb8-page");
+    const root = document.querySelector(".lp-page");
     if (!root) return;
 
     try {
@@ -276,15 +402,10 @@
       if (telemetry && typeof telemetry.track === "function") {
         telemetry.track({ type: "landing", event: "landing_view", route: "welcome", status: "success" });
       }
-    } catch (error) {
-      // Do not block landing UX on telemetry.
-    }
+    } catch (error) { /* never block landing on telemetry */ }
 
-    // Phase Billing: pricing CTA wiring. If the user is already signed
-    // in and clicks a paid plan, jump straight to the upgrade modal
-    // (which routes to Stripe Checkout). Otherwise leave the default
-    // signup link behavior — auth flow returns them to the pricing
-    // page and they can pick again. Telemetry fires on every click.
+    // Pricing CTA: if signed in + paid plan clicked, route straight to
+    // Stripe Checkout. Otherwise fall through to the signup link.
     document.querySelectorAll("[data-plan-cta]").forEach(function (link) {
       link.addEventListener("click", function (event) {
         const planId = link.getAttribute("data-plan-cta") || "";
@@ -294,16 +415,10 @@
             telemetry.track({ type: "landing", event: "pricing_cta_click", planId: planId, status: "success" });
           }
         } catch (e) { /* ignore */ }
-        if (planId === "free") return; // default signup link is fine
+        if (planId === "free") return;
         const auth = window.CBV2 && window.CBV2.auth;
         const modal = window.CBV2 && window.CBV2.upgradeModal;
-        if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) {
-          // Let the default href run — signup, then they'll see the
-          // upgrade prompt the first time they hit a quota. We could
-          // also push them to checkout post-signup; that's a future
-          // refinement.
-          return;
-        }
+        if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) return;
         if (!modal || !modal.startCheckout) return;
         event.preventDefault();
         modal.startCheckout(planId, "monthly").then(function (url) {
@@ -315,209 +430,6 @@
         });
       });
     });
-  }
-
-  function renderView() {
-    const modules = MODULES.map(moduleCard).join("");
-    const trust = TRUST.map(trustCard).join("");
-    const steps = STEPS.map(stepCard).join("");
-    const faqs = FAQS.map(faqItem).join("");
-
-    return (
-      '<main class="welcome-page cb8-page">' +
-        '<div class="cb8-ambient cb8-ambient-one"></div>' +
-        '<div class="cb8-ambient cb8-ambient-two"></div>' +
-        '<header class="cb8-nav">' +
-          '<a class="auth-brand cb8-brand" href="#/welcome" aria-label="CareerBoost home">' + renderBrand(false) + "</a>" +
-          '<nav class="cb8-nav-links" aria-label="Landing navigation">' +
-            '<a href="#platform">Platform</a>' +
-            '<a href="#trust">Trust</a>' +
-            '<a href="#workflow">Workflow</a>' +
-            '<a href="#pricing">Pricing</a>' +
-            '<a href="#faq">FAQ</a>' +
-          "</nav>" +
-          '<div class="cb8-nav-actions">' +
-            '<a class="cb8-link" href="#/auth">Sign in</a>' +
-            '<a class="cb8-btn cb8-btn-primary" href="#/auth?mode=signup">Start free</a>' +
-          "</div>" +
-        "</header>" +
-
-        '<section class="cb8-hero" id="hero">' +
-          '<div class="cb8-hero-copy">' +
-            '<p class="cb8-eyebrow"><i class="fa-solid fa-shield-halved"></i> Private AI career operating system</p>' +
-            '<h1>Your job search, engineered like a command center.</h1>' +
-            '<p class="cb8-hero-subline">Find better-fit roles, tailor every application, track follow-ups, and prepare interviews from one trusted workspace.</p>' +
-            '<div class="cb8-hero-actions">' +
-              '<a class="cb8-btn cb8-btn-primary cb8-btn-large" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
-              '<a class="cb8-btn cb8-btn-secondary cb8-btn-large" href="#platform"><i class="fa-solid fa-layer-group"></i> Explore platform</a>' +
-            "</div>" +
-            '<div class="cb8-hero-proof">' +
-              '<span><strong>No auto-apply</strong> You review every move.</span>' +
-              '<span><strong>Role-fit signals</strong> Know why a role matters.</span>' +
-              '<span><strong>Private records</strong> Own your search history.</span>' +
-            "</div>" +
-          "</div>" +
-          '<div class="cb8-hero-visual">' + renderCockpit() + "</div>" +
-        "</section>" +
-
-        '<section class="cb8-signal-bar" aria-label="CareerBoost trust signals">' +
-          '<article><i class="fa-solid fa-credit-card"></i><strong>$0 to start</strong><span>No credit card required</span></article>' +
-          '<article><i class="fa-solid fa-user-check"></i><strong>Human approval</strong><span>Every draft stays yours</span></article>' +
-          '<article><i class="fa-solid fa-eye"></i><strong>Visible logic</strong><span>Inspectable role signals</span></article>' +
-          '<article><i class="fa-solid fa-file-export"></i><strong>Portable records</strong><span>Organized and reusable</span></article>' +
-        "</section>" +
-
-        '<section class="cb8-section cb8-platform" id="platform">' +
-          '<div class="cb8-section-head">' +
-            '<p class="cb8-eyebrow">Platform</p>' +
-            '<h2>Everything your search needs, arranged around action.</h2>' +
-            '<p>CareerBoost turns scattered tabs, resumes, notes, and reminders into a calm operating system for serious job seekers.</p>' +
-          "</div>" +
-          '<div class="cb8-bento-grid">' + modules + "</div>" +
-        "</section>" +
-
-        '<section class="cb8-section cb8-trust" id="trust">' +
-          '<div class="cb8-trust-copy">' +
-            '<p class="cb8-eyebrow">Trust and control</p>' +
-            '<h2>Professional does not mean black-box automation.</h2>' +
-            '<p>CareerBoost gives you AI leverage without taking away judgment. Recommendations are built to be reviewed, edited, and owned by you.</p>' +
-            '<div class="cb8-security-panel">' +
-              '<span><i class="fa-solid fa-shield-halved"></i> Review required</span>' +
-              '<span><i class="fa-solid fa-lock"></i> Private by default</span>' +
-              '<span><i class="fa-solid fa-file-export"></i> Export-ready data</span>' +
-            "</div>" +
-          "</div>" +
-          '<div class="cb8-trust-grid">' + trust + "</div>" +
-        "</section>" +
-
-        '<section class="cb8-section cb8-workflow" id="workflow">' +
-          '<div class="cb8-section-head cb8-section-head-wide">' +
-            '<p class="cb8-eyebrow">Method</p>' +
-            '<h2>A weekly execution rhythm for the whole search.</h2>' +
-          "</div>" +
-          '<div class="cb8-step-grid">' + steps + "</div>" +
-        "</section>" +
-
-        '<section class="cb8-section cb8-momentum">' +
-          '<div class="cb8-momentum-copy">' +
-            '<p class="cb8-eyebrow">Measurable progress</p>' +
-            '<h2>Turn effort into visible momentum.</h2>' +
-            '<ul>' +
-              '<li><i class="fa-solid fa-check"></i> Know what deserves attention today.</li>' +
-              '<li><i class="fa-solid fa-check"></i> Keep follow-ups, notes, and interviews visible.</li>' +
-              '<li><i class="fa-solid fa-check"></i> Review your search like a professional pipeline.</li>' +
-            "</ul>" +
-          "</div>" +
-          '<div class="cb8-progress-console" aria-hidden="true">' +
-            '<div class="cb8-progress-head"><div><span>Weekly execution plan</span><strong>5 roles moving forward</strong></div><i class="fa-solid fa-arrow-trend-up"></i></div>' +
-            '<label><span>Shortlist quality</span><b style="width: 86%"></b></label>' +
-            '<label><span>Tailored applications</span><b style="width: 72%"></b></label>' +
-            '<label><span>Follow-up coverage</span><b style="width: 64%"></b></label>' +
-            '<article><span>Next best action</span><strong>Prepare interview stories for the role with the strongest response signal.</strong></article>' +
-          "</div>" +
-        "</section>" +
-
-        '<section class="cb8-metrics" aria-label="CareerBoost product proof">' +
-          '<article><strong>6</strong><span>Pipeline stages</span></article>' +
-          '<article><strong>Fit</strong><span>Role scoring</span></article>' +
-          '<article><strong>AI</strong><span>Tailored drafts</span></article>' +
-          '<article><strong>100%</strong><span>Reviewed by you</span></article>' +
-        "</section>" +
-
-        '<section class="cb8-section cb8-pricing" id="pricing">' +
-          '<div class="cb8-section-head">' +
-            '<p class="cb8-eyebrow">Pricing</p>' +
-            '<h2>Start free. Upgrade when your search needs more power.</h2>' +
-            '<p>Cancel anytime. Annual billing saves ~17%. All paid plans unlock more AI tailoring and unlimited mock interviews.</p>' +
-          "</div>" +
-          '<div class="cb8-pricing-grid cb8-pricing-grid--four">' +
-            // Free
-            '<article class="cb8-price-card">' +
-              '<h3>Free</h3>' +
-              '<p class="cb8-plan-fit">Try the workflow. Limited monthly AI.</p>' +
-              '<p class="cb8-price">$0<span>/month</span></p>' +
-              '<ul>' +
-                '<li>1 AI resume tailor / mo</li>' +
-                '<li>2 cover letters / mo</li>' +
-                '<li>1 mock interview / mo (text)</li>' +
-                '<li>1 company research / mo</li>' +
-                '<li>5 saved jobs</li>' +
-                '<li>Full pipeline + Chrome extension</li>' +
-              '</ul>' +
-              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup" data-plan-cta="free">Start free</a>' +
-            "</article>" +
-            // Plus
-            '<article class="cb8-price-card">' +
-              '<h3>Plus</h3>' +
-              '<p class="cb8-plan-fit">For active job seekers, 1–2 apps/week.</p>' +
-              '<p class="cb8-price">$9.99<span>/month</span></p>' +
-              '<ul>' +
-                '<li>10 resume tailorings / mo</li>' +
-                '<li>15 cover letters / mo</li>' +
-                '<li>3 mock interviews / mo</li>' +
-                '<li>5 company research / mo</li>' +
-                '<li>100 saved jobs</li>' +
-                '<li>All 4 personas (text mode)</li>' +
-              '</ul>' +
-              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup&plan=plus" data-plan-cta="plus">Get Plus</a>' +
-            "</article>" +
-            // Pro (featured)
-            '<article class="cb8-price-card cb8-price-featured">' +
-              '<p class="cb8-badge">Most popular</p>' +
-              '<h3>Pro</h3>' +
-              '<p class="cb8-plan-fit">Daily applications. Voice mock interviews.</p>' +
-              '<p class="cb8-price">$19.99<span>/month</span></p>' +
-              '<ul>' +
-                '<li><b>Unlimited</b> resumes + covers</li>' +
-                '<li>10 voice mock interviews / mo</li>' +
-                '<li><b>Unlimited</b> company research</li>' +
-                '<li><b>Unlimited</b> saved jobs</li>' +
-                '<li>Voice mode + all personas</li>' +
-                '<li>Personal analytics</li>' +
-              '</ul>' +
-              '<a class="cb8-btn cb8-btn-primary" href="#/auth?mode=signup&plan=pro" data-plan-cta="pro">Get Pro</a>' +
-            "</article>" +
-            // Career
-            '<article class="cb8-price-card">' +
-              '<h3>Career</h3>' +
-              '<p class="cb8-plan-fit">Executives + career changers. Unlimited everything.</p>' +
-              '<p class="cb8-price">$39.99<span>/month</span></p>' +
-              '<ul>' +
-                '<li>Everything unlimited</li>' +
-                '<li>Unlimited voice mocks</li>' +
-                '<li>Priority AI (faster + smarter)</li>' +
-                '<li>Personal analytics</li>' +
-                '<li>Priority support (&lt;24h)</li>' +
-              '</ul>' +
-              '<a class="cb8-btn cb8-btn-secondary" href="#/auth?mode=signup&plan=career" data-plan-cta="career">Get Career</a>' +
-            "</article>" +
-          "</div>" +
-          '<p class="cb8-pricing-foot">Secure payment via Stripe. USD pricing. Cancel anytime from Billing settings.</p>' +
-        "</section>" +
-
-        '<section class="cb8-section cb8-faq" id="faq">' +
-          '<div class="cb8-section-head">' +
-            '<p class="cb8-eyebrow">FAQ</p>' +
-            '<h2>Questions before you start.</h2>' +
-          "</div>" +
-          '<div class="cb8-faq-list">' + faqs + "</div>" +
-        "</section>" +
-
-        '<section class="cb8-final-cta">' +
-          '<div>' +
-            '<p class="cb8-eyebrow">Start with structure</p>' +
-            '<h2>Create your CareerBoost workspace today.</h2>' +
-            '<p>Organize your search, improve every application, and walk into interviews better prepared.</p>' +
-          "</div>" +
-          '<a class="cb8-btn cb8-btn-primary cb8-btn-large" href="#/auth?mode=signup">Start free</a>' +
-        "</section>" +
-
-        '<footer class="cb8-footer">' +
-          '<div class="auth-brand">' + renderBrand(true) + "</div>" +
-          '<p>&copy; ' + new Date().getFullYear() + " CareerBoost. Built for ambitious job seekers.</p>" +
-        "</footer>" +
-      "</main>"
-    );
   }
 
   window.CBV2.routes.welcome = renderView;
