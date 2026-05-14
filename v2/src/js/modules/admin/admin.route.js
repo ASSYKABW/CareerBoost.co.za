@@ -47,22 +47,21 @@
   const adminUserTimelineRemote = helpers.adminUserTimelineRemote;
 
   // -- Section menu groups (drives the sidebar + currentSection() guard) ---
+  // Phase E5: final IA. Seven entries across four groups. Every old
+  // section ID still resolves (legacy URLs / bookmarks), but the nav
+  // surfaces only the consolidated CEO-facing boards. Old IDs that no
+  // longer appear in nav still route via their registered renderers.
   const sections = [
     {
-      // Phase E1: "Command center" is the new home. "overview" still works
-      // as an alias (currentSection() coerces it to "command-center" below)
-      // so old bookmarks / deep links don't 404.
       group: "Command",
       items: [
         { id: "command-center", icon: "fa-satellite-dish", label: "Command center" }
       ]
     },
     {
-      // Phase E4: Analytics group now leads with Product Intelligence —
-      // the ROI lens that connects engagement to placements + AI cost.
-      // Growth (acquisition lens) and Pipeline funnel (placement lens)
-      // sit next to it. The raw engagement / AI-cost / extension boards
-      // moved down to the "Deep dives" group below.
+      // Analytics — the three lenses that matter:
+      //   ROI (what produces placements) → Growth (where users come from)
+      //   → Pipeline (candidate progression).
       group: "Analytics",
       items: [
         { id: "product-intelligence", icon: "fa-chart-mixed", label: "Product intelligence", badge: "ROI" },
@@ -71,36 +70,32 @@
       ]
     },
     {
-      group: "Management",
+      // Operate — the three control surfaces:
+      //   Users (who) → Health (reliability) → Operations (governance).
+      group: "Operate",
       items: [
-        // Phase E3: Users board is the consolidated home for everything
-        // user-shaped: segments, account health queue, per-user timeline
-        // drill-down. The old section=user-support route still works as
-        // an alias (the section renderer is registered against both IDs).
         { id: "users", icon: "fa-users", label: "Users & outcomes" },
-        { id: "job-feed", icon: "fa-magnifying-glass-chart", label: "Job feed health", badge: "Live" }
-      ]
-    },
-    {
-      // Phase E4: deep-dive sections kept accessible for analyst-mode
-      // troubleshooting but no longer the primary entry point.
-      group: "Deep dives",
-      items: [
-        { id: "usage", icon: "fa-wave-square", label: "Usage & engagement" },
-        { id: "ai-cost", icon: "fa-wand-magic-sparkles", label: "AI cost monitor" },
-        { id: "extension", icon: "fa-puzzle-piece", label: "Extension health" },
-        { id: "sync", icon: "fa-arrows-rotate", label: "Sync health" }
-      ]
-    },
-    {
-      group: "System",
-      items: [
-        { id: "risk-center", icon: "fa-shield-virus", label: "Risk center" },
-        { id: "reports", icon: "fa-file-export", label: "Reports & audit" },
-        { id: "logs", icon: "fa-list-check", label: "System logs" },
-        { id: "settings", icon: "fa-sliders", label: "Admin settings" }
+        { id: "health", icon: "fa-heart-pulse", label: "Health" },
+        { id: "operations", icon: "fa-shield-halved", label: "Operations" }
       ]
     }
+  ];
+
+  // Legacy section IDs that pre-date the E5 consolidation. They are
+  // still registered as renderers (see sections/*.js) so direct URLs
+  // continue to work, but they don't appear in nav.
+  const LEGACY_SECTION_IDS = [
+    "overview",      // → command-center (alias)
+    "usage",         // raw engagement deep dive
+    "ai-cost",       // raw AI cost deep dive
+    "extension",     // raw extension deep dive
+    "job-feed",      // folded into health
+    "sync",          // folded into health
+    "risk-center",   // folded into health
+    "reports",       // folded into operations
+    "logs",          // folded into operations
+    "settings",      // folded into operations
+    "user-support",  // folded into users
   ];
 
   // -- Access gate ----------------------------------------------------------
@@ -183,14 +178,17 @@
     let section = String(params.section || "command-center").trim();
     // Phase E1: "overview" is the old home — redirect to command-center.
     if (section === "overview") section = "command-center";
-    // Phase E3: "user-support" is folded into "users". The renderer is
-    // registered against both IDs, so this is a hardening alias for the
-    // ID set guard below.
+    // Phase E3: "user-support" is folded into "users".
     if (section === "user-support") section = "users";
-    const ids = sections.reduce(function (out, group) {
+    // Phase E5: hard aliases that fully fold into a new board (no need to
+    // keep the legacy renderer around because the new board covers it).
+    // Note these are different from LEGACY_SECTION_IDS, which keep their
+    // own renderers for deep-dive access.
+    const navIds = sections.reduce(function (out, group) {
       return out.concat(group.items.map(function (item) { return item.id; }));
     }, []);
-    return ids.indexOf(section) >= 0 ? section : "command-center";
+    const allValidIds = navIds.concat(LEGACY_SECTION_IDS);
+    return allValidIds.indexOf(section) >= 0 ? section : "command-center";
   }
 
   function cloudDataIsFresh() {
@@ -1091,13 +1089,15 @@
       bindUserTimelineControls();
     }
 
-    // Phase C.2: bind Risk Center incident buttons.
-    if (activeSection === "risk-center") {
+    // Phase C.2 + E5: bind Risk Center incident buttons on the new
+    // consolidated Health board AND on the legacy risk-center deep link.
+    if (activeSection === "risk-center" || activeSection === "health") {
       bindRiskCenterControls();
     }
 
-    // Phase C.2: lazy-fetch + bind audit log viewer when on Reports section.
-    if (activeSection === "reports") {
+    // Phase C.2 + E5: lazy-fetch + bind audit log viewer on Operations
+    // board (consolidated) and the legacy reports section.
+    if (activeSection === "reports" || activeSection === "operations") {
       if (
         adminAccessState().ok &&
         isBackendAdminRuntime() &&
@@ -1109,8 +1109,9 @@
       bindAuditLogControls();
     }
 
-    // Phase C: bind Operator Management controls when on Admin Settings.
-    if (activeSection === "settings") {
+    // Phase C + E5: bind Operator Management controls on Operations
+    // board (consolidated) and the legacy settings section.
+    if (activeSection === "settings" || activeSection === "operations") {
       if (
         adminAccessState().ok &&
         isBackendAdminRuntime() &&

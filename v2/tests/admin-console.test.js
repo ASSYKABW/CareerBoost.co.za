@@ -74,10 +74,13 @@ function run() {
   loadScript(ctx, "src/js/modules/admin/admin-helpers.js");
   // Phase E3: user-support.js deleted (folded into users.js which
   // registers both "users" and the legacy "user-support" section IDs).
+  // Phase E5: health + operations are the new consolidated boards.
+  // Legacy section files stay loaded for backward-compatible deep links.
   [
     "command-center", "growth", "product-intelligence", "overview",
     "usage-engagement", "funnel", "users", "job-feed", "ai-cost",
-    "extension", "sync", "risk-center", "reports", "logs", "settings"
+    "extension", "sync", "risk-center", "reports", "logs", "settings",
+    "health", "operations"
   ].forEach(function (name) {
     loadScript(ctx, "src/js/modules/admin/sections/" + name + ".js");
   });
@@ -617,6 +620,27 @@ function run() {
   ctx.window.CBV2.getRouteParams = function () { return { section: "settings" }; };
   const settingsHtml = ctx.window.CBV2.routes.admin();
   assert.ok(/Operational guardrails/.test(settingsHtml), "settings section should render admin guardrails");
+
+  // Phase E5: consolidated Health board.
+  ctx.window.CBV2.getRouteParams = function () { return { section: "health" }; };
+  const healthHtml = ctx.window.CBV2.routes.admin();
+  assert.ok(/Open incidents/.test(healthHtml), "health board should render incidents stat");
+  assert.ok(/Cloud backend/.test(healthHtml), "health board should render cloud status stat");
+  assert.ok(/Source truth/.test(healthHtml), "health board should render source truth stat");
+  assert.ok(/Release readiness/.test(healthHtml), "health board should render release readiness");
+  assert.ok(/Active incidents/.test(healthHtml), "health board should render the incidents panel");
+  assert.ok(/Source truth issues|Source\/host mismatches|Job source truth/.test(healthHtml), "health board should render source truth panel");
+
+  // Phase E5: consolidated Operations board.
+  ctx.window.CBV2.getRouteParams = function () { return { section: "operations" }; };
+  const opsHtml = ctx.window.CBV2.routes.admin();
+  assert.ok(/Health score/.test(opsHtml), "operations board should render health score stat");
+  assert.ok(/Admin operators/.test(opsHtml), "operations board should render operators stat");
+  assert.ok(/Operator management/.test(opsHtml), "operations board should render operator management panel");
+  assert.ok(/Mutation history/.test(opsHtml), "operations board should render audit log");
+  assert.ok(/Export packages/.test(opsHtml), "operations board should render export packages");
+  assert.ok(/Privacy &amp; access disclosure/.test(opsHtml), "operations board should render privacy disclosure");
+  assert.ok(/System logs/.test(opsHtml), "operations board should render system logs");
 
   console.log("Admin console tests passed.");
 }
