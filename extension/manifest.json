@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CareerBoost Job Capture",
   "description": "Save jobs from LinkedIn, Indeed, Greenhouse and Lever directly into your CareerBoost pipeline.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "permissions": ["storage", "activeTab", "identity"],
   "host_permissions": [
     "https://www.linkedin.com/jobs/*",

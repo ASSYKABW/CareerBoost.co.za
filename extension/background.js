@@ -28,9 +28,18 @@ function deriveFunctionsUrl(supabaseUrl) {
 
 function getConfig() {
   return chrome.storage.sync.get(DEFAULT_CONFIG).then((cfg) => {
+    // Self-heal: if any required field was overwritten with an empty
+    // string (typically by clicking "Save settings" with the collapsed
+    // Developer Connection panel blank), fall back to DEFAULT_CONFIG.
+    // Without this, supabaseAnon = "" would make every Auth request
+    // come back as "No API key found in request" — which is exactly
+    // the bug we kept hitting for users who only meant to change the
+    // save target.
     const supabaseUrl = String(cfg.supabaseUrl || DEFAULT_CONFIG.supabaseUrl).replace(/\/+$/, "");
+    const supabaseAnon = String(cfg.supabaseAnon || DEFAULT_CONFIG.supabaseAnon);
     return Object.assign({}, cfg, {
       supabaseUrl,
+      supabaseAnon,
       functionsUrl: String(cfg.functionsUrl || deriveFunctionsUrl(supabaseUrl)).replace(/\/+$/, ""),
       target: cfg.target || "pipeline"
     });
@@ -40,7 +49,15 @@ function getConfig() {
 function saveConfig(patch) {
   const clean = {};
   ["supabaseUrl", "supabaseAnon", "functionsUrl", "target"].forEach((key) => {
-    if (patch[key] != null) clean[key] = String(patch[key]).trim();
+    if (patch[key] == null) return;
+    const trimmed = String(patch[key]).trim();
+    // Never persist an empty Supabase URL / anon key. Storing "" would
+    // override the DEFAULT_CONFIG fallback in getConfig() and break all
+    // signed-in functionality. If the user clears the field, treat that
+    // as "reset to default" by skipping the write — getConfig will then
+    // serve DEFAULT_CONFIG.
+    if ((key === "supabaseUrl" || key === "supabaseAnon") && trimmed === "") return;
+    clean[key] = trimmed;
   });
   return chrome.storage.sync.set(clean);
 }
@@ -64,14 +81,23 @@ async function authRequest(cfg, grantType, body) {
     //   - Bare:  {} on some 4xx (rate limit, captcha, etc.)
     const code = json.error_code || json.code || json.error || "";
     const desc = json.error_description || json.message || json.msg || "";
+    const haystack = (code + " " + desc).toLowerCase();
     let hint = "";
-    if (grantType === "password") {
+    // Catch the misconfig case FIRST, regardless of grant type. If the
+    // anon key was somehow blanked, Supabase responds with "No API key
+    // found in request" or "Invalid API key" — the user's email and
+    // password are blameless, and telling them to "check email/password"
+    // sends them down a dead-end debugging path. This message lands
+    // them on the fix.
+    if (/no api key|invalid api key|missing api key/.test(haystack)) {
+      hint = " — the extension's developer connection got cleared. Open the gear icon > Developer connection and clear/blank the Supabase fields, then click Save settings (defaults will be restored).";
+    } else if (grantType === "password") {
       // Password grant returns 4xx in three common situations. Detecting the
       // "no password set" case (OAuth-only accounts) is what trips most users
       // up, so we surface a clear actionable message.
-      if (/invalid.*credentials|invalid.*grant|invalid.*login/i.test(code + " " + desc)) {
+      if (/invalid.*credentials|invalid.*grant|invalid.*login/.test(haystack)) {
         hint = " — wrong email or password. If you signed up with Google, click 'Continue with Google' instead.";
-      } else if (/email.*not.*confirm/i.test(code + " " + desc)) {
+      } else if (/email.*not.*confirm/.test(haystack)) {
         hint = " — please confirm your email first (check your inbox for the confirmation link).";
       } else if (res.status === 400 || res.status === 401) {
         // Bare 4xx with no description — most often this is "user has no password
