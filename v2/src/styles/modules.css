@@ -5862,15 +5862,42 @@ a.settings-status-card:hover {
   .lp-pricing-grid { grid-template-columns: 1fr; }
   .lp-trust-grid { grid-template-columns: 1fr 1fr; }
   .lp-final-stats { grid-template-columns: 1fr 1fr; }
-  .lp-footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; padding-bottom: 32px; }
-  .lp-footer-brand-col { grid-column: 1 / -1; }
-  .lp-footer-bar { flex-direction: column; align-items: flex-start; }
+
+  /* ── Footer compaction on mobile ───────────────────────────────────
+     The earlier 1-col stack made the footer feel endless on a phone
+     (logo huge, links spaced like section dividers). Compact instead:
+       - logo height 44px (down from 56px)
+       - 3-col link grid (Product / Resources / Company) sits side
+         by side so it doesn't waste vertical space
+       - brand col spans full width above the link grid
+       - tighter heading + link spacing (10px gap, 11px headings) */
+  .lp-footer { padding: 40px 0 24px; }
+  .lp-footer-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px 16px;
+    padding-bottom: 24px;
+  }
+  .lp-footer-brand-col {
+    grid-column: 1 / -1;
+    gap: 12px;
+  }
+  .lp-footer-brand-col .lp-brand-img { height: 44px; }
+  .lp-footer-tagline { font-size: 12px; line-height: 1.55; max-width: 480px; }
+  .lp-social { width: 32px; height: 32px; font-size: 13px; }
+  .lp-footer-col h4 { margin-bottom: 10px; font-size: 11px; }
+  .lp-footer-col ul { gap: 8px; }
+  .lp-footer-col a { font-size: 12px; }
+  .lp-footer-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .lp-footer-legal { gap: 14px; }
 }
 
 @media (max-width: 560px) {
   /* Phones: tighter container, smaller logo, primary CTAs stack
      full-width for one-thumb tappability. Nav buttons keep their
-     desktop size so the touch target stays ≥36px tall. */
+     desktop size so the touch target stays ≥36px tall.
+
+     Footer drops to 2-col link grid — three columns at this width
+     would crowd each label too tight. Brand stays full-width. */
   .lp-container { padding: 0 16px; }
   .lp-nav-inner { padding: 10px 14px; gap: 8px; }
   .lp-nav .lp-brand-img { height: 30px; }
@@ -5881,12 +5908,20 @@ a.settings-status-card:hover {
   .lp-final-card { padding: 28px; }
   .lp-final-stats { grid-template-columns: 1fr; }
   .lp-trust-grid { grid-template-columns: 1fr; }
-  .lp-footer-grid { grid-template-columns: 1fr; }
   .lp-faq summary { padding: 16px 18px; font-size: 14px; }
+
+  .lp-footer-grid { grid-template-columns: 1fr 1fr; gap: 20px 16px; }
+  .lp-footer-brand-col { gap: 10px; }
+  .lp-footer-brand-col .lp-brand-img { height: 38px; }
 }
 
 @media (max-width: 380px) {
   /* Squeeze for the smallest phones (e.g. iPhone SE). */
   .lp-nav .lp-brand-img { height: 26px; }
   .lp-hero-copy h1 { font-size: clamp(24px, 7vw, 30px); }
+  .lp-footer-brand-col .lp-brand-img { height: 32px; }
+  /* On very narrow screens force the link cols to 1-col but keep
+     tight gap so it still feels compact, not endless. */
+  .lp-footer-grid { grid-template-columns: 1fr; gap: 18px; }
+  .lp-footer-col ul { gap: 6px; }
 }
