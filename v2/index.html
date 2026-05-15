@@ -150,11 +150,11 @@
   <script src="./src/js/modules/interview/interview.route.js"></script>
   <script src="./src/js/modules/analytics/analytics.shared.js"></script>
   <script src="./src/js/modules/analytics/analytics.route.js"></script>
-  <script src="./src/js/modules/settings/settings.meta.js"></script>
+  <script src="./src/js/modules/settings/settings.meta.js?v=20260515-ext"></script>
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->
   <script src="./src/js/modules/settings/settings.billing.js"></script>
-  <script src="./src/js/modules/settings/settings.route.js"></script>
+  <script src="./src/js/modules/settings/settings.route.js?v=20260515-ext"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];
