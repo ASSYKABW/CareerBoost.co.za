@@ -18,7 +18,7 @@
       // Supabase Dashboard → Authentication → URL Configuration →
       // Additional Redirect URLs.
       // Examples:  "https://careerboost.app"  |  "https://www.careerboost.app"
-      siteUrl: "",
+      siteUrl: "https://www.careerboost.app",
       // Force local-only mode even if supabase keys are set (useful for demos)
       forceLocal: false,
       // Admin console access is granted from Supabase Auth app_metadata roles.
