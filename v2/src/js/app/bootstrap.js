@@ -1,8 +1,17 @@
 (function () {
   // Routes that are visible to signed-out visitors (public).
-  const PUBLIC_ROUTES = ["welcome", "auth"];
+  // "auth/confirmed" is public because users land there from an email
+  // confirmation link — at click-time they're not yet signed in (the
+  // SDK parses the hash a moment later). Without it here, the click
+  // would silently redirect to #/welcome and never render the success
+  // card.
+  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed"];
   // Routes rendered fullscreen (no sidebar/topbar) for authed users.
-  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin"];
+  // "auth/confirmed" stays fullscreen even after the SDK establishes a
+  // session mid-render, so the user sees the polished "You're in!" card
+  // until they actively click a CTA — instead of snapping into the app
+  // shell behind their back.
+  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin", "auth/confirmed"];
 
   function mountAppShell() {
     const app = document.getElementById("app");
@@ -181,14 +190,28 @@
 
         if (goOnboarding) {
           // Render onboarding fullscreen — don't mount the sidebar.
-          if (currentRouteName() !== "onboarding") {
+          // EXCEPTION: don't yank a user who just confirmed their email
+          // straight into onboarding. They're staring at the "You're in!"
+          // card with two CTAs (profile setup OR dashboard) — let them
+          // pick. Onboarding will gate them on the next navigation if
+          // they really haven't done it yet.
+          if (currentRouteName() === "auth/confirmed") {
+            renderFullscreenAuthed("auth/confirmed");
+          } else if (currentRouteName() !== "onboarding") {
             window.location.hash = "#/onboarding";
           } else {
             renderFullscreenAuthed("onboarding");
           }
         } else {
-          mountAppShell();
           const current = currentRouteName();
+          // Stay on the confirmation card after sign-in completes mid-
+          // render. The user explicitly clicks "Set up my profile" or
+          // "Skip — open dashboard"; we don't shove them anywhere.
+          if (current === "auth/confirmed") {
+            renderFullscreenAuthed("auth/confirmed");
+            return;
+          }
+          mountAppShell();
           if (current === "auth" || current === "welcome" || current === "onboarding") {
             window.location.hash = "#/dashboard";
           } else {
