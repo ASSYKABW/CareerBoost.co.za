@@ -25,7 +25,7 @@
   };
   let prefMigrationTried = false;
   const settingsMeta = window.CBV2.settingsMeta || {};
-  const SETTINGS_TABS = settingsMeta.TABS || ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "advanced"];
+  const SETTINGS_TABS = settingsMeta.TABS || ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "extension", "advanced"];
   const ADMIN_ROLES = settingsMeta.ADMIN_ROLES || ["admin", "owner", "developer"];
   const LEGACY_TAB_ALIASES = settingsMeta.LEGACY_ALIASES || {
     home: "overview",
@@ -371,6 +371,94 @@
           <p class="ai-meta" style="margin-top:12px;"><strong>Recent sync issues</strong></p>
           <ul class="ai-meta">${errorRows}</ul>
         ` : ""}
+      </section>
+    `;
+  }
+
+  function renderExtensionInstallSection() {
+    const st = getSt();
+    const dataSummary = window.CBV2.store && typeof window.CBV2.store.getSummary === "function"
+      ? window.CBV2.store.getSummary() : {};
+    const hasCaptures = !!(dataSummary.applications || dataSummary.savedJobs);
+    const zipUrl = "/careerboost-extension.zip";
+    return `
+      <section class="card panel-lg settings-section">
+        <div class="panel-head">
+          <h2>Job Capture Extension</h2>
+          <span class="chip ${hasCaptures ? "green" : "cyan"}">${hasCaptures ? "Active" : "Not installed"}</span>
+        </div>
+        <p class="page-subtitle">
+          Works in <strong>Chrome and Microsoft Edge</strong>. Adds a <strong>Save to CareerBoost</strong> button on LinkedIn, Indeed, Greenhouse, and Lever — so you can add any job to your pipeline without leaving the board.
+        </p>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px;">
+          <a class="btn-primary" href="${zipUrl}" download="careerboost-extension.zip">
+            <i class="fa-solid fa-download"></i> Download extension (.zip)
+          </a>
+          <a class="btn-ghost" href="https://www.careerboost.app" target="_blank" rel="noopener">
+            <i class="fa-brands fa-chrome"></i> Chrome Web Store (coming soon)
+          </a>
+        </div>
+
+        <div class="panel-head" style="margin-top:4px;">
+          <h3>How to install</h3>
+        </div>
+        <div class="settings-action-list" style="margin-bottom:24px;">
+          <div class="admin-action-card">
+            <i class="fa-solid fa-1"></i>
+            <div>
+              <strong>Download and unzip</strong>
+              <span>Click <strong>Download extension (.zip)</strong> above, then extract the zip to a permanent folder on your computer.</span>
+            </div>
+          </div>
+          <div class="admin-action-card">
+            <i class="fa-solid fa-2"></i>
+            <div>
+              <strong>Open your browser's extension page</strong>
+              <span>Chrome: <code>chrome://extensions</code> &nbsp;·&nbsp; Edge: <code>edge://extensions</code> — then enable <strong>Developer mode</strong> (toggle, top-right).</span>
+            </div>
+          </div>
+          <div class="admin-action-card">
+            <i class="fa-solid fa-3"></i>
+            <div>
+              <strong>Load unpacked</strong>
+              <span>Click <strong>Load unpacked</strong> and select the folder you extracted in step 1. The CareerBoost icon will appear in your toolbar.</span>
+            </div>
+          </div>
+          <div class="admin-action-card">
+            <i class="fa-solid fa-4"></i>
+            <div>
+              <strong>Sign in</strong>
+              <span>Click the CareerBoost toolbar icon → <strong>Options</strong>, and sign in with your CareerBoost account to connect.</span>
+            </div>
+          </div>
+          <div class="admin-action-card">
+            <i class="fa-solid fa-5"></i>
+            <div>
+              <strong>Capture a job</strong>
+              <span>Open any supported job page and click <strong>Save to CareerBoost</strong>. The job lands in your Pipeline automatically.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-head" style="margin-top:8px;">
+          <h3>Supported job boards</h3>
+        </div>
+        <div class="admin-table" style="margin-bottom:24px;">
+          <div class="admin-table-row admin-table-row--three admin-table-head"><span>Board</span><span>URL pattern</span><span>Extraction</span></div>
+          <div class="admin-table-row admin-table-row--three"><span>LinkedIn</span><span>linkedin.com/jobs/*</span><span>JSON-LD → CSS selectors</span></div>
+          <div class="admin-table-row admin-table-row--three"><span>Indeed</span><span>indeed.com/viewjob*</span><span>JSON-LD → CSS selectors</span></div>
+          <div class="admin-table-row admin-table-row--three"><span>Greenhouse</span><span>boards.greenhouse.io/*</span><span>JSON-LD → CSS selectors</span></div>
+          <div class="admin-table-row admin-table-row--three"><span>Lever</span><span>jobs.lever.co/*</span><span>JSON-LD → data-qa selectors</span></div>
+        </div>
+
+        <div class="panel-head" style="margin-top:8px;">
+          <h3>Status</h3>
+        </div>
+        <div class="settings-status-grid" style="margin-top:12px;">
+          ${renderSettingsStatusCard("fa-puzzle-piece", "Captures recorded", hasCaptures ? "Active" : "None yet", hasCaptures ? "green" : "amber", hasCaptures ? "Jobs have been saved via the extension." : "No captures yet — install the extension and save your first job.", null, null)}
+          ${renderSettingsStatusCard("fa-shield-halved", "Credentials", "Stored in browser", "cyan", "Your CareerBoost tokens are saved in browser extension storage — never in a plain cookie.", null, null)}
+        </div>
       </section>
     `;
   }
@@ -741,7 +829,7 @@
       ? "Search constraints and scoring use your role profile."
       : "Add roles, location, and skills before searching at scale.";
     const extensionValue = dataSummary.applications || dataSummary.savedJobs ? "Capture active" : "Optional capture";
-    const extensionBody = "Save supported job-board postings into your pipeline from the browser.";
+    const extensionBody = "Save jobs from supported boards into your pipeline. Works in Chrome and Edge.";
     const candidateIntelHtml = renderCandidateIntelligenceSettingsSection();
 
     return `
@@ -759,7 +847,7 @@
           ${renderSettingsStatusCard("fa-magnifying-glass", "Job Search", searchValue, hasSearchContext ? "green" : "cyan", searchBody, "#/settings?tab=job-preferences", "Tune profile")}
           ${renderSettingsStatusCard("fa-wand-magic-sparkles", "AI Personalization", aiPersonalized ? "Personalized" : "Limited context", aiPersonalized ? "violet" : "warning", aiPersonalized ? "AI can use your saved career context when you ask for help." : "Turn on profile context for sharper resume, cover letter, and interview help.", "#/settings?tab=ai", "Review")}
           ${renderSettingsStatusCard("fa-cloud-arrow-up", "Workspace Sync", cloudLabel, sync.healthy ? "green" : "blue", cloudBody, "#/settings?tab=data-privacy", "Privacy")}
-          ${renderSettingsStatusCard("fa-puzzle-piece", "Job Capture", extensionValue, "cyan", extensionBody, "#/job-search", "Open search")}
+          ${renderSettingsStatusCard("fa-puzzle-piece", "Job Capture", extensionValue, "cyan", extensionBody, "#/settings?tab=extension", "Install extension")}
         </div>
       </section>
       <section class="card panel-lg settings-section settings-command-center">
@@ -1361,6 +1449,7 @@
       { id: "data-privacy", icon: "fa-shield-halved", label: "Data & Privacy" },
       { id: "appearance", icon: "fa-palette", label: "Appearance" },
       { id: "account", icon: "fa-id-badge", label: "Account" },
+      { id: "extension", icon: "fa-puzzle-piece", label: "Extension" },
       { id: "advanced", icon: "fa-screwdriver-wrench", label: "Advanced" }
     ].filter(function (item) {
       if (canAccessAdvanced) return true;
@@ -1395,6 +1484,7 @@
       ai: "Control AI personalization behavior and usage consent.",
       "data-privacy": "Control cloud sync, exports, and data safety actions.",
       account: "Review sign-in identity and account-level sync context.",
+      extension: "Install the Chrome extension and connect it to your CareerBoost account.",
       advanced: "Technical controls for app operators only."
     };
     const text = typeof settingsMeta.summary === "function" ? settingsMeta.summary(activeTab) : (copy[activeTab] || copy.overview);
@@ -1416,6 +1506,7 @@
     const showAi = activeTab === "ai";
     const showData = activeTab === "data-privacy";
     const showAccount = activeTab === "account";
+    const showExtension = activeTab === "extension";
     // Phase Billing: dedicated tab for plan + usage + portal.
     const showBilling = activeTab === "billing";
     const showAdvanced = canAccessAdvanced && activeTab === "advanced";
@@ -1463,6 +1554,8 @@
             ${showAi ? renderAiPersonalizationSection() : ""}
 
             ${showAccount ? renderAccountIdentitySection() : ""}
+
+            ${showExtension ? renderExtensionInstallSection() : ""}
 
             ${showBilling && window.CBV2.settingsBilling && window.CBV2.settingsBilling.render
               ? window.CBV2.settingsBilling.render()

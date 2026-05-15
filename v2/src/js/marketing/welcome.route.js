@@ -75,7 +75,7 @@
         { label: "Features",       href: "#features" },
         { label: "How it works",   href: "#how" },
         { label: "Pricing",        href: "#pricing" },
-        { label: "Chrome extension", href: "#features" },
+        { label: "Chrome extension", href: "#/settings?tab=extension" },
         { label: "Voice interviews", href: "#features" },
       ]
     },
