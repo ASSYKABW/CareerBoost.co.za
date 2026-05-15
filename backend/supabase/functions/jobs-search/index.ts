@@ -292,6 +292,122 @@ async function fetchListingEnrichment(url: string): Promise<{
   }
 }
 
+// -----------------------------------------------------------------------
+// Cross-source URL resolution (Fix #2 — pre-dedup duplicate killer).
+//
+// Some providers wrap the real listing URL behind a redirect (notably
+// Adzuna: redirect_url → real ATS/board page). Without resolving these,
+// the cross-source dedupe can't see that two providers are pointing at
+// the same underlying listing.
+//
+// The heavyweight `enrichJobDestinations` resolves URLs AND fetches the
+// full HTML for description enhancement — but it's capped at 18 jobs
+// per source. That's good for description quality but leaves a long
+// tail of unresolved redirector URLs in the merged list.
+//
+// `resolveRedirectsForDedup` is the lighter sibling: a HEAD-ish GET
+// with a tight 2s timeout, bounded concurrency, no HTML parsing. It
+// runs on the MERGED list (after every source returns) so a single
+// pass covers cross-source duplicates that no per-source step can see.
+// -----------------------------------------------------------------------
+
+const REDIRECTOR_HOST_PATTERNS: RegExp[] = [
+  /(?:^|\.)adzuna\./i,
+  /(?:^|\.)indeedjobs\./i,
+  /(?:^|\.)jobg8\./i,
+  /(?:^|\.)joble\./i,
+];
+
+const URL_RESOLVE_TIMEOUT_MS = 2_000;
+const URL_RESOLVE_CONCURRENCY = 8;
+// Cap to keep p99 wall time bounded. 50 resolutions at 2s timeout, 8 wide
+// → ~12.5s worst case if every request hangs. Practically: most resolve
+// in <500ms so this is rarely the bottleneck.
+const URL_RESOLVE_MAX_PER_SEARCH = 50;
+
+function isRedirectorHost(url: string): boolean {
+  const host = hostFromUrl(url);
+  if (!host) return false;
+  return REDIRECTOR_HOST_PATTERNS.some((re) => re.test(host));
+}
+
+async function resolveFinalUrl(url: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), URL_RESOLVE_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        accept: "text/html,application/xhtml+xml,*/*;q=0.5",
+        "user-agent": "CareerBoost job listing resolver",
+      },
+      signal: controller.signal,
+    });
+    const finalUrl = res.url || url;
+    // We only need res.url; release the connection without buffering the body.
+    try { await res.body?.cancel(); } catch { /* ignore */ }
+    return finalUrl;
+  } catch {
+    return url;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveRedirectsForDedup(
+  jobs: CanonicalJobOut[],
+): Promise<{ jobs: CanonicalJobOut[]; resolvedCount: number }> {
+  // Index every job that (a) is a known redirector URL and (b) hasn't
+  // already been resolved by per-source enrichJobDestinations (which
+  // sets `finalUrl`). Cap to keep wall time bounded.
+  const indexes = jobs
+    .map((job, index) => ({ job, index }))
+    .filter(({ job }) => !job.finalUrl && isRedirectorHost(job.url))
+    .slice(0, URL_RESOLVE_MAX_PER_SEARCH);
+  if (!indexes.length) return { jobs, resolvedCount: 0 };
+
+  const out = jobs.slice();
+  let cursor = 0;
+  let resolved = 0;
+
+  async function worker() {
+    while (cursor < indexes.length) {
+      const next = cursor++;
+      const { job, index } = indexes[next];
+      const finalUrl = await resolveFinalUrl(job.url);
+      if (!finalUrl || finalUrl === job.url) continue;
+
+      const originalHost = hostFromUrl(job.url);
+      const finalHost = hostFromUrl(finalUrl);
+      const finalSource = inferSourceFromUrl(finalUrl);
+
+      out[index] = {
+        ...job,
+        finalUrl,
+        url: finalUrl,
+        providerSource: job.providerSource || job.source,
+        finalSource: finalSource || job.finalSource,
+        source: finalSource || job.source,
+        sourceId: finalSource ? slugSourceLabel(finalSource) : job.sourceId,
+        sourceTrust: job.sourceTrust || {
+          reportedSource: job.source,
+          urlHost: originalHost,
+          finalUrlHost: finalHost,
+          urlVerified: true,
+          reason: `Found via ${job.source}; final listing opens at ${finalSource || finalHost}.`,
+          warning: `Found via ${job.source}, but the final listing opens at ${finalSource || finalHost}.`,
+        },
+      };
+      resolved += 1;
+    }
+  }
+
+  const workers = Math.min(URL_RESOLVE_CONCURRENCY, indexes.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return { jobs: out, resolvedCount: resolved };
+}
+
 async function enrichJobDestinations(jobs: CanonicalJobOut[]): Promise<CanonicalJobOut[]> {
   const out = jobs.map((job) => ({ ...job }));
   const targetIndexes = out
@@ -865,7 +981,15 @@ Deno.serve(async (req) => {
     runSource("Adzuna", () => runAdzuna(body), body),
   ]);
 
-  const jobs = sortJobs(dedupeJobs(runs.flatMap((r) => r.jobs)), body).slice(0, 80);
+  // Fix #2: resolve redirector URLs across the merged list before dedupe
+  // so two sources pointing at the same real listing collapse into one row.
+  const merged = runs.flatMap((r) => r.jobs);
+  const { jobs: urlResolved, resolvedCount } = await resolveRedirectsForDedup(merged);
+  const beforeDedupe = urlResolved.length;
+  const deduped = dedupeJobs(urlResolved);
+  const duplicatesRemoved = beforeDedupe - deduped.length;
+  const jobs = sortJobs(deduped, body).slice(0, 80);
+
   const sources = runs.map((r) => r.source);
   const warnings = [
     "LinkedIn and Indeed are handled as handoff/import sources unless official partner access is configured.",
@@ -877,5 +1001,12 @@ Deno.serve(async (req) => {
     jobs,
     sources,
     warnings,
+    // Operator visibility: how the merged list shrank through each gate.
+    dedupe: {
+      merged: beforeDedupe,
+      afterDedupe: deduped.length,
+      duplicatesRemoved,
+      urlsResolved: resolvedCount,
+    },
   });
 });
