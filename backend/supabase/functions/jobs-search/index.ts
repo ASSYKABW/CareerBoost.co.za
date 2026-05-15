@@ -65,11 +65,25 @@ interface CanonicalJobOut {
   };
 }
 
+interface QualityReject {
+  /** Job title or top of description contains a "closed/expired" disclaimer. */
+  closed: number;
+  /** postedAt is older than MAX_JOB_AGE_DAYS. */
+  stale: number;
+  /** Title looks like spam (all-caps + long). */
+  spam: number;
+}
+
 interface SourceStatus {
   name: string;
   count: number;
   ok: boolean;
   error?: string;
+  /** Total rows the upstream provider returned before any filtering. */
+  rawCount?: number;
+  /** Quality-gate rejection breakdown per source. Surfaces in the response
+   *  so operators can tune thresholds without re-deploying. */
+  rejects?: QualityReject;
 }
 
 const TIMEOUT_MS = 12_000;
@@ -440,13 +454,84 @@ function matchesQuery(job: CanonicalJobOut, terms: string[]): boolean {
     terms.filter((term) => text.includes(term)).length >= Math.min(2, terms.length);
 }
 
-function applyFilters(jobs: CanonicalJobOut[], body: Body): CanonicalJobOut[] {
+// -----------------------------------------------------------------------
+// Quality gates — server-side spam/stale/closed filter.
+//
+// Until now this aggregator passed almost everything through. Adzuna in
+// particular caches for 15 min and serves jobs up to ~60 days old; recruiters
+// also leave "no longer accepting applications" disclaimers in the body of
+// otherwise valid listings. These gates run BEFORE the user/intent filters so
+// (1) bad jobs never count against the per-source cap, and (2) we get an
+// honest "rejects" tally per source for the response payload.
+//
+// Thresholds are env-overridable so ops can tune without a redeploy:
+//   JOBS_MAX_AGE_DAYS  (default 60)  — recency floor in days
+// -----------------------------------------------------------------------
+
+const MAX_JOB_AGE_DAYS = Math.max(1, Number(Deno.env.get("JOBS_MAX_AGE_DAYS") || "60"));
+const SPAM_TITLE_MIN_LEN = 50;
+
+// Recruiters use a small set of phrases to mark a listing dead. We scan the
+// title and the first 800 chars of the description (where disclaimers live).
+// Keep this list tight — a false-positive on a legit job is worse than missing
+// an occasional dead one. The /\b.../i anchors keep us from matching
+// "we will close applications soon" or similar negation-adjacent phrasing.
+const CLOSED_PATTERNS: RegExp[] = [
+  /no longer accepting applications/i,
+  /applications? (?:are )?closed/i,
+  /position (?:has been )?filled/i,
+  /this (?:job|position|role|posting|opportunity) (?:has |is )?(?:expired|no longer (?:available|open))/i,
+  /we (?:are|'re) no longer accepting/i,
+  /(?:job|posting) (?:has )?expired/i,
+];
+
+function isLikelyClosed(job: CanonicalJobOut): boolean {
+  const head = (
+    String(job.title || "") + "\n" +
+    String(job.descriptionText || "").slice(0, 800)
+  );
+  return CLOSED_PATTERNS.some((re) => re.test(head));
+}
+
+function isTitleSpam(job: CanonicalJobOut): boolean {
+  const t = String(job.title || "").trim();
+  if (t.length < SPAM_TITLE_MIN_LEN) return false;
+  // Letters-only test: skip digits/punctuation when judging caps. Need at
+  // least 20 letters of evidence to avoid killing legit short acronym titles.
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 20) return false;
+  return letters === letters.toUpperCase();
+}
+
+function isTooStale(job: CanonicalJobOut): boolean {
+  if (!job.postedAt) return false;           // unparseable → keep (many feeds skip dates)
+  const age = daysSince(job.postedAt);
+  if (age >= 9999) return false;             // daysSince sentinel for "unknown"
+  return age > MAX_JOB_AGE_DAYS;
+}
+
+function newQualityCounter(): QualityReject {
+  return { closed: 0, stale: 0, spam: 0 };
+}
+
+function applyFilters(
+  jobs: CanonicalJobOut[],
+  body: Body,
+  rejects?: QualityReject,
+): CanonicalJobOut[] {
   const filters: Filters = body.filters || {};
   const terms = queryTerms(body);
   const postedWithinDays = Number(filters.postedWithinDays || body.nlq?.postedWithinDays || 0) || 0;
   const remoteOnly = !!(filters.remoteOnly || body.nlq?.remote);
   return jobs.filter((job) => {
     if (!job.url || !job.title) return false;
+
+    // Quality gates first — these are the cheap "is this a real job?" checks
+    // that should kill rows regardless of the user's filters.
+    if (isLikelyClosed(job)) { if (rejects) rejects.closed += 1; return false; }
+    if (isTooStale(job))     { if (rejects) rejects.stale  += 1; return false; }
+    if (isTitleSpam(job))    { if (rejects) rejects.spam   += 1; return false; }
+
     if (remoteOnly && !job.remote) return false;
     if (postedWithinDays > 0 && daysSince(job.postedAt) > postedWithinDays) return false;
     if (!matchesLocation(job, filters)) return false;
@@ -721,11 +806,26 @@ async function runSource(
 ): Promise<{ jobs: CanonicalJobOut[]; source: SourceStatus }> {
   try {
     const raw = await runner();
-    const filtered = applyFilters(raw, body).slice(0, MAX_PER_SOURCE);
+    const rejects = newQualityCounter();
+    const filtered = applyFilters(raw, body, rejects).slice(0, MAX_PER_SOURCE);
     const enriched = await enrichJobDestinations(filtered);
+    // Post-enrich re-check: the live listing page may reveal a "closed"
+    // disclaimer the upstream feed didn't carry. Currently only Adzuna jobs
+    // are enriched (see enrichJobDestinations), so this catches dead Adzuna
+    // redirects without affecting other sources.
+    const survivors = enriched.filter((job) => {
+      if (isLikelyClosed(job)) { rejects.closed += 1; return false; }
+      return true;
+    });
     return {
-      jobs: enriched,
-      source: { name, count: enriched.length, ok: true },
+      jobs: survivors,
+      source: {
+        name,
+        count: survivors.length,
+        ok: true,
+        rawCount: raw.length,
+        rejects,
+      },
     };
   } catch (err) {
     return {
