@@ -76,6 +76,20 @@
     return data;
   }
 
+  // Build a redirect URL that survives email clicks from other devices.
+  // CB_CONFIG.siteUrl (if set) is the canonical production origin —
+  // emails sent to a user's phone or another browser will still land
+  // there even if they signed up from `localhost`. Falls back to the
+  // current origin + pathname for local dev.
+  function buildRedirect(hashPath) {
+    const cfg = (typeof window !== "undefined" && window.CB_CONFIG) || {};
+    const cfgUrl = (cfg.siteUrl || "").trim();
+    const base = cfgUrl
+      ? cfgUrl.replace(/\/+$/, "")
+      : (window.location.origin + window.location.pathname).replace(/\/+$/, "");
+    return base + hashPath;
+  }
+
   async function signUpWithPassword(email, password, fullName) {
     const client = ensureClient();
     if (!client) throw new Error("Backend not configured.");
@@ -84,7 +98,9 @@
       password,
       options: {
         data: { full_name: fullName || "" },
-        emailRedirectTo: window.location.origin + window.location.pathname + "#/dashboard"
+        // Dedicated landing route that shows a polished "You're in!"
+        // message before routing to the dashboard.
+        emailRedirectTo: buildRedirect("#/auth/confirmed")
       }
     });
     if (error) throw error;
@@ -95,8 +111,7 @@
   async function signInWithOAuth(provider) {
     const client = ensureClient();
     if (!client) throw new Error("Backend not configured.");
-    const redirectTo =
-      window.location.origin + window.location.pathname + "#/dashboard";
+    const redirectTo = buildRedirect("#/auth/confirmed");
     const { data, error } = await client.auth.signInWithOAuth({
       provider,
       options: { redirectTo }
@@ -109,8 +124,7 @@
   async function sendPasswordReset(email) {
     const client = ensureClient();
     if (!client) throw new Error("Backend not configured.");
-    const redirectTo =
-      window.location.origin + window.location.pathname + "#/auth?reset=1";
+    const redirectTo = buildRedirect("#/auth?reset=1");
     const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
   }

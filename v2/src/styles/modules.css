@@ -5970,3 +5970,128 @@ a.settings-status-card:hover {
   .lp-footer-grid { grid-template-columns: 1fr; gap: 18px; }
   .lp-footer-col ul { gap: 6px; }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Auth confirmation landing (#/auth/confirmed)
+   Reached after the user clicks the email confirmation link or
+   completes an OAuth round-trip. Reuses the lp-page chrome so the
+   visual tone matches the marketing landing the user just came from.
+   ────────────────────────────────────────────────────────────────── */
+.lp-auth-confirm-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background:
+    radial-gradient(1200px 600px at 20% 0%, rgba(94, 234, 212, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 100%, rgba(167, 139, 250, 0.10), transparent 60%),
+    var(--lp-bg, #05070f);
+  color: var(--lp-text, #e6edf7);
+}
+.lp-auth-confirm-card {
+  width: 100%;
+  max-width: 560px;
+  padding: 40px 36px 36px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+  border: 1px solid var(--lp-border, rgba(255, 255, 255, 0.08));
+  border-radius: 20px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.lp-auth-confirm-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--lp-accent, #5eead4), var(--lp-accent-strong, #34d399));
+  opacity: 0.9;
+}
+.lp-auth-confirm-card--success::before {
+  background: linear-gradient(90deg, #5eead4, #34d399);
+}
+.lp-auth-confirm-card--warn::before {
+  background: linear-gradient(90deg, #fbbf24, #f97316);
+}
+.lp-auth-confirm-card h1 {
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  font-size: clamp(24px, 3.4vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 14px 0 10px;
+  color: var(--lp-text, #f4f7fb);
+}
+.lp-auth-confirm-card p {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--lp-text-muted, #aab4c4);
+  margin: 0 auto;
+  max-width: 44ch;
+}
+.lp-auth-confirm-card .lp-eyebrow {
+  display: inline-flex;
+  margin-bottom: 4px;
+}
+.lp-auth-confirm-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.18), rgba(52, 211, 153, 0.18));
+  border: 1px solid rgba(94, 234, 212, 0.35);
+  color: var(--lp-accent, #5eead4);
+  box-shadow: 0 8px 24px rgba(52, 211, 153, 0.18);
+}
+.lp-auth-confirm-icon--warn {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.18), rgba(249, 115, 22, 0.18));
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  box-shadow: 0 8px 24px rgba(249, 115, 22, 0.18);
+}
+.lp-auth-confirm-spinner {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  border: 3px solid rgba(94, 234, 212, 0.18);
+  border-top-color: var(--lp-accent, #5eead4);
+  animation: lp-auth-spin 900ms linear infinite;
+}
+@keyframes lp-auth-spin {
+  to { transform: rotate(360deg); }
+}
+.lp-auth-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin: 22px 0 8px;
+}
+.lp-auth-confirm-actions .lp-btn {
+  min-width: 200px;
+}
+.lp-auth-confirm-meta {
+  margin-top: 14px !important;
+  font-size: 13px !important;
+  color: var(--lp-text-muted, #8a94a6) !important;
+}
+.lp-auth-confirm-meta strong {
+  color: var(--lp-text, #d8e0ee);
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .lp-auth-confirm-page { padding: 32px 16px; }
+  .lp-auth-confirm-card { padding: 32px 22px 26px; border-radius: 16px; }
+  .lp-auth-confirm-icon { width: 64px; height: 64px; font-size: 28px; }
+  .lp-auth-confirm-actions { flex-direction: column; gap: 10px; }
+  .lp-auth-confirm-actions .lp-btn { min-width: 0; width: 100%; }
+}

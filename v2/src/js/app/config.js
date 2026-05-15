@@ -9,6 +9,16 @@
       supabaseAnon: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGZma2h3cGJuZ2l1cGZtY3NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2MjE4MDAsImV4cCI6MjA5MjE5NzgwMH0.glvjjwKq3JeOy8HF71JfwzW0m45DvwK8tSbnqxu-JY8",
       // If blank, it's derived from supabaseUrl: https://<ref>.functions.supabase.co
       functionsUrl: "",
+      // Canonical production origin (no trailing slash). When set, auth
+      // email redirects (signup confirmation, OAuth, password reset)
+      // point HERE so the link works regardless of which device opens
+      // the email. Leave blank for local dev — the auth flow falls
+      // back to the current origin + pathname (works in the same
+      // browser session that signed up). MUST also be listed in
+      // Supabase Dashboard → Authentication → URL Configuration →
+      // Additional Redirect URLs.
+      // Examples:  "https://careerboost.app"  |  "https://www.careerboost.app"
+      siteUrl: "",
       // Force local-only mode even if supabase keys are set (useful for demos)
       forceLocal: false,
       // Admin console access is granted from Supabase Auth app_metadata roles.
