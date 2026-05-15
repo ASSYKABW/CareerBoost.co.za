@@ -5801,10 +5801,24 @@ a.settings-status-card:hover {
 }
 .lp-footer-legal a:hover { color: var(--lp-accent); }
 
-/* ── Responsive ──────────────────────────────────────────────────── */
+/* ── Responsive ──────────────────────────────────────────────────────
+   Mobile-first principles applied here:
+     1. Hero copy + primary CTA must be ABOVE the mock on every viewport
+        (the mock is decorative; the value prop is the hook).
+     2. Below 768px the mock is hidden entirely — it adds page height
+        without communicating new information on a phone.
+     3. Logo image height shrinks across three steps (40 → 36 → 30 → 26)
+        to stay balanced against the Start free button at any width.
+     4. Sign in link gets stronger contrast on mobile so it's tap-
+        discoverable next to the bright CTA.
+   ────────────────────────────────────────────────────────────────── */
+
 @media (max-width: 1024px) {
-  .lp-hero-inner { grid-template-columns: 1fr; gap: 40px; }
-  .lp-hero-visual { order: -1; max-width: 480px; margin: 0 auto; }
+  /* Hero stacks vertically. Copy goes FIRST (natural document order);
+     mock follows underneath with a constrained width so it doesn't
+     stretch edge-to-edge on tablets. */
+  .lp-hero-inner { grid-template-columns: 1fr; gap: 32px; }
+  .lp-hero-visual { max-width: 520px; margin: 0 auto; width: 100%; }
   .lp-feature-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-step-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-pricing-grid { grid-template-columns: repeat(2, 1fr); }
@@ -5813,38 +5827,66 @@ a.settings-status-card:hover {
   .lp-footer-grid { grid-template-columns: 1fr 1fr 1fr; gap: 32px; }
   .lp-footer-brand-col { grid-column: 1 / -1; max-width: none; }
 }
+
 @media (max-width: 768px) {
-  .lp-hero { padding: 56px 0 40px; }
-  .lp-section { padding: 56px 0; }
-  .lp-final { padding: 56px 0; }
+  /* Tighter hero on tablets + phones. Headline rescales via clamp(). */
+  .lp-hero { padding: 36px 0 28px; }
+  .lp-hero-copy { gap: 14px; }
+  .lp-hero-copy h1 { font-size: clamp(28px, 7vw, 38px); line-height: 1.12; }
+  .lp-hero-sub { font-size: 15px; }
+  .lp-hero-meta { font-size: 11px; }
+
+  /* Mock is hidden on phones. It dominates vertical space without
+     adding value above the fold. Reappears at ≥1024px. */
+  .lp-hero-visual { display: none; }
+
+  .lp-section { padding: 48px 0; }
+  .lp-final { padding: 48px 0; }
+  .lp-section-head { margin-bottom: 32px; }
+  .lp-section-head h2 { font-size: clamp(24px, 6vw, 30px); line-height: 1.2; }
+  .lp-section-head p { font-size: 14px; }
+
+  /* Nav — hide secondary links, keep brand + actions visible.
+     Brand on the left, actions pushed to the right edge so the row
+     has good visual balance without a flex:1 spacer in the middle. */
+  .lp-nav-inner { padding: 12px 16px; gap: 10px; }
   .lp-nav-links { display: none; }
-  .lp-nav-inner { gap: 12px; }
+  .lp-nav-actions { margin-left: auto; }
+  .lp-nav .lp-brand-img { height: 36px; }
+  /* Lift the muted Sign in link to a readable contrast level so it
+     doesn't fade into the dark background next to the bright CTA. */
+  .lp-nav-link { color: var(--lp-text); font-weight: 500; }
+
   .lp-feature-grid { grid-template-columns: 1fr; }
   .lp-step-grid { grid-template-columns: 1fr; }
   .lp-pricing-grid { grid-template-columns: 1fr; }
   .lp-trust-grid { grid-template-columns: 1fr 1fr; }
-  .lp-mock-body { grid-template-columns: 1fr; }
-  .lp-mock-rail {
-    display: flex;
-    flex-direction: row;
-    border-right: none;
-    border-bottom: 1px solid var(--lp-border);
-    overflow-x: auto;
-  }
-  .lp-mock-cards { grid-template-columns: 1fr; }
   .lp-final-stats { grid-template-columns: 1fr 1fr; }
   .lp-footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; padding-bottom: 32px; }
   .lp-footer-brand-col { grid-column: 1 / -1; }
   .lp-footer-bar { flex-direction: column; align-items: flex-start; }
 }
-@media (max-width: 480px) {
+
+@media (max-width: 560px) {
+  /* Phones: tighter container, smaller logo, primary CTAs stack
+     full-width for one-thumb tappability. Nav buttons keep their
+     desktop size so the touch target stays ≥36px tall. */
   .lp-container { padding: 0 16px; }
-  .lp-nav-inner { padding: 12px 16px; }
+  .lp-nav-inner { padding: 10px 14px; gap: 8px; }
+  .lp-nav .lp-brand-img { height: 30px; }
+  .lp-hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
   .lp-hero-actions .lp-btn { width: 100%; justify-content: center; }
+  .lp-final-actions { flex-direction: column; align-items: stretch; }
+  .lp-final-actions .lp-btn { width: 100%; justify-content: center; }
   .lp-final-card { padding: 28px; }
   .lp-final-stats { grid-template-columns: 1fr; }
+  .lp-trust-grid { grid-template-columns: 1fr; }
   .lp-footer-grid { grid-template-columns: 1fr; }
-  /* On narrow screens the wide lockup eats the nav. Shrink the
-     nav logo so it stays balanced against the small Start free CTA. */
-  .lp-nav .lp-brand-img { height: 32px; }
+  .lp-faq summary { padding: 16px 18px; font-size: 14px; }
+}
+
+@media (max-width: 380px) {
+  /* Squeeze for the smallest phones (e.g. iPhone SE). */
+  .lp-nav .lp-brand-img { height: 26px; }
+  .lp-hero-copy h1 { font-size: clamp(24px, 7vw, 30px); }
 }
