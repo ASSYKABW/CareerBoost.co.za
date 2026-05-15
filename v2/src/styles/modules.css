@@ -5816,9 +5816,25 @@ a.settings-status-card:hover {
 @media (max-width: 1024px) {
   /* Hero stacks vertically. Copy goes FIRST (natural document order);
      mock follows underneath with a constrained width so it doesn't
-     stretch edge-to-edge on tablets. */
+     stretch edge-to-edge on tablets.
+
+     When the hero is stacked we ALSO center-align the copy. The
+     eyebrow, headline, subtitle, buttons, and meta line all read
+     better centered in this layout — a long left-aligned column
+     against a wide hero feels off-balance. */
   .lp-hero-inner { grid-template-columns: 1fr; gap: 32px; }
   .lp-hero-visual { max-width: 520px; margin: 0 auto; width: 100%; }
+  .lp-hero-copy { text-align: center; }
+  /* Constrain the subtitle line length + center the box for readable
+     measure (~60 chars / ~580px). */
+  .lp-hero-sub { max-width: 580px; margin-left: auto; margin-right: auto; }
+  /* Center the row of buttons (still side-by-side at tablet width). */
+  .lp-hero-actions { justify-content: center; }
+  /* Same centered layout for the final-CTA card when it stacks. */
+  .lp-final-copy { text-align: center; }
+  .lp-final-copy p { margin-left: auto; margin-right: auto; }
+  .lp-final-actions { justify-content: center; }
+
   .lp-feature-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-step-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-pricing-grid { grid-template-columns: repeat(2, 1fr); }
