@@ -117,6 +117,7 @@
       total: Number(saved.total || saved.jobs.length || 0),
       roleProfile: saved.roleProfile || null,
       sort: saved.sort || "newest",
+      filters: saved.filters && typeof saved.filters === "object" ? saved.filters : null,
       diagnostics: saved.diagnostics || null,
       sources: saved.sources || null,
       nlq: saved.nlq || null
@@ -626,12 +627,38 @@
     return "Run a search to scan available feeds. LinkedIn and Indeed are opened as handoff sources, then imported into CareerBoost when you choose a role.";
   }
 
+  // Returns the next-broader strictness tier if the empty result was likely
+  // caused by a tight location match, or null when there's nothing to relax.
+  // Called from renderNoResultsHtml to decide whether to surface the
+  // "Broaden location match" one-click action.
+  function suggestedBroadenStrictness() {
+    if (!lastSearchView.at) return null;
+    const filters = (lastSearchView.filters && typeof lastSearchView.filters === "object")
+      ? lastSearchView.filters
+      : (window.CBV2.store.getJobSearchState() || {}).lastFilters || {};
+    const loc = String((filters && filters.location) || "").trim();
+    if (!loc) return null;
+    const cur = String((filters && filters.locationStrictness) || "balanced");
+    if (cur === "strict")   return "balanced";
+    if (cur === "balanced") return "broad";
+    return null;
+  }
+
   function renderNoResultsHtml(st) {
     const ran = !!lastSearchView.at;
     const diagHtml = renderDiagnosticsHtml(st, lastSearchView.diagnostics);
     const sourceStripHtml = renderSourceStripHtml(st, lastSearchView.sources);
     const title = ran ? "No roles matched this run" : "Search, handoff, or import";
     const body = noResultAdvice();
+    const broadenTo = suggestedBroadenStrictness();
+    const broadenLabel = broadenTo === "broad"
+      ? "Broaden to any keyword overlap"
+      : "Broaden to same area / region";
+    const broadenBtn = broadenTo
+      ? '<button type="button" class="btn-primary btn-sm" data-action="broaden-strictness" data-target="' + st(broadenTo) + '">' +
+        '<i class="fa-solid fa-arrows-left-right" aria-hidden="true"></i> ' + st(broadenLabel) +
+        "</button>"
+      : "";
     return (
       '<div class="job-search-results-empty">' +
       (diagHtml || "") +
@@ -643,6 +670,7 @@
       "<h3>" + st(title) + "</h3>" +
       "<p>" + st(body) + "</p>" +
       '<div class="job-search-empty-actions">' +
+      broadenBtn +
       '<button type="button" class="btn-secondary btn-sm" data-board-search="linkedin"><i class="fa-brands fa-linkedin" aria-hidden="true"></i> Search LinkedIn</button>' +
       '<button type="button" class="btn-secondary btn-sm" data-board-search="indeed"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Search Indeed</button>' +
       '<a class="btn-ghost btn-sm" href="#/settings"><i class="fa-solid fa-sliders" aria-hidden="true"></i> Review targeting</a>' +
@@ -1530,7 +1558,7 @@
               experienceLevel: Array.isArray(lf.experienceLevel) ? lf.experienceLevel.slice(0, 8) : [],
               activeOnly: lf.activeOnly !== false,
               searchRegion: String(lf.searchRegion || "global"),
-              locationStrictness: String(lf.locationStrictness || "strict")
+              locationStrictness: String(lf.locationStrictness || "balanced")
             }
           });
           js = window.CBV2.store.getJobSearchState() || {};
@@ -1546,7 +1574,7 @@
     const expCur = Array.isArray(f.experienceLevel) ? f.experienceLevel : [];
     const activeOnlyOn = f.activeOnly !== false;
     const searchRegionCur = String(f.searchRegion || "global");
-    const locationStrictnessCur = String(f.locationStrictness || "strict");
+    const locationStrictnessCur = String(f.locationStrictness || "balanced");
     const updatedLabel = formatShortDate(new Date().toISOString()) || "—";
 
     const lr = lastRun(js);
@@ -1698,11 +1726,11 @@
       "</span>" +
       "</label>" +
       '<label class="job-search-field" for="job-search-location-strictness">' +
-      '<span class="job-search-target-title">Match rule</span>' +
-      '<select id="job-search-location-strictness" name="locationStrictness" class="job-search-sort-select">' +
-      '<option value="strict"' + (locationStrictnessCur === "strict" ? " selected" : "") + ">Exact location only</option>" +
-      '<option value="balanced"' + (locationStrictnessCur === "balanced" ? " selected" : "") + ">Nearby / same region</option>" +
-      '<option value="broad"' + (locationStrictnessCur === "broad" ? " selected" : "") + ">Broad location</option>" +
+      '<span class="job-search-target-title">Location match</span>' +
+      '<select id="job-search-location-strictness" name="locationStrictness" class="job-search-sort-select" aria-describedby="job-search-location-strictness-hint">' +
+      '<option value="strict"' + (locationStrictnessCur === "strict" ? " selected" : "") + ' title="City + country must match">Strict — exact city only</option>' +
+      '<option value="balanced"' + (locationStrictnessCur === "balanced" ? " selected" : "") + ' title="Same city, metro, or region">Balanced — same area or region</option>' +
+      '<option value="broad"' + (locationStrictnessCur === "broad" ? " selected" : "") + ' title="Any keyword overlap counts">Broad — any keyword overlap</option>' +
       "</select>" +
       "</label>" +
       '<label class="job-search-field" for="job-search-remote">' +
@@ -1853,7 +1881,7 @@
       experienceLevel: expValue === "any" ? [] : [expValue],
       activeOnly: !!(activeOnlyEl && activeOnlyEl.value === "active_only"),
       searchRegion: regionEl && regionEl.value ? String(regionEl.value) : "global",
-      locationStrictness: strictnessEl && strictnessEl.value ? String(strictnessEl.value) : "strict"
+      locationStrictness: strictnessEl && strictnessEl.value ? String(strictnessEl.value) : "balanced"
     };
   }
 
@@ -1966,6 +1994,10 @@
           total: total,
           roleProfile: cloneRoleProfile(roleProfile),
           sort: sort,
+          // Capture the filters used for this run so the empty-state can
+          // suggest the right "broaden" action based on the actual strictness
+          // applied (not whatever the user has typed since).
+          filters: filters && typeof filters === "object" ? Object.assign({}, filters) : null,
           diagnostics: out.diagnostics && typeof out.diagnostics === "object" ? out.diagnostics : null,
           sources: out.sources && typeof out.sources === "object" ? out.sources : null,
           nlq: out.nlq && typeof out.nlq === "object" ? out.nlq : nlqData || null
@@ -2127,6 +2159,21 @@
       if (!btn) return;
       e.preventDefault();
       openBigBoard(btn.getAttribute("data-board-search") || "linkedin");
+    });
+
+    // "Broaden location match" action surfaced in the empty-results panel.
+    // Flips the strictness <select> to the next-broader tier and re-submits
+    // the search form so the user doesn't have to re-type anything.
+    page.addEventListener("click", function (e) {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-action="broaden-strictness"]') : null;
+      if (!btn) return;
+      e.preventDefault();
+      const target = String(btn.getAttribute("data-target") || "balanced");
+      const sel = document.getElementById("job-search-location-strictness");
+      if (sel) sel.value = target;
+      const form = document.getElementById("job-search-form");
+      if (form && typeof form.requestSubmit === "function") form.requestSubmit();
+      else if (form) form.dispatchEvent(new Event("submit", { cancelable: true }));
     });
 
     const form = document.getElementById("job-search-import-form");
@@ -2298,7 +2345,7 @@
             experienceLevel: [],
             activeOnly: true,
             searchRegion: "global",
-            locationStrictness: "strict"
+            locationStrictness: "balanced"
           }
         });
         const meta = document.getElementById("job-search-run-meta");
