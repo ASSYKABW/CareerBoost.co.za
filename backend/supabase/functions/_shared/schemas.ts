@@ -17,7 +17,8 @@ export type Skill =
   | "resume-critique"
   | "jd-analyze"
   | "tailor-plan"
-  | "skill-action-plan";
+  | "skill-action-plan"
+  | "chat-assist";
 
 type Validator = (data: unknown) => boolean;
 
@@ -123,6 +124,7 @@ export const schemas: Record<Skill, Validator> = {
       const pp = p as Record<string, unknown>;
       return isStr(pp.skill) && isArr(pp.actions);
     }),
+  "chat-assist": (d) => isObj(d) && isStr(d.reply),
 };
 
 export function validateSkillPayload(skill: string, data: unknown): void {

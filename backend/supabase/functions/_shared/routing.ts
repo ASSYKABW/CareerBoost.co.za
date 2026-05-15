@@ -57,10 +57,17 @@ export const SKILL_ROUTING: Record<Skill, SkillRoute> = {
 
   // ----- Phase 5 additions -------------------------------------------------
   "skill-action-plan":        { provider: "anthropic", model: "claude-haiku-4-5",     tier: "mid" },
+
+  // ----- In-app AI guidance chat -------------------------------------------
+  // Haiku only — cheap, fast, plenty smart for "explain this feature"
+  // questions. Short replies cap cost.
+  "chat-assist":              { provider: "anthropic", model: "claude-haiku-4-5",     tier: "cheap" },
 };
 
 /** Per-tier max output token budget. */
 export function maxTokensFor(skill: Skill): number {
+  // Chat replies should stay short — 500 tokens is roughly 3 short paragraphs.
+  if (skill === "chat-assist") return 500;
   const route = SKILL_ROUTING[skill];
   if (route?.longForm) return 2800;
   if (route?.tier === "top") return 2200;

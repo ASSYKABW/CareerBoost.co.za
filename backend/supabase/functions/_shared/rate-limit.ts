@@ -32,6 +32,8 @@ const DEFAULT_DAILY_LIMITS: Record<Skill, number> = {
   "interview-session-step":   200,
   // Phase 5 — skill action plans (mid tier, 1 call returns N plans).
   "skill-action-plan":         30,
+  // V1 in-app guidance chat — Haiku, short replies. Cheap but high-volume.
+  "chat-assist":              100,
 };
 
 const DEFAULT_DAILY_COST_CAP_USD = Number(

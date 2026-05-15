@@ -43,7 +43,10 @@
       // Feature flags for controlled rollouts.
       featureFlags: {
         searchStrictConstraints: true,
-        searchExplainability: true
+        searchExplainability: true,
+        // V1 in-app AI guidance panel (floating bottom-right). Flip to
+        // true for your own account to test before wider rollout.
+        aiChatPanel: true
       }
     },
     window.CB_CONFIG || {}

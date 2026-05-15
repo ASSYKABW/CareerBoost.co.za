@@ -54,7 +54,7 @@
        capture any error from the rest of the bootstrap. It installs
        window.onerror + unhandledrejection handlers immediately. -->
   <script src="./src/js/services/observability/observability.js"></script>
-  <script src="./src/js/auth/auth.service.js"></script>
+  <script src="./src/js/auth/auth.service.js?v=20260515-oauth"></script>
   <!-- Phase E2: acquisition attribution. Captures UTM + referrer on
        every page load (first-touch wins), then POSTs to the signup-
        attribution Edge Function once the user is authenticated. -->
@@ -97,6 +97,12 @@
   <script src="./src/js/components/upgrade-modal.js"></script>
   <script src="./src/js/services/entitlements/entitlement-gate.js"></script>
   <script src="./src/js/components/app-drawer.js"></script>
+  <!-- V1 in-app AI guidance panel. ai-chat-knowledge defines FEATURES +
+       buildSystemPrompt(); ai-chat-panel mounts the FAB + drawer. Both
+       are gated by CB_CONFIG.featureFlags.aiChatPanel. Load AFTER
+       ai.orchestrator (uses runSkill) + auth.service (uses isAuthenticated). -->
+  <script src="./src/js/components/ai-chat-knowledge.js"></script>
+  <script src="./src/js/components/ai-chat-panel.js"></script>
   <script src="./src/js/components/command-palette.js"></script>
 
   <script src="./src/js/services/jobs/job.normalize.js"></script>
@@ -154,7 +160,7 @@
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->
   <script src="./src/js/modules/settings/settings.billing.js"></script>
-  <script src="./src/js/modules/settings/settings.route.js?v=20260515-ext"></script>
+  <script src="./src/js/modules/settings/settings.route.js?v=20260515-ext2"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];

@@ -77,16 +77,25 @@
   }
 
   // Build a redirect URL that survives email clicks from other devices.
-  // CB_CONFIG.siteUrl (if set) is the canonical production origin —
-  // emails sent to a user's phone or another browser will still land
-  // there even if they signed up from `localhost`. Falls back to the
-  // current origin + pathname for local dev.
+  // CB_CONFIG.siteUrl (if set) is the canonical production origin so
+  // emails sent to a user's phone or another browser still land there.
+  // BUT: when the page is loaded from a local context (file://,
+  // localhost, 127.0.0.1), prefer the current origin so OAuth and
+  // reset links round-trip back to where the user actually is. This
+  // avoids "DNS_PROBE_FINISHED_NXDOMAIN" when the production domain
+  // isn't live yet.
   function buildRedirect(hashPath) {
     const cfg = (typeof window !== "undefined" && window.CB_CONFIG) || {};
     const cfgUrl = (cfg.siteUrl || "").trim();
-    const base = cfgUrl
+    const loc = (typeof window !== "undefined" && window.location) || {};
+    const origin = String(loc.origin || "");
+    const isLocal =
+      /^file:/i.test(origin) ||
+      /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(origin);
+    const useCfg = cfgUrl && !isLocal;
+    const base = useCfg
       ? cfgUrl.replace(/\/+$/, "")
-      : (window.location.origin + window.location.pathname).replace(/\/+$/, "");
+      : ((loc.origin || "") + (loc.pathname || "")).replace(/\/+$/, "");
     return base + hashPath;
   }
 

@@ -380,7 +380,7 @@
     const dataSummary = window.CBV2.store && typeof window.CBV2.store.getSummary === "function"
       ? window.CBV2.store.getSummary() : {};
     const hasCaptures = !!(dataSummary.applications || dataSummary.savedJobs);
-    const zipUrl = "/careerboost-extension.zip";
+    const zipUrl = "./careerboost-extension.zip";
     return `
       <section class="card panel-lg settings-section">
         <div class="panel-head">

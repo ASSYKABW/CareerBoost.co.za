@@ -169,6 +169,9 @@
               Array.isArray(p.actions);
           })
       );
+    },
+    "chat-assist": function (data) {
+      return Boolean(data && typeof data.reply === "string");
     }
   };
 
@@ -188,7 +191,8 @@
     "resume-critique": "resume-critique@v1.0.0",
     "jd-analyze": "jd-analyze@v1.0.0",
     "tailor-plan": "tailor-plan@v1.0.0",
-    "skill-action-plan": "skill-action-plan@v1.0.0"
+    "skill-action-plan": "skill-action-plan@v1.0.0",
+    "chat-assist": "chat-assist@v1.0.0"
   };
 
   window.CBAI = window.CBAI || {};

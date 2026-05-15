@@ -744,6 +744,56 @@ export const prompts: Record<Skill, PromptSpec> = {
     },
   },
 
+  // In-app guidance chat. Single-turn-with-history. The client passes a
+  // composed system prompt (built from FEATURES + CONCEPTS in
+  // ai-chat-knowledge.js) plus the user's question, recent turns, and
+  // current route. The model returns a short markdown reply with route
+  // links like [Open Resume Lab](#/resume).
+  "chat-assist": {
+    systemStable:
+      "You are CareerBoost AI, an in-app guidance assistant. " +
+      "Stay tightly on-topic (this app, job search, resumes, cover letters, interviews). " +
+      "Keep replies to 1-3 short paragraphs in plain language with no preamble. " +
+      "When recommending a feature, include a markdown link to its route — e.g. [Open Resume Lab](#/resume). " +
+      "Never invent features. If unsure, say so." +
+      JSON_ONLY +
+      ' Schema: { "reply": string }' +
+      " `reply` is markdown. Keep it under 600 characters when possible. " +
+      "Do not include the question back. Do not add 'Sure!' or 'Of course!' openers.",
+    userTemplate: (input) => {
+      // Client-built prompt is passed verbatim under `prompt`. We also
+      // accept legacy fields (question/history/currentRoute) and rebuild
+      // here as a safety net.
+      const prompt = pick(input, ["prompt"]);
+      if (prompt) return prompt + "\n\nReturn the JSON now.";
+
+      const question = pick(input, ["question", "message", "text"]);
+      const route = pick(input, ["currentRoute", "route"]);
+      const historyRaw = (input && typeof input === "object")
+        ? (input as Record<string, unknown>).history
+        : undefined;
+      let historyBlock = "";
+      if (Array.isArray(historyRaw)) {
+        const lines = historyRaw.slice(-6).map((turn) => {
+          if (!turn || typeof turn !== "object") return "";
+          const t = turn as Record<string, unknown>;
+          const who = t.role === "assistant" ? "Assistant" : "User";
+          const text = typeof t.text === "string" ? t.text.slice(0, 400) : "";
+          return text ? who + ": " + text : "";
+        }).filter(Boolean);
+        if (lines.length) {
+          historyBlock = "\n\nRECENT CONVERSATION (oldest first):\n" + lines.join("\n");
+        }
+      }
+      return (
+        (route ? "USER IS CURRENTLY ON: " + route : "") +
+        historyBlock +
+        "\n\nUSER QUESTION:\n" + (question || "(empty)") +
+        "\n\nReturn the JSON now."
+      );
+    },
+  },
+
   // Phase 5: replaces analytics' templated 3-action stub with AI-generated,
   // skill-specific, candidate-context-aware action plans. One call returns
   // a list of plans (one per missing skill) so a 6-skill page is one round
