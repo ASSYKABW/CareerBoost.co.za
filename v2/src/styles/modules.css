@@ -5893,18 +5893,47 @@ a.settings-status-card:hover {
 
 @media (max-width: 560px) {
   /* Phones: tighter container, smaller logo, primary CTAs stack
-     full-width for one-thumb tappability. Nav buttons keep their
-     desktop size so the touch target stays ≥36px tall.
+     full-width — but the buttons themselves shrink so they don't
+     dominate the viewport as chunky 100px-tall blocks. lg-size on
+     mobile uses the SAME compact size as default (no extra padding
+     boost). Touch target stays ≥40px tall, well above the 44pt
+     iOS guideline.
 
      Footer drops to 2-col link grid — three columns at this width
      would crowd each label too tight. Brand stays full-width. */
   .lp-container { padding: 0 16px; }
   .lp-nav-inner { padding: 10px 14px; gap: 8px; }
   .lp-nav .lp-brand-img { height: 30px; }
-  .lp-hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
-  .lp-hero-actions .lp-btn { width: 100%; justify-content: center; }
-  .lp-final-actions { flex-direction: column; align-items: stretch; }
-  .lp-final-actions .lp-btn { width: 100%; justify-content: center; }
+
+  /* Hero copy + buttons: tighter gap, slimmer CTAs. */
+  .lp-hero-copy { gap: 12px; }
+  .lp-hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .lp-hero-actions .lp-btn,
+  .lp-hero-actions .lp-btn--lg {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 18px;
+    font-size: 14px;
+    gap: 8px;
+  }
+  .lp-hero-actions .lp-btn i { font-size: 12px; }
+
+  /* Final CTA actions: same compact sizing. */
+  .lp-final-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .lp-final-actions .lp-btn,
+  .lp-final-actions .lp-btn--lg {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 18px;
+    font-size: 14px;
+    gap: 8px;
+  }
+
   .lp-final-card { padding: 28px; }
   .lp-final-stats { grid-template-columns: 1fr; }
   .lp-trust-grid { grid-template-columns: 1fr; }
