@@ -646,9 +646,18 @@
   // can discover the feature, but enabled only when CBV2.applyAssist.
   // isReadyForJob(app) returns ready:true. The decision label becomes
   // the tooltip when disabled, so the user understands what's missing.
+  //
+  // Gated by CB_CONFIG.featureFlags.applyAssist — defaults false because
+  // V1 only supports Greenhouse. Shipping a one-ATS button confuses users
+  // who try LinkedIn/Indeed and conclude the product is broken. Flip the
+  // flag (or the Settings → Admin → Apply Assist test toggle) to expose
+  // the button.
   function renderApplyAssistButton(app) {
     const aa = window.CBV2 && window.CBV2.applyAssist;
     if (!aa || typeof aa.isReadyForJob !== "function") return "";
+    // Honors both CB_CONFIG.featureFlags.applyAssist AND the admin
+    // session-override toggle.
+    if (typeof aa.isFeatureEnabled === "function" && !aa.isFeatureEnabled()) return "";
     const decision = aa.isReadyForJob(app);
     const enabled = !!decision.ready;
     const tip = enabled ? "Apply Assist (auto-fill the form)" : (decision.label || "Apply Assist unavailable");

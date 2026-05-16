@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CareerBoost Job Capture",
   "description": "Save jobs from LinkedIn, Indeed, Greenhouse and Lever, and auto-fill Greenhouse application forms (Apply Assist). Works in Chrome and Microsoft Edge.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",

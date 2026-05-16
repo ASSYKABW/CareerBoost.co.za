@@ -128,6 +128,29 @@
     return missingMinimalFields().length === 0;
   }
 
+  // ----- feature gate ---------------------------------------------------
+  //
+  // Single source of truth for "is Apply Assist allowed to be visible".
+  // Combines two signals:
+  //   1. CB_CONFIG.featureFlags.applyAssist (default false until V2 ships
+  //      Lever — see Settings → Admin → "Apply Assist (deferred)").
+  //   2. sessionStorage "cb_apply_assist_session_enabled" — set by the
+  //      admin section's "Enable for this session" button so operators
+  //      can test against a real Greenhouse form without exposing the
+  //      feature to everyone.
+  // Every gating site (pipeline button, settings tab, route fallback)
+  // calls THIS, so flipping the criteria is a one-line change.
+  function isFeatureEnabled() {
+    const cfg = (typeof window !== "undefined" && window.CB_CONFIG) || {};
+    const ff = cfg.featureFlags || {};
+    if (ff.applyAssist === true) return true;
+    try {
+      if (typeof sessionStorage !== "undefined" &&
+          sessionStorage.getItem("cb_apply_assist_session_enabled") === "1") return true;
+    } catch (e) { /* private mode etc — ignore */ }
+    return false;
+  }
+
   // ----- ATS support detection ------------------------------------------
   //
   // Phase 2c only knows how to drive Greenhouse. Returning false for
@@ -317,6 +340,7 @@
     getProfile: getProfile,
     hasMinimal: hasMinimal,
     missingMinimalFields: missingMinimalFields,
+    isFeatureEnabled: isFeatureEnabled,
     isApplyAssistSupportedUrl: isApplyAssistSupportedUrl,
     deriveGreenhouseApplyUrl: deriveGreenhouseApplyUrl,
     isReadyForJob: isReadyForJob,

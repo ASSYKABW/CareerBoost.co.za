@@ -5,8 +5,19 @@
 // panel to surface progress. No DOM changes happen until an intent is
 // confirmed for this URL — the script stays silent on every other
 // greenhouse.io page (job listings continue to use capture-base.js).
+//
+// FEATURE GATE: APPLY_ASSIST_ENABLED defaults to false because V1 only
+// supports Greenhouse. Shipping a one-ATS panel to every greenhouse.io
+// visitor would create a confusing dead-end ("click Apply Assist from
+// CareerBoost… but the button doesn't exist yet"). Flip to true once
+// (a) at least one more ATS adapter ships (Lever) AND (b) the
+// corresponding web-app feature flag is on. Keep these two in sync.
+
+const APPLY_ASSIST_ENABLED = false;
 
 (function () {
+  if (!APPLY_ASSIST_ENABLED) return;
+
   function looksLikeApplyForm() {
     if (document.getElementById("application_form")) return true;
     if (document.querySelector("form[action*='applications']")) return true;

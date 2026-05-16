@@ -73,8 +73,16 @@
   }
 
   function visibleTabs(canAccessAdvancedTab) {
+    // Apply Assist tab is hidden behind the same gate that hides the
+    // pipeline button. CBV2.applyAssist.isFeatureEnabled() honors both
+    // the CB_CONFIG flag and the admin session-override. Admins always
+    // see it so they can pre-fill the profile and test.
+    const aa = (typeof window !== "undefined" && window.CBV2 && window.CBV2.applyAssist) || null;
+    const applyAssistOn = aa && typeof aa.isFeatureEnabled === "function" ? aa.isFeatureEnabled() : false;
     return TAB_ITEMS.filter(function (item) {
-      return canAccessAdvancedTab || item.id !== "advanced";
+      if (item.id === "advanced") return !!canAccessAdvancedTab;
+      if (item.id === "apply-profile") return applyAssistOn || !!canAccessAdvancedTab;
+      return true;
     });
   }
 

@@ -1874,6 +1874,15 @@
     if (!canAccessAdvanced && activeTab === "advanced") {
       activeTab = "overview";
     }
+    // Mirror the visibleTabs gating: apply-profile is hidden unless
+    // CBV2.applyAssist.isFeatureEnabled() returns true (flag OR session
+    // override) OR the user has admin access. URL deeplinks
+    // (#/settings?tab=apply-profile) get the same treatment.
+    const _aa = window.CBV2 && window.CBV2.applyAssist;
+    const _applyAssistOn = _aa && typeof _aa.isFeatureEnabled === "function" ? _aa.isFeatureEnabled() : false;
+    if (!canAccessAdvanced && !_applyAssistOn && activeTab === "apply-profile") {
+      activeTab = "overview";
+    }
     const showOverview = activeTab === "overview";
     const showMe = activeTab === "me";
     const showJobPreferences = activeTab === "job-preferences";

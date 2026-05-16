@@ -46,7 +46,13 @@
         searchExplainability: true,
         // V1 in-app AI guidance panel (floating bottom-right). Flip to
         // true for your own account to test before wider rollout.
-        aiChatPanel: true
+        aiChatPanel: true,
+        // Apply Assist (Chrome extension auto-fills ATS forms). V1 scoped
+        // to Greenhouse only — disabled until at least Lever ships so the
+        // feature isn't visibly "Greenhouse-only" to most users. See
+        // Settings → Admin → "Apply Assist (deferred)" for re-enable
+        // criteria.
+        applyAssist: false
       }
     },
     window.CB_CONFIG || {}

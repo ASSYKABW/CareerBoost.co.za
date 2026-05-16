@@ -49,7 +49,7 @@
   <!-- Supabase SDK (loaded before config/auth scripts). No-op when backend is not configured. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 
-  <script src="./src/js/app/config.js"></script>
+  <script src="./src/js/app/config.js?v=20260516-aadefer"></script>
   <!-- Phase 8: observability MUST load right after config so it can
        capture any error from the rest of the bootstrap. It installs
        window.onerror + unhandledrejection handlers immediately. -->
@@ -127,7 +127,7 @@
   <script src="./src/js/modules/dashboard/dashboard.route.js"></script>
   <script src="./src/js/modules/job-search/job-search.shared.js"></script>
   <script src="./src/js/modules/job-search/job-search.route.js?v=20260516-paginate"></script>
-  <script src="./src/js/modules/applications/applications.route.js?v=20260516-aa2c2"></script>
+  <script src="./src/js/modules/applications/applications.route.js?v=20260516-aadefer"></script>
   <!-- Phase 7: calendar export + integrations. Order matters: ics + gcal
        must load BEFORE calendar.route.js so the toolbar/card renderers
        can read window.CBV2.calendarIcs / .calendarGcal at render time.
@@ -159,12 +159,12 @@
   <!-- Apply Assist (Phase 1): apply-profile schema + gating helpers. Loads
        BEFORE settings.route.js because the Settings → Apply Assist tab calls
        CBV2.applyAssist.getProfile() at render time. -->
-  <script src="./src/js/services/apply-assist/apply-profile.js?v=20260516-aa2c"></script>
-  <script src="./src/js/modules/settings/settings.meta.js?v=20260516-applyassist"></script>
+  <script src="./src/js/services/apply-assist/apply-profile.js?v=20260516-aadefer"></script>
+  <script src="./src/js/modules/settings/settings.meta.js?v=20260516-aadefer"></script>
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->
   <script src="./src/js/modules/settings/settings.billing.js"></script>
-  <script src="./src/js/modules/settings/settings.route.js?v=20260516-applyassist"></script>
+  <script src="./src/js/modules/settings/settings.route.js?v=20260516-aadefer"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];
@@ -204,6 +204,10 @@
        section URLs still work via their original renderers above. -->
   <script src="./src/js/modules/admin/sections/health.js"></script>
   <script src="./src/js/modules/admin/sections/operations.js"></script>
+  <!-- Roadmap: deferred-feature reminders. Currently just Apply Assist V1
+       (built but hidden because V1 only covers Greenhouse — see the section
+       itself for re-enable criteria). -->
+  <script src="./src/js/modules/admin/sections/apply-assist.js"></script>
   <script src="./src/js/modules/admin/admin.route.js"></script>
   <script src="./src/js/app/router.js"></script>
   <script src="./src/js/app/bootstrap.js"></script>

@@ -78,6 +78,15 @@
         { id: "health", icon: "fa-heart-pulse", label: "Health" },
         { id: "operations", icon: "fa-shield-halved", label: "Operations" }
       ]
+    },
+    {
+      // Roadmap — deferred-feature reminders. Keeps shipped-but-hidden
+      // work visible to operators so we don't forget to re-enable it
+      // when prerequisites land.
+      group: "Roadmap",
+      items: [
+        { id: "apply-assist", icon: "fa-paper-plane", label: "Apply Assist (deferred)", badge: "V1 hidden" }
+      ]
     }
   ];
 
