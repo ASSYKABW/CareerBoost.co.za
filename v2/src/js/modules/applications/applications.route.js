@@ -628,6 +628,7 @@
           <a class="btn-ghost pipeline-card-route" href="${escAttr(route.href)}" data-action="route" data-app-id="${escAttr(app.id)}" data-role-handoff="${escAttr(destinationForRoute(route.href))}" aria-label="${escAttr(route.label)}">
             <i class="fa-solid ${escAttr(route.icon)}"></i>
           </a>
+          ${renderApplyAssistButton(app)}
           <button class="btn-ghost" data-action="open" data-app-id="${escAttr(app.id)}" type="button" aria-label="Open details">
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
@@ -637,6 +638,76 @@
         </div>
       </article>
     `;
+  }
+
+  // ----- Apply Assist (Phase 2c) ---------------------------------------
+  //
+  // Renders the per-card Apply Assist button. Always present so the user
+  // can discover the feature, but enabled only when CBV2.applyAssist.
+  // isReadyForJob(app) returns ready:true. The decision label becomes
+  // the tooltip when disabled, so the user understands what's missing.
+  function renderApplyAssistButton(app) {
+    const aa = window.CBV2 && window.CBV2.applyAssist;
+    if (!aa || typeof aa.isReadyForJob !== "function") return "";
+    const decision = aa.isReadyForJob(app);
+    const enabled = !!decision.ready;
+    const tip = enabled ? "Apply Assist (auto-fill the form)" : (decision.label || "Apply Assist unavailable");
+    const cls = enabled ? "btn-ghost pipeline-apply-assist" : "btn-ghost pipeline-apply-assist is-disabled";
+    return (
+      '<button class="' + cls + '" type="button"' +
+      ' data-action="apply-assist" data-app-id="' + escAttr(app.id) + '"' +
+      (enabled ? "" : " disabled") +
+      ' title="' + escAttr(tip) + '" aria-label="' + escAttr(tip) + '">' +
+      '<i class="fa-solid fa-paper-plane"></i>' +
+      "</button>"
+    );
+  }
+
+  function bindApplyAssist() {
+    const buttons = document.querySelectorAll('[data-action="apply-assist"][data-app-id]');
+    buttons.forEach(function (btn) {
+      btn.addEventListener("click", async function (event) {
+        event.stopPropagation();
+        if (btn.disabled) return;
+        const id = btn.getAttribute("data-app-id");
+        const app = window.CBV2.store.getApplicationById(id);
+        if (!app) return;
+        const aa = window.CBV2 && window.CBV2.applyAssist;
+        const toast = window.CBV2 && window.CBV2.toast;
+        if (!aa || typeof aa.launch !== "function") {
+          if (toast) toast.error("Apply Assist module not loaded.");
+          return;
+        }
+        // Anti-double-click guard while we hand off to the extension.
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        try {
+          const result = await aa.launch(app);
+          if (result.ok) {
+            if (toast) toast.success("Apply tab opening — Apply Assist will auto-fill it.");
+          } else {
+            const msg = result.error || "Apply Assist could not start.";
+            if (toast) {
+              if (result.reason === "complete-apply-profile") {
+                toast.info(msg + " Settings → Apply Assist.");
+              } else if (result.reason === "no-resume") {
+                toast.info(msg + " Resume Lab.");
+              } else if (result.reason === "no-extension") {
+                toast.error(msg);
+              } else {
+                toast.error(msg);
+              }
+            }
+          }
+        } catch (err) {
+          if (toast) toast.error((err && err.message) || "Apply Assist threw an error.");
+        } finally {
+          btn.innerHTML = original;
+          btn.disabled = false;
+        }
+      });
+    });
   }
 
   function renderColumn(stage, filteredApps, allApps) {
@@ -1111,6 +1182,7 @@
     bindDragAndDrop();
     bindDelete();
     bindCardOpen();
+    bindApplyAssist();
     bindRoleHandoffs();
     bindPipelineControls();
     bindAddForm();

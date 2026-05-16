@@ -128,20 +128,188 @@
     return missingMinimalFields().length === 0;
   }
 
-  // Phase 1 stub for the pipeline + saved-job-card gating. Phase 2 wires the
-  // real "tailored resume exists for this job" check via the resume store.
-  // Always returns false today so the button stays greyed out until the
-  // adapter ships.
-  function isReadyForJob(job) {
-    if (!hasMinimal()) return { ready: false, reason: "complete-apply-profile" };
+  // ----- ATS support detection ------------------------------------------
+  //
+  // Phase 2c only knows how to drive Greenhouse. Returning false for
+  // anything else surfaces a clear "unsupported-ats" reason in the gating
+  // helper so the pipeline button can show "Apply Assist (Greenhouse only)".
+  // Future phases extend this with Lever / Workday / etc.
+  function isApplyAssistSupportedUrl(jobUrl) {
+    if (!jobUrl) return false;
+    try {
+      const host = new URL(jobUrl).hostname.toLowerCase().replace(/^www\./, "");
+      return host === "greenhouse.io" ||
+        host.endsWith(".greenhouse.io") ||
+        host === "boards.greenhouse.io" ||
+        host === "job-boards.greenhouse.io";
+    } catch (e) { return false; }
+  }
+
+  // Converts a Greenhouse job-listing URL into its apply-form URL.
+  //   boards.greenhouse.io/<co>/jobs/<id>          → +/apply
+  //   <co>.greenhouse.io/jobs/<id>                  → +/apply
+  //   job-boards.greenhouse.io/<co>/jobs/<id>       → unchanged (apply form
+  //                                                   is embedded in the
+  //                                                   listing on this host)
+  //   anything already ending in /apply             → unchanged
+  function deriveGreenhouseApplyUrl(jobUrl) {
+    try {
+      const u = new URL(jobUrl);
+      if (!isApplyAssistSupportedUrl(jobUrl)) return null;
+      if (u.pathname.endsWith("/apply")) return u.toString();
+      if (u.hostname === "job-boards.greenhouse.io") return u.toString();
+      if (/\/jobs\/\d+/.test(u.pathname)) {
+        return u.origin + u.pathname.replace(/\/+$/, "") + "/apply" + (u.search || "");
+      }
+      return u.toString();
+    } catch (e) { return null; }
+  }
+
+  // Pipeline + saved-job-card gating. Returns a structured decision so the
+  // button can render "Complete Apply Profile" / "Build resume first" /
+  // "Greenhouse only" / "Apply Assist" labels without re-deriving the
+  // reason itself.
+  function isReadyForJob(app) {
+    if (!hasMinimal()) {
+      return { ready: false, reason: "complete-apply-profile", label: "Complete Apply Profile first" };
+    }
+    const jobUrl = (app && (app.jobUrl || app.url)) || "";
+    if (!jobUrl) {
+      return { ready: false, reason: "no-job-url", label: "No job URL on this application" };
+    }
+    if (!isApplyAssistSupportedUrl(jobUrl)) {
+      return { ready: false, reason: "unsupported-ats", label: "Apply Assist (Greenhouse only for now)" };
+    }
     const store = window.CBV2 && window.CBV2.store;
-    const tailored = store && typeof store.getTailoredResumeForJob === "function"
-      ? store.getTailoredResumeForJob(job && job.id)
+    const structured = store && typeof store.getResumeStructured === "function"
+      ? store.getResumeStructured()
       : null;
-    if (!tailored) return { ready: false, reason: "tailor-resume-first" };
-    // V2 will flip this to true once the Greenhouse adapter is wired. Until
-    // then we keep returning false-with-coming-soon so the button never lies.
-    return { ready: false, reason: "coming-soon" };
+    if (!structured) {
+      return { ready: false, reason: "no-resume", label: "Build your resume first" };
+    }
+    return { ready: true, reason: "ready", label: "Apply Assist", applyUrl: deriveGreenhouseApplyUrl(jobUrl) };
+  }
+
+  // ----- launch flow ----------------------------------------------------
+  //
+  // Click → build intent → handshake with extension via postMessage →
+  // open apply URL in a new tab. The bridge content script (loaded on
+  // careerboost.app / localhost / 127.0.0.1) relays the intent to
+  // background.js which stashes it in chrome.storage. The Greenhouse
+  // content script reads it on the apply tab and auto-fills.
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const result = String(reader.result || "");
+        const comma = result.indexOf(",");
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = function () { reject(reader.error || new Error("base64 encode failed")); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // postMessage handshake with the bridge content script. Resolves with
+  // the ACK payload, or rejects on timeout. Timeout has to be tolerant
+  // of the bridge not being installed at all — that path resolves with
+  // a clear error so the caller can show "install the extension" copy.
+  function sendIntentToExtension(payload, timeoutMs) {
+    const requestId = "aa_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    return new Promise(function (resolve) {
+      let settled = false;
+      function onMsg(ev) {
+        if (ev.source !== window) return;
+        const d = ev.data;
+        if (!d || d.type !== "CB_APPLY_INTENT_ACK") return;
+        if (d.requestId !== requestId) return;
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("message", onMsg);
+        resolve(d);
+      }
+      window.addEventListener("message", onMsg);
+      window.postMessage({ type: "CB_APPLY_INTENT", requestId: requestId, payload: payload }, "*");
+      setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("message", onMsg);
+        resolve({
+          ok: false,
+          requestId: requestId,
+          error: "no-extension"
+        });
+      }, Math.max(500, Number(timeoutMs) || 2500));
+    });
+  }
+
+  async function buildResumeBlob() {
+    const store = window.CBV2 && window.CBV2.store;
+    const structured = store && typeof store.getResumeStructured === "function"
+      ? store.getResumeStructured()
+      : null;
+    if (!structured) throw new Error("No structured resume available.");
+    const docx = window.CBV2 && window.CBV2.resume && window.CBV2.resume.docx;
+    if (!docx || typeof docx.toBlob !== "function") {
+      throw new Error("Resume DOCX exporter not loaded.");
+    }
+    return docx.toBlob(structured, {}, "classic");
+  }
+
+  // Returns one of:
+  //   { ok: true, intentId, openedUrl }
+  //   { ok: false, error, reason }       (e.g. "no-extension", "ats-unsupported", "no-resume")
+  async function launch(app) {
+    const decision = isReadyForJob(app);
+    if (!decision.ready) {
+      return { ok: false, error: decision.label, reason: decision.reason };
+    }
+    const applyUrl = decision.applyUrl || deriveGreenhouseApplyUrl(app && app.jobUrl);
+    if (!applyUrl) {
+      return { ok: false, error: "Could not derive an apply URL from this listing.", reason: "no-apply-url" };
+    }
+
+    let resumeBlob;
+    try {
+      resumeBlob = await buildResumeBlob();
+    } catch (err) {
+      return { ok: false, error: (err && err.message) || "Resume export failed.", reason: "resume-export-failed" };
+    }
+    const base64 = await blobToBase64(resumeBlob);
+
+    const intent = {
+      applyUrl: applyUrl,
+      jobId: app.id,
+      company: app.company || "",
+      role: app.role || "",
+      resume: {
+        filename: ((app.company || "resume") + "-" + (app.role || "application"))
+          .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) + ".docx",
+        mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        base64: base64
+      },
+      profile: getProfile()
+    };
+
+    const ack = await sendIntentToExtension(intent, 2500);
+    if (!ack.ok) {
+      if (ack.error === "no-extension") {
+        return {
+          ok: false,
+          error: "Couldn't reach the CareerBoost extension. Install it from Settings → Extension and try again.",
+          reason: "no-extension"
+        };
+      }
+      return { ok: false, error: ack.error || "Extension rejected the apply intent.", reason: "extension-rejected" };
+    }
+
+    try {
+      window.open(applyUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      return { ok: false, error: "Browser blocked opening the apply tab. Allow pop-ups for this site.", reason: "popup-blocked" };
+    }
+    return { ok: true, intentId: ack.intentId, openedUrl: applyUrl };
   }
 
   window.CBV2.applyAssist = {
@@ -149,6 +317,9 @@
     getProfile: getProfile,
     hasMinimal: hasMinimal,
     missingMinimalFields: missingMinimalFields,
-    isReadyForJob: isReadyForJob
+    isApplyAssistSupportedUrl: isApplyAssistSupportedUrl,
+    deriveGreenhouseApplyUrl: deriveGreenhouseApplyUrl,
+    isReadyForJob: isReadyForJob,
+    launch: launch
   };
 })();

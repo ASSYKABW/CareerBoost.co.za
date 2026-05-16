@@ -127,7 +127,7 @@
   <script src="./src/js/modules/dashboard/dashboard.route.js"></script>
   <script src="./src/js/modules/job-search/job-search.shared.js"></script>
   <script src="./src/js/modules/job-search/job-search.route.js?v=20260516-paginate"></script>
-  <script src="./src/js/modules/applications/applications.route.js"></script>
+  <script src="./src/js/modules/applications/applications.route.js?v=20260516-aa2c"></script>
   <!-- Phase 7: calendar export + integrations. Order matters: ics + gcal
        must load BEFORE calendar.route.js so the toolbar/card renderers
        can read window.CBV2.calendarIcs / .calendarGcal at render time.
@@ -159,7 +159,7 @@
   <!-- Apply Assist (Phase 1): apply-profile schema + gating helpers. Loads
        BEFORE settings.route.js because the Settings → Apply Assist tab calls
        CBV2.applyAssist.getProfile() at render time. -->
-  <script src="./src/js/services/apply-assist/apply-profile.js?v=20260516-applyassist"></script>
+  <script src="./src/js/services/apply-assist/apply-profile.js?v=20260516-aa2c"></script>
   <script src="./src/js/modules/settings/settings.meta.js?v=20260516-applyassist"></script>
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->

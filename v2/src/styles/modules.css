@@ -192,6 +192,24 @@
   right: 6px;
 }
 
+/* Apply Assist button on pipeline rows. Enabled state gets a soft cyan
+ * accent so it reads as a "primary next action" without competing with
+ * the route shortcut. Disabled state stays muted (browser-native
+ * disabled styling + a slightly reduced opacity). */
+.pipeline-apply-assist {
+  color: var(--color-primary, #22e3ff);
+}
+.pipeline-apply-assist:hover:not(:disabled) {
+  color: #67eaff;
+  background: rgba(34, 227, 255, 0.08);
+}
+.pipeline-apply-assist.is-disabled,
+.pipeline-apply-assist:disabled {
+  color: #64748b;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* AI headline */
 .ai-headline {
   margin: var(--space-12) 0 var(--space-4);
