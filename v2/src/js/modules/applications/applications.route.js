@@ -786,6 +786,9 @@
             </select>
           </label>
           <label>Applied Date<input type="date" name="appliedAt" /></label>
+          <label class="form-row-full">Job posting URL
+            <input type="url" name="jobUrl" placeholder="https://boards.greenhouse.io/company/jobs/12345 (optional, unlocks Apply Assist)" />
+          </label>
           <label class="form-row-full">Next Action<input name="nextAction" placeholder="Follow up, tailor resume, prep interview..." /></label>
           <label class="form-row-full">Notes<textarea name="notes" rows="2"></textarea></label>
           <div class="form-actions">
@@ -1076,6 +1079,9 @@
           stage: String(fd.get("stage") || "saved"),
           priority: String(fd.get("priority") || "medium"),
           appliedAt: String(fd.get("appliedAt") || ""),
+          // Optional but high-leverage: a job URL unlocks Apply Assist on
+          // supported ATSes and lets analytics group runs by source host.
+          jobUrl: String(fd.get("jobUrl") || "").trim(),
           nextAction: String(fd.get("nextAction") || ""),
           notes: String(fd.get("notes") || "")
         };

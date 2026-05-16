@@ -558,6 +558,9 @@
 
       renderApplicationCommandCenter(app, events) +
 
+      // Job posting: when a URL exists, render it as an "Open listing" link.
+      // When it doesn't, render an inline input so the user can paste one in
+      // — required for Apply Assist to be enabled on manually-added rows.
       (app.jobUrl
         ? '<section class="drawer-section">' +
           '<h3 class="drawer-section-title">Job posting</h3>' +
@@ -565,8 +568,18 @@
           '<a class="btn-secondary drawer-job-url" href="' + st(app.jobUrl) + '" target="_blank" rel="noopener noreferrer">' +
           '<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open listing' +
           '<span class="visually-hidden"> (opens in new tab)</span></a>' +
+          '<button type="button" class="btn-ghost btn-sm" data-action="edit-job-url" title="Change job URL" aria-label="Change job URL">' +
+            '<i class="fa-solid fa-pen"></i>' +
+          '</button>' +
           "</p></section>"
-        : "") +
+        : '<section class="drawer-section">' +
+          '<h3 class="drawer-section-title">Job posting</h3>' +
+          '<p class="drawer-section-hint">Paste the job URL to unlock Apply Assist and richer source tracking.</p>' +
+          '<div class="drawer-jobUrl-row">' +
+            '<input type="url" class="drawer-input" data-field="jobUrl" placeholder="https://boards.greenhouse.io/company/jobs/12345" />' +
+            '<button type="button" class="btn-primary btn-sm" data-action="save-job-url">Save URL</button>' +
+          '</div>' +
+          '</section>') +
 
       '<section class="drawer-section">' +
         '<h3 class="drawer-section-title">Stage</h3>' +
@@ -752,6 +765,40 @@
         commitField(app, el.getAttribute("data-field"));
       });
     });
+
+    // "Save URL" button next to the inline jobUrl input. Re-renders the
+    // drawer so the input swaps to the "Open listing" link immediately.
+    const saveUrlBtn = panel.querySelector('[data-action="save-job-url"]');
+    if (saveUrlBtn) {
+      saveUrlBtn.addEventListener("click", function () {
+        commitField(app, "jobUrl");
+        refresh(app);
+      });
+    }
+
+    // Pencil button next to the existing URL — opens a modal prompt to
+    // edit the URL (or clear it). Saves through commitField for parity.
+    const editUrlBtn = panel.querySelector('[data-action="edit-job-url"]');
+    if (editUrlBtn) {
+      editUrlBtn.addEventListener("click", async function () {
+        const modal = window.CBV2 && window.CBV2.modal;
+        if (!modal || typeof modal.prompt !== "function") return;
+        const next = await modal.prompt({
+          title: "Job posting URL",
+          body: "Update or clear the job URL for this application. A Greenhouse URL unlocks Apply Assist.",
+          defaultValue: app.jobUrl || "",
+          placeholder: "https://boards.greenhouse.io/company/jobs/12345"
+        });
+        if (next === null) return; // user cancelled
+        const value = String(next || "").trim();
+        if (value === (app.jobUrl || "")) return;
+        if (typeof window.CBV2.store.updateApplicationFields === "function") {
+          window.CBV2.store.updateApplicationFields(app.id, { jobUrl: value });
+          if (window.CBV2.toast) window.CBV2.toast.success(value ? "Job URL updated." : "Job URL cleared.");
+          refresh(app);
+        }
+      });
+    }
 
     const del = panel.querySelector("[data-drawer-delete]");
     if (del) {

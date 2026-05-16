@@ -2862,14 +2862,33 @@ body.drawer-open { overflow: hidden; }
 }
 .drawer-job-url-wrap {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .drawer-job-url {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  flex: 1 1 auto;
   justify-content: center;
   text-decoration: none;
+}
+/* Inline jobUrl input shown when an application has no URL yet. The
+ * Save button sits next to the input so the user doesn't have to hunt
+ * for the action after typing. */
+.drawer-jobUrl-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+.drawer-jobUrl-row .drawer-input { flex: 1 1 auto; }
+.drawer-section-hint {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--color-text-muted, #8b92a6);
+  line-height: 1.4;
 }
 .drawer-stage-row {
   display: flex;
