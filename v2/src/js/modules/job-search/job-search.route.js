@@ -1333,7 +1333,7 @@
     }
 
     window.CBJobs.scoreJobs(jobs, {
-      topN: 10,
+      topN: 30,
       onProgress: function (result) {
         if (!result || !result.jobId || result.error) return;
         if (lastSearchView !== session) return; // user re-searched in the meantime
@@ -1346,9 +1346,14 @@
           missingSkills: Array.isArray(result.missingSkills) ? result.missingSkills : []
         };
         updateOneCard(job.id);
+      },
+      onMeta: function (meta) {
+        if (lastSearchView !== session) return;
+        updateAiScoringProgress(meta);
       }
     }).then(function (summary) {
       aiRerankInFlight = false;
+      clearAiScoringProgress(summary);
       if (lastSearchView !== session) return;
       // After all scores arrive, re-sort: AI score (when present) > regex score.
       const scored = (session.jobs || []).slice().sort(function (a, b) {
@@ -1362,7 +1367,10 @@
       session.jobs = scored;
       repaintJobSearchResults();
       if (summary && summary.scored && window.CBV2.toast) {
-        window.CBV2.toast.info("AI ranked top " + summary.scored + " roles to your resume.");
+        const msg = summary.scored === 1
+          ? "AI ranked 1 role to your resume."
+          : "AI ranked " + summary.scored + " roles to your resume.";
+        window.CBV2.toast.info(msg);
       }
       // Phase 5B: layer cosine-similarity rerank on top. Cheap (cached resume
       // vector + tiny per-job embeddings cost), runs after the AI score so
@@ -1370,7 +1378,53 @@
       triggerEmbeddingRerankAfterScore(session);
     }).catch(function () {
       aiRerankInFlight = false;
+      clearAiScoringProgress(null);
     });
+  }
+
+  // Fix #4: live progress indicator while AI scores stream in. Mounted into
+  // the results section header on first onMeta event, updates in place, then
+  // fades out a beat after the final score lands. Failure path (catch) calls
+  // clearAiScoringProgress(null) so the chip doesn't get stuck on screen.
+  function ensureAiScoringChip() {
+    let chip = document.getElementById("job-search-ai-progress");
+    if (chip) return chip;
+    const section = document.getElementById("job-search-results-section");
+    if (!section) return null;
+    chip = document.createElement("div");
+    chip.id = "job-search-ai-progress";
+    chip.className = "job-search-ai-progress chip cyan";
+    chip.setAttribute("role", "status");
+    chip.setAttribute("aria-live", "polite");
+    section.insertBefore(chip, section.firstChild);
+    return chip;
+  }
+
+  function updateAiScoringProgress(meta) {
+    if (!meta || typeof meta.total !== "number" || meta.total <= 0) return;
+    const chip = ensureAiScoringChip();
+    if (!chip) return;
+    const failedSuffix = meta.failed > 0 ? " · " + meta.failed + " failed" : "";
+    const inner = meta.done >= meta.total
+      ? '<i class="fa-solid fa-check" aria-hidden="true"></i> AI ranked ' + meta.succeeded + " / " + meta.total + " roles" + failedSuffix
+      : '<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI ranking ' + meta.done + " / " + meta.total + " roles…" + failedSuffix;
+    chip.innerHTML = inner;
+    chip.classList.toggle("is-done", meta.done >= meta.total);
+  }
+
+  function clearAiScoringProgress(summary) {
+    const chip = document.getElementById("job-search-ai-progress");
+    if (!chip) return;
+    if (summary && summary.scored) {
+      // Show the final tally for a moment so the user notices it, then fade.
+      chip.classList.add("is-done");
+      setTimeout(function () {
+        const stillThere = document.getElementById("job-search-ai-progress");
+        if (stillThere) stillThere.remove();
+      }, 3000);
+    } else {
+      chip.remove();
+    }
   }
 
   // Phase 5B: embedding-based re-rank — fires after the AI score pass.

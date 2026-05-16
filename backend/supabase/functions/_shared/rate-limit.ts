@@ -13,7 +13,10 @@ import type { Skill } from "./schemas.ts";
 const DEFAULT_DAILY_LIMITS: Record<Skill, number> = {
   // Cheap classifiers — high cap.
   "query-parse":              200,
-  "job-match-score":          150,
+  // Fix #4: scoring expanded from 12 → 30 jobs per search. Daily cap raised
+  // accordingly so a normal day's worth of searches (5-10) doesn't hit the
+  // wall. Gemini Flash pricing keeps the dollar exposure low.
+  "job-match-score":          400,
   "jd-analyze":                80,
   "resume-parse":              30,
   "interview-score":          120,

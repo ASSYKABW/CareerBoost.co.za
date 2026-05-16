@@ -3281,6 +3281,35 @@
   opacity: 0.9;
 }
 
+/* Live AI scoring progress chip — mounted at the top of the results
+ * section while job-match-score calls stream in. Fades out a beat after
+ * the last score lands. */
+.job-search-ai-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  line-height: 1.2;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 227, 255, 0.28);
+  background: rgba(34, 227, 255, 0.08);
+  color: #cbe9f5;
+  transition: opacity 0.4s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.job-search-ai-progress > i {
+  color: #22e3ff;
+}
+.job-search-ai-progress.is-done {
+  border-color: rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.1);
+  color: #b8efc8;
+}
+.job-search-ai-progress.is-done > i {
+  color: #4ade80;
+}
+
 .job-search-results-head {
   margin-bottom: 16px;
 }

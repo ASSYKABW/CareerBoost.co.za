@@ -1,8 +1,18 @@
 (function () {
   window.CBJobs = window.CBJobs || {};
 
-  const CONCURRENCY = 3;
-  const SCORE_TOP_N = 12;
+  // Phase 6 (Fix #4): cover more of the result set with AI scoring so the
+  // ranking past the first page isn't pure regex. The wider concurrency is
+  // safe for job-match-score because it's a Gemini Flash skill (~50× cheaper
+  // than the top tier) with sub-1s typical latency.
+  //
+  //   Wall-time math: 30 jobs ÷ 8 wide × ~1.2s p50 ≈ 4.5s real-world
+  //   Worst case:     30 jobs ÷ 8 wide × ~4s timeout ≈ 15s
+  //
+  // The UI doesn't block on this — onProgress updates each card as its score
+  // arrives. The final repaint + re-sort happens when the last score lands.
+  const CONCURRENCY = 8;
+  const SCORE_TOP_N = 30;
 
   function getResumeText() {
     const store = window.CBV2 && window.CBV2.store;
@@ -53,6 +63,7 @@
     options = options || {};
     const resume = options.resume != null ? options.resume : getResumeText();
     const topN = options.topN || SCORE_TOP_N;
+    const concurrency = options.concurrency || CONCURRENCY;
     const ai = window.CBAI;
     if (!ai || typeof ai.runSkill !== "function") {
       return { scores: {}, scored: 0, skipped: jobs.length, reason: "AI orchestrator unavailable" };
@@ -63,6 +74,15 @@
 
     const subset = jobs.slice(0, topN);
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+    // onMeta(meta) fires after every task settles (success OR fail) with
+    // {done, total, succeeded, failed} so the UI can show a live progress
+    // chip. Decoupled from onProgress, which only fires on successful scores.
+    const onMeta = typeof options.onMeta === "function" ? options.onMeta : null;
+
+    let done = 0;
+    let succeeded = 0;
+    let failed = 0;
+    const total = subset.length;
 
     const tasks = subset.map(function (job) {
       return function () {
@@ -79,15 +99,20 @@
               promptVersion: envelope.promptVersion
             };
             if (onProgress) onProgress(out);
+            done += 1; succeeded += 1;
+            if (onMeta) onMeta({ done: done, total: total, succeeded: succeeded, failed: failed });
             return out;
           })
           .catch(function (err) {
+            done += 1; failed += 1;
+            if (onMeta) onMeta({ done: done, total: total, succeeded: succeeded, failed: failed });
             return { jobId: job.id, error: err && err.message ? err.message : "Score failed" };
           });
       };
     });
 
-    const results = await runBatched(tasks, CONCURRENCY);
+    if (onMeta) onMeta({ done: 0, total: total, succeeded: 0, failed: 0 });
+    const results = await runBatched(tasks, concurrency);
     const scores = {};
     let scored = 0;
     results.forEach(function (r) {
