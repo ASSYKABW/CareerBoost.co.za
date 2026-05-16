@@ -3310,6 +3310,25 @@
   color: #4ade80;
 }
 
+/* Pager row — bottom-of-results "Load more" affordance. Centered with
+ * generous whitespace so it reads as the natural end-of-page action,
+ * not an afterthought. */
+.job-search-pager {
+  margin: 22px 0 4px;
+  display: flex;
+  justify-content: center;
+}
+.job-search-pager .btn-primary {
+  min-width: 240px;
+  padding: 10px 22px;
+}
+@media (max-width: 520px) {
+  .job-search-pager .btn-primary {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .job-search-results-head {
   margin-bottom: 16px;
 }

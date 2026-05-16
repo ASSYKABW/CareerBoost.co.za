@@ -118,6 +118,10 @@
       roleProfile: saved.roleProfile || null,
       sort: saved.sort || "newest",
       filters: saved.filters && typeof saved.filters === "object" ? saved.filters : null,
+      // Restored views always re-paginate from the first page. Preserving
+      // a multi-page expanded state across reloads adds surprise without
+      // much benefit — most users would expect a fresh page anyway.
+      visibleCount: RESULTS_PAGE_SIZE,
       diagnostics: saved.diagnostics || null,
       sources: saved.sources || null,
       nlq: saved.nlq || null
@@ -1236,13 +1240,29 @@
     );
   }
 
+  // Fix #5: page size for the result grid. 20 cards fits the viewport on
+  // most screens; "Load more" reveals the next 20. Centralized constant so
+  // increment + initial slice agree.
+  const RESULTS_PAGE_SIZE = 20;
+
   function renderResultsMountInner(st) {
     const jobs = lastSearchView.jobs || [];
     if (!jobs.length) {
       return renderNoResultsHtml(st);
     }
 
-    const groups = groupJobsForDisplay(jobs, lastSearchView.roleProfile);
+    // Page the FLAT ordered list, then re-group the visible slice so the
+    // tier headers ("Strong matches" / "More to explore") reflect what the
+    // user can actually see. A user who hasn't clicked "Load more" yet
+    // shouldn't see an empty "More to explore" header.
+    const visibleCount = Math.max(
+      RESULTS_PAGE_SIZE,
+      Math.min(Number(lastSearchView.visibleCount) || RESULTS_PAGE_SIZE, jobs.length)
+    );
+    const visible = jobs.slice(0, visibleCount);
+    const remaining = jobs.length - visibleCount;
+
+    const groups = groupJobsForDisplay(visible, lastSearchView.roleProfile);
     const diagHtml = renderDiagnosticsHtml(st, lastSearchView.diagnostics);
     const sourceStripHtml = renderSourceStripHtml(st, lastSearchView.sources);
     const head =
@@ -1251,11 +1271,9 @@
       "<h2><i class=\"fa-solid fa-table-cells-large\" aria-hidden=\"true\"></i> Results</h2>" +
       '<span class="chip subtle">' +
       st(
-        String(lastSearchView.total || jobs.length) +
-          " roles · " +
-          sortLabel(lastSearchView.sort || "newest") +
-          " · " +
-          (lastSearchView.query || "last query")
+        "Showing " + visibleCount + " of " + jobs.length +
+          " · " + sortLabel(lastSearchView.sort || "newest") +
+          " · " + (lastSearchView.query || "last query")
       ) +
       "</span>" +
       "</div>" +
@@ -1291,7 +1309,22 @@
       })
       .join("");
 
-    return head + tiers;
+    // Footer: Load-more button when there are more results to reveal.
+    // The label says exactly how many more will load on this click (capped
+    // at the page size so it never inflates expectations on the last batch).
+    let footer = "";
+    if (remaining > 0) {
+      const nextChunk = Math.min(RESULTS_PAGE_SIZE, remaining);
+      footer =
+        '<div class="job-search-pager">' +
+        '<button type="button" class="btn-primary" data-load-more="1">' +
+        '<i class="fa-solid fa-chevron-down" aria-hidden="true"></i> Load ' +
+        nextChunk + " more (" + remaining + " remaining)" +
+        "</button>" +
+        "</div>";
+    }
+
+    return head + tiers + footer;
   }
 
   function repaintJobSearchResults() {
@@ -2052,6 +2085,9 @@
           // suggest the right "broaden" action based on the actual strictness
           // applied (not whatever the user has typed since).
           filters: filters && typeof filters === "object" ? Object.assign({}, filters) : null,
+          // Fix #5: paginate the result grid. New search → first 20 cards
+          // visible; "Load more" reveals the next 20.
+          visibleCount: RESULTS_PAGE_SIZE,
           diagnostics: out.diagnostics && typeof out.diagnostics === "object" ? out.diagnostics : null,
           sources: out.sources && typeof out.sources === "object" ? out.sources : null,
           nlq: out.nlq && typeof out.nlq === "object" ? out.nlq : nlqData || null
@@ -2119,6 +2155,27 @@
         repaintJobSearchResults();
         updateSignalCard(0, "", null);
         if (window.CBV2.toast) window.CBV2.toast.success("Search results cleared.");
+        return;
+      }
+
+      // Fix #5: "Load more" — reveal the next page of results without a
+      // network call. The full job list already lives in memory; we just
+      // bump visibleCount and let the renderer slice further.
+      const loadMoreBtn = e.target && e.target.closest ? e.target.closest("[data-load-more]") : null;
+      if (loadMoreBtn) {
+        e.preventDefault();
+        const total = (lastSearchView.jobs || []).length;
+        const current = Number(lastSearchView.visibleCount) || RESULTS_PAGE_SIZE;
+        lastSearchView.visibleCount = Math.min(total, current + RESULTS_PAGE_SIZE);
+        repaintJobSearchResults();
+        // Scroll the newly-revealed batch into view so the user sees what
+        // changed without hunting for it.
+        requestAnimationFrame(function () {
+          const btn = document.querySelector('[data-load-more]');
+          if (btn && typeof btn.scrollIntoView === "function") {
+            btn.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        });
         return;
       }
 
