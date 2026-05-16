@@ -18,7 +18,8 @@
     formStatus: {
       jobPreferences: { dirty: false, kind: "idle", text: "" },
       aiPreferences: { dirty: false, kind: "idle", text: "" },
-      appearance: { dirty: false, kind: "idle", text: "" }
+      appearance: { dirty: false, kind: "idle", text: "" },
+      applyAssist: { dirty: false, kind: "idle", text: "" }
     },
     saving: false,
     message: ""
@@ -373,6 +374,381 @@
         ` : ""}
       </section>
     `;
+  }
+
+  // -----------------------------------------------------------------------
+  // Apply Assist — Phase 1 settings tab.
+  //
+  // Stores the data the Greenhouse adapter (Phase 2) will auto-fill into ATS
+  // forms: identity, links, work authorization, compensation, preferences,
+  // optional EEO. Sits inside profile.preferences.applyAssist (existing JSONB
+  // column on public.profiles — no migration needed).
+  //
+  // The screening-question library section is rendered read-only here in V1.
+  // Phase 3 (screening-answer AI skill) will populate it after the user
+  // accepts AI suggestions during a real application.
+  // -----------------------------------------------------------------------
+  function renderApplyAssistSection() {
+    const st = getSt();
+    const aa = (window.CBV2.applyAssist && typeof window.CBV2.applyAssist.getProfile === "function")
+      ? window.CBV2.applyAssist.getProfile()
+      : null;
+    if (!aa) {
+      return '<section class="card panel-lg settings-section"><p class="ai-meta">Apply Assist module not loaded.</p></section>';
+    }
+    const missing = window.CBV2.applyAssist.missingMinimalFields();
+    const ready = missing.length === 0;
+
+    const status = viewState.formStatus.applyAssist || { dirty: false, kind: "idle", text: "" };
+    const statusText = status.dirty ? "Unsaved changes." : (status.text || "No recent changes.");
+    const statusKind = status.dirty ? "pending" : (status.kind || "idle");
+
+    const identity = aa.identity || {};
+    const loc = identity.location || {};
+    const links = aa.links || {};
+    const auth = aa.workAuth || {};
+    const comp = aa.compensation || {};
+    const prefs = aa.preferences || {};
+    const eeo = aa.eeo || {};
+    const screenLib = Array.isArray(aa.screeningAnswers) ? aa.screeningAnswers : [];
+
+    const visaOpts = [
+      { v: "",                     label: "Select…" },
+      { v: "citizen",              label: "Citizen of authorized country" },
+      { v: "permanent_resident",   label: "Permanent resident / green card" },
+      { v: "work_visa",            label: "Work visa (no sponsorship needed)" },
+      { v: "needs_sponsorship",    label: "Needs sponsorship to work" },
+      { v: "other",                label: "Other / prefer not to say" }
+    ].map(function (o) {
+      const sel = (auth.visaStatus || "") === o.v ? " selected" : "";
+      return '<option value="' + st(o.v) + '"' + sel + ">" + st(o.label) + "</option>";
+    }).join("");
+
+    const relocOpts = [
+      { v: "yes",      label: "Yes, I'll relocate" },
+      { v: "no",       label: "No, only local roles" },
+      { v: "depends",  label: "Depends on the role" }
+    ].map(function (o) {
+      const sel = (prefs.relocate || "depends") === o.v ? " selected" : "";
+      return '<option value="' + st(o.v) + '"' + sel + ">" + st(o.label) + "</option>";
+    }).join("");
+
+    const workModeOpts = [
+      { v: "any",     label: "Any" },
+      { v: "remote",  label: "Remote" },
+      { v: "hybrid",  label: "Hybrid" },
+      { v: "onsite",  label: "On-site" }
+    ].map(function (o) {
+      const sel = (prefs.workMode || "any") === o.v ? " selected" : "";
+      return '<option value="' + st(o.v) + '"' + sel + ">" + st(o.label) + "</option>";
+    }).join("");
+
+    const missingChip = ready
+      ? '<span class="chip green"><i class="fa-solid fa-check"></i> Ready</span>'
+      : '<span class="chip warning"><i class="fa-solid fa-triangle-exclamation"></i> Missing: ' + st(missing.slice(0, 3).join(", ")) + (missing.length > 3 ? ", …" : "") + '</span>';
+
+    const screenLibHtml = screenLib.length
+      ? '<div class="settings-action-list">' +
+        screenLib.slice(0, 20).map(function (row) {
+          const q = st(String(row.questionText || row.normalized || "").slice(0, 120));
+          const a = st(String(row.answer || "").slice(0, 200));
+          const used = row.timesUsed ? " · used " + Number(row.timesUsed) + "×" : "";
+          return (
+            '<div class="admin-action-card">' +
+              '<i class="fa-solid fa-circle-question"></i>' +
+              '<div><strong>' + q + '</strong><span>' + a + used + '</span></div>' +
+            '</div>'
+          );
+        }).join("") +
+        '</div>'
+      : '<p class="ai-meta"><i class="fa-solid fa-circle-info"></i> No saved answers yet. When Apply Assist asks you a screening question, your approved answer is saved here for re-use on future applications.</p>';
+
+    const arr = function (val) {
+      if (Array.isArray(val)) return val.join(", ");
+      return "";
+    };
+    const num = function (n) {
+      const x = Number(n);
+      return Number.isFinite(x) && x > 0 ? String(x) : "";
+    };
+
+    return `
+      <section class="card panel-lg settings-section">
+        <div class="panel-head">
+          <h2>Apply Assist profile</h2>
+          ${missingChip}
+        </div>
+        <p class="page-subtitle">
+          Fields the browser extension will auto-fill on supported job application forms.
+          You always click <strong>Submit</strong> yourself &mdash; Apply Assist never submits on your behalf.
+        </p>
+
+        <form id="apply-assist-form" class="form-grid settings-form">
+
+          <fieldset class="full-row">
+            <legend><i class="fa-solid fa-id-card"></i> Identity &amp; contact</legend>
+            <div class="grid-3">
+              <label>Legal first name
+                <input id="aa-first-name" type="text" value="${st(identity.legalFirstName || "")}" autocomplete="given-name" />
+              </label>
+              <label>Legal last name
+                <input id="aa-last-name" type="text" value="${st(identity.legalLastName || "")}" autocomplete="family-name" />
+              </label>
+              <label>Preferred name
+                <input id="aa-preferred-name" type="text" value="${st(identity.preferredName || "")}" placeholder="Optional" />
+              </label>
+            </div>
+            <div class="grid-3">
+              <label>Email
+                <input id="aa-email" type="email" value="${st(identity.email || "")}" autocomplete="email" />
+              </label>
+              <label>Phone
+                <input id="aa-phone" type="tel" value="${st(identity.phone || "")}" autocomplete="tel" placeholder="+1 555 123 4567" />
+              </label>
+              <label>City
+                <input id="aa-city" type="text" value="${st(loc.city || "")}" autocomplete="address-level2" />
+              </label>
+            </div>
+            <div class="grid-3">
+              <label>State / region
+                <input id="aa-state" type="text" value="${st(loc.state || "")}" autocomplete="address-level1" />
+              </label>
+              <label>Country
+                <input id="aa-country" type="text" value="${st(loc.country || "")}" autocomplete="country" placeholder="e.g. United States" />
+              </label>
+              <label>Postal / ZIP
+                <input id="aa-postal" type="text" value="${st(loc.postal || "")}" autocomplete="postal-code" />
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="full-row">
+            <legend><i class="fa-solid fa-link"></i> Professional links</legend>
+            <div class="grid-2">
+              <label>LinkedIn URL
+                <input id="aa-linkedin" type="url" value="${st(links.linkedin || "")}" placeholder="https://www.linkedin.com/in/…" />
+              </label>
+              <label>GitHub URL
+                <input id="aa-github" type="url" value="${st(links.github || "")}" placeholder="https://github.com/…" />
+              </label>
+              <label>Portfolio URL
+                <input id="aa-portfolio" type="url" value="${st(links.portfolio || "")}" placeholder="Optional" />
+              </label>
+              <label>Personal website
+                <input id="aa-website" type="url" value="${st(links.website || "")}" placeholder="Optional" />
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="full-row">
+            <legend><i class="fa-solid fa-passport"></i> Work authorization</legend>
+            <div class="grid-2">
+              <label>Visa / work status
+                <select id="aa-visa-status">${visaOpts}</select>
+              </label>
+              <label>Earliest start date
+                <input id="aa-earliest-start" type="date" value="${st(auth.earliestStart || "")}" />
+              </label>
+              <label>Authorized to work in (countries, comma-separated)
+                <input id="aa-auth-countries" type="text" value="${st(arr(auth.countriesAuthorized))}" placeholder="e.g. US, CA, UK" />
+              </label>
+              <label>Needs sponsorship for (countries)
+                <input id="aa-sponsor-needed" type="text" value="${st(arr(auth.needsSponsorshipFor))}" placeholder="Leave blank if none" />
+              </label>
+              <label>Notice period (days)
+                <input id="aa-notice-days" type="number" min="0" max="365" value="${st(num(auth.noticePeriodDays))}" />
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="full-row">
+            <legend><i class="fa-solid fa-coins"></i> Compensation expectations</legend>
+            <div class="grid-3">
+              <label>Target minimum (annual)
+                <input id="aa-comp-min" type="number" min="0" step="1000" value="${st(num(comp.targetMin))}" />
+              </label>
+              <label>Target maximum (annual)
+                <input id="aa-comp-max" type="number" min="0" step="1000" value="${st(num(comp.targetMax))}" />
+              </label>
+              <label>Currency
+                <input id="aa-comp-currency" type="text" maxlength="6" value="${st(comp.currency || "USD")}" />
+              </label>
+            </div>
+            <label class="full-row" style="margin-top:8px;">
+              <input id="aa-comp-negotiate" type="checkbox" ${comp.openToNegotiate !== false ? "checked" : ""} />
+              Open to negotiation
+            </label>
+          </fieldset>
+
+          <fieldset class="full-row">
+            <legend><i class="fa-solid fa-route"></i> Preferences</legend>
+            <div class="grid-2">
+              <label>Willing to relocate
+                <select id="aa-relocate">${relocOpts}</select>
+              </label>
+              <label>Preferred work mode
+                <select id="aa-work-mode">${workModeOpts}</select>
+              </label>
+              <label>Open to relocate to (cities, comma-separated)
+                <input id="aa-reloc-locations" type="text" value="${st(arr(prefs.relocateLocations))}" placeholder="Optional" />
+              </label>
+              <label>Travel OK (% of time)
+                <input id="aa-travel-pct" type="number" min="0" max="100" value="${st(num(prefs.travelOkPercent))}" />
+              </label>
+            </div>
+          </fieldset>
+
+          <details class="settings-advanced full-row">
+            <summary><i class="fa-solid fa-circle-info"></i> Optional EEO / demographic answers</summary>
+            <p class="ai-meta" style="margin:8px 0;">
+              US employers often include an Equal Employment Opportunity section. All fields are optional and only shared when you tick the consent box AND the application form actually asks for them.
+            </p>
+            <div class="grid-2">
+              <label>Gender
+                <input id="aa-eeo-gender" type="text" value="${st(eeo.gender || "")}" placeholder="Optional" />
+              </label>
+              <label>Race / ethnicity
+                <input id="aa-eeo-race" type="text" value="${st(eeo.race || "")}" placeholder="Optional" />
+              </label>
+              <label>Veteran status
+                <input id="aa-eeo-veteran" type="text" value="${st(eeo.veteran || "")}" placeholder="Optional" />
+              </label>
+              <label>Disability status
+                <input id="aa-eeo-disability" type="text" value="${st(eeo.disability || "")}" placeholder="Optional" />
+              </label>
+            </div>
+            <label class="full-row" style="margin-top:8px;">
+              <input id="aa-eeo-consent" type="checkbox" ${eeo.consentToShare ? "checked" : ""} />
+              I consent to sharing the EEO answers above when an ATS form asks for them.
+            </label>
+          </details>
+
+          <div class="form-actions full-row">
+            <button class="btn-primary" id="apply-assist-save" type="submit">
+              <i class="fa-solid fa-floppy-disk"></i> Save Apply Assist profile
+            </button>
+          </div>
+        </form>
+        <p class="settings-save-state settings-save-state--${statusKind}">${statusText}</p>
+
+        <div class="panel-head" style="margin-top:18px;">
+          <h3>Saved screening answers</h3>
+          <span class="chip subtle">${screenLib.length} answer${screenLib.length === 1 ? "" : "s"}</span>
+        </div>
+        ${screenLibHtml}
+      </section>
+    `;
+  }
+
+  function bindApplyAssist() {
+    const form = document.getElementById("apply-assist-form");
+    if (!form) return;
+    const markDirty = function () {
+      setFormStatus("applyAssist", { dirty: true, kind: "pending", text: "Unsaved changes." });
+      const line = form.parentElement && form.parentElement.querySelector(".settings-save-state");
+      if (line) {
+        line.textContent = "Unsaved changes.";
+        line.classList.remove("settings-save-state--success", "settings-save-state--error", "settings-save-state--idle");
+        line.classList.add("settings-save-state--pending");
+      }
+    };
+    form.addEventListener("input", markDirty);
+    form.addEventListener("change", markDirty);
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const val = function (id, fallback) {
+        const el = document.getElementById(id);
+        return el ? String(el.value || "").trim() : (fallback || "");
+      };
+      const num = function (id) {
+        const el = document.getElementById(id);
+        const n = el ? Number(el.value) : 0;
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      };
+      const checked = function (id) {
+        const el = document.getElementById(id);
+        return el ? !!el.checked : false;
+      };
+      const csv = function (id) {
+        return val(id, "")
+          .split(",")
+          .map(function (x) { return x.trim(); })
+          .filter(Boolean);
+      };
+
+      const next = {
+        identity: {
+          legalFirstName: val("aa-first-name"),
+          legalLastName: val("aa-last-name"),
+          preferredName: val("aa-preferred-name"),
+          phone: val("aa-phone"),
+          email: val("aa-email"),
+          location: {
+            city: val("aa-city"),
+            state: val("aa-state"),
+            country: val("aa-country"),
+            postal: val("aa-postal")
+          }
+        },
+        links: {
+          linkedin: val("aa-linkedin"),
+          github: val("aa-github"),
+          portfolio: val("aa-portfolio"),
+          website: val("aa-website")
+        },
+        workAuth: {
+          visaStatus: val("aa-visa-status"),
+          countriesAuthorized: csv("aa-auth-countries"),
+          needsSponsorshipFor: csv("aa-sponsor-needed"),
+          earliestStart: val("aa-earliest-start"),
+          noticePeriodDays: num("aa-notice-days")
+        },
+        compensation: {
+          targetMin: num("aa-comp-min"),
+          targetMax: num("aa-comp-max"),
+          currency: val("aa-comp-currency", "USD") || "USD",
+          openToNegotiate: checked("aa-comp-negotiate")
+        },
+        preferences: {
+          relocate: val("aa-relocate", "depends") || "depends",
+          relocateLocations: csv("aa-reloc-locations"),
+          workMode: val("aa-work-mode", "any") || "any",
+          travelOkPercent: Math.max(0, Math.min(100, num("aa-travel-pct")))
+        },
+        eeo: {
+          gender: val("aa-eeo-gender"),
+          race: val("aa-eeo-race"),
+          veteran: val("aa-eeo-veteran"),
+          disability: val("aa-eeo-disability"),
+          consentToShare: checked("aa-eeo-consent")
+        },
+        // Phase 1 doesn't write to screeningAnswers here — Phase 3 manages
+        // that library. Preserve whatever was already saved.
+        screeningAnswers: (function () {
+          const current = (window.CBV2.applyAssist && window.CBV2.applyAssist.getProfile()) || {};
+          return Array.isArray(current.screeningAnswers) ? current.screeningAnswers : [];
+        })(),
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        if (window.CBV2.profile && typeof window.CBV2.profile.update === "function") {
+          const current = (window.CBV2.profile.get && window.CBV2.profile.get()) || {};
+          const preferences = (current.preferences && typeof current.preferences === "object") ? current.preferences : {};
+          await window.CBV2.profile.update({
+            preferences: Object.assign({}, preferences, { applyAssist: next })
+          });
+        }
+        viewState.message = "Apply Assist profile saved.";
+        setFormStatus("applyAssist", { dirty: false, kind: "success", text: "Saved & synced." });
+        if (window.CBV2.toast) window.CBV2.toast.success("Apply Assist profile saved.");
+      } catch (err) {
+        viewState.message = "Failed to save Apply Assist profile: " + ((err && err.message) || "unknown error");
+        setFormStatus("applyAssist", { dirty: false, kind: "error", text: "Save failed." });
+        if (window.CBV2.toast) window.CBV2.toast.error("Apply Assist save failed.");
+      }
+      window.CBV2.renderCurrentRoute();
+    });
   }
 
   function renderExtensionInstallSection() {
@@ -1506,6 +1882,7 @@
     const showAi = activeTab === "ai";
     const showData = activeTab === "data-privacy";
     const showAccount = activeTab === "account";
+    const showApplyAssist = activeTab === "apply-profile";
     const showExtension = activeTab === "extension";
     // Phase Billing: dedicated tab for plan + usage + portal.
     const showBilling = activeTab === "billing";
@@ -1554,6 +1931,8 @@
             ${showAi ? renderAiPersonalizationSection() : ""}
 
             ${showAccount ? renderAccountIdentitySection() : ""}
+
+            ${showApplyAssist ? renderApplyAssistSection() : ""}
 
             ${showExtension ? renderExtensionInstallSection() : ""}
 
@@ -2846,6 +3225,7 @@
     bindProfile();
     bindJobPreferences();
     bindAiPreferences();
+    bindApplyAssist();
     bindSavedCvSettings();
     bindCareerAssetsSettings();
     bindAppearance();
