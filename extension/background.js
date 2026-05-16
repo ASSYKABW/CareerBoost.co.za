@@ -382,6 +382,95 @@ async function flashBadge(success) {
 // Refresh badge once on service-worker boot.
 refreshBadge();
 
+// ---------- Apply Assist intent store (Phase 2a) -------------------------
+//
+// The CareerBoost web app posts an apply-intent (which job, which tailored
+// resume, which apply profile snapshot) via the cb-app.bridge.js content
+// script. Background stashes it in chrome.storage.local under a fresh ID,
+// then the Greenhouse apply content script reads it on page load and
+// deletes it after use.
+//
+// We store under a single key "cb_apply_intents" as a small dictionary —
+// chrome.storage.local has a 5MB per-extension cap which is plenty for the
+// ~5-50KB resume blobs we expect.
+//
+// TTL is 10 minutes — long enough for a slow tab open + form load, short
+// enough that stale resume data can't leak into a future application.
+
+const APPLY_INTENT_KEY = "cb_apply_intents";
+const APPLY_INTENT_TTL_MS = 10 * 60 * 1000;
+
+function newIntentId() {
+  return "ai_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+}
+
+async function readIntentMap() {
+  const out = await chrome.storage.local.get([APPLY_INTENT_KEY]);
+  const map = out && out[APPLY_INTENT_KEY] && typeof out[APPLY_INTENT_KEY] === "object" ? out[APPLY_INTENT_KEY] : {};
+  // Always sweep expired entries on read so the dictionary doesn't grow.
+  const now = Date.now();
+  let mutated = false;
+  Object.keys(map).forEach((id) => {
+    const row = map[id];
+    if (!row || typeof row !== "object" || !row.expiresAt || row.expiresAt < now) {
+      delete map[id];
+      mutated = true;
+    }
+  });
+  if (mutated) {
+    await chrome.storage.local.set({ [APPLY_INTENT_KEY]: map });
+  }
+  return map;
+}
+
+async function writeIntentMap(map) {
+  await chrome.storage.local.set({ [APPLY_INTENT_KEY]: map });
+}
+
+async function storeApplyIntent(payload, origin) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Apply intent payload missing.");
+  }
+  if (typeof payload.applyUrl !== "string" || !/^https?:\/\//.test(payload.applyUrl)) {
+    throw new Error("Apply intent applyUrl must be an absolute http(s) URL.");
+  }
+  const map = await readIntentMap();
+  const id = newIntentId();
+  map[id] = {
+    id,
+    payload,
+    origin: origin || null,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + APPLY_INTENT_TTL_MS
+  };
+  await writeIntentMap(map);
+  return id;
+}
+
+// Used by the Greenhouse apply content script. Pass `consume: true` to
+// delete the intent atomically on read (typical post-autofill cleanup).
+async function lookupApplyIntent({ applyUrl, intentId, consume }) {
+  const map = await readIntentMap();
+  let hit = null;
+  if (intentId && map[intentId]) {
+    hit = map[intentId];
+  } else if (applyUrl) {
+    // Match by applyUrl prefix (the web app may include hash/query params
+    // we don't want to compare exactly). Newest-first.
+    const wanted = String(applyUrl).split("#")[0].split("?")[0];
+    const candidates = Object.values(map)
+      .filter((row) => row && row.payload && row.payload.applyUrl &&
+        String(row.payload.applyUrl).split("#")[0].split("?")[0].indexOf(wanted) === 0)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    hit = candidates[0] || null;
+  }
+  if (hit && consume) {
+    delete map[hit.id];
+    await writeIntentMap(map);
+  }
+  return hit;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     const type = message && message.type;
@@ -411,6 +500,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (type === "CB_OPEN_OPTIONS") {
       chrome.runtime.openOptionsPage();
       return { ok: true };
+    }
+    // Apply Assist intent storage (Phase 2a). Bridge content script on the
+    // CareerBoost web app forwards postMessage payloads here.
+    if (type === "CB_APPLY_INTENT_STORE") {
+      try {
+        const intentId = await storeApplyIntent(message.payload, message.origin || null);
+        return { ok: true, intentId };
+      } catch (err) {
+        return { ok: false, error: (err && err.message) || "Could not store apply intent." };
+      }
+    }
+    // Greenhouse apply content script asks for its intent (by applyUrl).
+    // consume:true wipes the entry so it can't be reused on the next load.
+    if (type === "CB_APPLY_INTENT_LOOKUP") {
+      try {
+        const hit = await lookupApplyIntent({
+          applyUrl: message.applyUrl,
+          intentId: message.intentId,
+          consume: message.consume === true
+        });
+        return { ok: true, intent: hit };
+      } catch (err) {
+        return { ok: false, error: (err && err.message) || "Apply intent lookup failed." };
+      }
     }
     return { ok: false, error: "Unknown CareerBoost extension action." };
   })()

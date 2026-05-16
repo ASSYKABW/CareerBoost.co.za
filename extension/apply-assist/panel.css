@@ -1,0 +1,6 @@
+/* Apply Assist floating-panel styles (Phase 2b will populate).
+ *
+ * This file exists in Phase 2a so the manifest's content_scripts entry
+ * for the Greenhouse apply matcher can reference a CSS asset that
+ * actually loads (Chrome warns when listed CSS files are absent). The
+ * adapter + panel UI land in Phase 2b. */

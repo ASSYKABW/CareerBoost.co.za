@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CareerBoost Job Capture",
-  "description": "Save jobs from LinkedIn, Indeed, Greenhouse and Lever directly into your CareerBoost pipeline. Works in Chrome and Microsoft Edge.",
-  "version": "0.2.1",
+  "description": "Save jobs from LinkedIn, Indeed, Greenhouse and Lever, and auto-fill Greenhouse application forms (Apply Assist). Works in Chrome and Microsoft Edge.",
+  "version": "0.3.0",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
@@ -18,7 +18,11 @@
     "https://*.greenhouse.io/*",
     "https://jobs.lever.co/*",
     "https://*.supabase.co/*",
-    "https://*.functions.supabase.co/*"
+    "https://*.functions.supabase.co/*",
+    "https://www.careerboost.app/*",
+    "https://careerboost.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -50,6 +54,26 @@
       "matches": ["https://jobs.lever.co/*"],
       "js": ["shared/json-ld-job.js", "shared/capture-base.js", "lever.content.js"],
       "css": ["capture.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.careerboost.app/*",
+        "https://careerboost.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["apply-assist/cb-app.bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://*.greenhouse.io/*"
+      ],
+      "js": ["apply-assist/greenhouse.apply.js"],
+      "css": ["apply-assist/panel.css"],
       "run_at": "document_idle"
     }
   ],
