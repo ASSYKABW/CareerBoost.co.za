@@ -72,11 +72,14 @@
     {
       // Operate — the three control surfaces:
       //   Users (who) → Health (reliability) → Operations (governance).
+      // Credentials joins this group: it's an operational concern (key
+      // rotation, status visibility), not analytics.
       group: "Operate",
       items: [
         { id: "users", icon: "fa-users", label: "Users & outcomes" },
         { id: "health", icon: "fa-heart-pulse", label: "Health" },
-        { id: "operations", icon: "fa-shield-halved", label: "Operations" }
+        { id: "operations", icon: "fa-shield-halved", label: "Operations" },
+        { id: "credentials", icon: "fa-key", label: "API credentials" }
       ]
     },
     {

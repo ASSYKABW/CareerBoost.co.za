@@ -204,11 +204,14 @@
        section URLs still work via their original renderers above. -->
   <script src="./src/js/modules/admin/sections/health.js"></script>
   <script src="./src/js/modules/admin/sections/operations.js"></script>
+  <!-- Operational: API key status + rotation commands. Read-only — talks
+       to the admin-credentials edge function which never returns values. -->
+  <script src="./src/js/modules/admin/sections/credentials.js"></script>
   <!-- Roadmap: deferred-feature reminders. Currently just Apply Assist V1
        (built but hidden because V1 only covers Greenhouse — see the section
        itself for re-enable criteria). -->
   <script src="./src/js/modules/admin/sections/apply-assist.js"></script>
-  <script src="./src/js/modules/admin/admin.route.js"></script>
+  <script src="./src/js/modules/admin/admin.route.js?v=20260516-credentials"></script>
   <script src="./src/js/app/router.js"></script>
   <script src="./src/js/app/bootstrap.js"></script>
 </body>
