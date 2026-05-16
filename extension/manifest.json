@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CareerBoost Job Capture",
   "description": "Save jobs from LinkedIn, Indeed, Greenhouse and Lever, and auto-fill Greenhouse application forms (Apply Assist). Works in Chrome and Microsoft Edge.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
@@ -72,7 +72,12 @@
         "https://job-boards.greenhouse.io/*",
         "https://*.greenhouse.io/*"
       ],
-      "js": ["apply-assist/greenhouse.apply.js"],
+      "js": [
+        "apply-assist/adapter-base.js",
+        "apply-assist/panel.js",
+        "apply-assist/greenhouse.adapter.js",
+        "apply-assist/greenhouse.apply.js"
+      ],
       "css": ["apply-assist/panel.css"],
       "run_at": "document_idle"
     }

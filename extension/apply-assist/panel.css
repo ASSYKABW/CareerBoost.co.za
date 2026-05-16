@@ -1,6 +1,197 @@
-/* Apply Assist floating-panel styles (Phase 2b will populate).
+/* Apply Assist — floating panel + field-highlight styles (Phase 2b).
  *
- * This file exists in Phase 2a so the manifest's content_scripts entry
- * for the Greenhouse apply matcher can reference a CSS asset that
- * actually loads (Chrome warns when listed CSS files are absent). The
- * adapter + panel UI land in Phase 2b. */
+ * Injected via the manifest's content_scripts entry for greenhouse.io
+ * apply pages. All selectors are namespaced under .cbaa- so they
+ * can't collide with the host page's CSS, and we use high-specificity
+ * resets where Greenhouse's stylesheet is opinionated. */
+
+/* --------- floating panel --------- */
+
+#cb-apply-assist-panel.cbaa-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  z-index: 2147483600;
+  background: #0d1326;
+  color: #e8eefc;
+  border: 1px solid rgba(34, 227, 255, 0.32);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42), 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+#cb-apply-assist-panel.cbaa-panel--hidden {
+  transform: translateY(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+#cb-apply-assist-panel.cbaa-panel--collapsed {
+  width: auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+#cb-apply-assist-panel .cbaa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(34, 227, 255, 0.06);
+}
+#cb-apply-assist-panel .cbaa-head-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+#cb-apply-assist-panel .cbaa-head-title strong {
+  display: block;
+  font-size: 13px;
+  color: #f8fbff;
+}
+#cb-apply-assist-panel .cbaa-head-title small {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+}
+#cb-apply-assist-panel .cbaa-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22e3ff;
+  box-shadow: 0 0 0 4px rgba(34, 227, 255, 0.16);
+  display: inline-block;
+}
+#cb-apply-assist-panel .cbaa-iconbtn {
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 1;
+}
+#cb-apply-assist-panel .cbaa-iconbtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fbff;
+}
+
+#cb-apply-assist-panel .cbaa-body {
+  padding: 12px;
+}
+#cb-apply-assist-panel .cbaa-msg {
+  margin: 0 0 10px;
+  color: #cbd5e1;
+}
+#cb-apply-assist-panel .cbaa-msg--ok      { color: #b8efc8; }
+#cb-apply-assist-panel .cbaa-msg--warn    { color: #fbbf24; }
+#cb-apply-assist-panel .cbaa-msg--error   { color: #fda4af; }
+#cb-apply-assist-panel .cbaa-msg--cyan    { color: #67eaff; }
+
+#cb-apply-assist-panel .cbaa-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin: 0 0 10px;
+}
+#cb-apply-assist-panel .cbaa-tile {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#cb-apply-assist-panel .cbaa-tile strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fbff;
+}
+#cb-apply-assist-panel .cbaa-tile span {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+#cb-apply-assist-panel .cbaa-tile--ok        { border-color: rgba(74,222,128,0.32); background: rgba(74,222,128,0.08); }
+#cb-apply-assist-panel .cbaa-tile--warn      { border-color: rgba(251,191,36,0.32); background: rgba(251,191,36,0.08); }
+#cb-apply-assist-panel .cbaa-tile--screening { border-color: rgba(251,191,36,0.32); background: rgba(251,191,36,0.08); }
+
+#cb-apply-assist-panel .cbaa-hint {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.24);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #f5d987;
+}
+#cb-apply-assist-panel .cbaa-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#cb-apply-assist-panel .cbaa-btn {
+  appearance: none;
+  border: 1px solid rgba(34, 227, 255, 0.4);
+  background: linear-gradient(135deg, rgba(34,227,255,0.18), rgba(99,102,241,0.18));
+  color: #f8fbff;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#cb-apply-assist-panel .cbaa-btn:hover { background: linear-gradient(135deg, rgba(34,227,255,0.32), rgba(99,102,241,0.32)); }
+#cb-apply-assist-panel .cbaa-btn--ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+#cb-apply-assist-panel .cbaa-finefoot {
+  margin: 0;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+/* Peek bar shown when the panel is hidden — single click brings the full panel back. */
+#cb-apply-assist-panel .cbaa-peek {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #f8fbff;
+  background: #0d1326;
+  border: 1px solid rgba(34, 227, 255, 0.32);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+#cb-apply-assist-panel .cbaa-peek:hover { background: #131a36; }
+
+/* --------- field highlights on the host page ---------
+ *
+ * High specificity (attribute selector) so Greenhouse's stylesheet
+ * can't override us. Important on box-shadow because the page often
+ * applies its own focus rings. */
+
+[class*="cbaa-hl-"] {
+  position: relative;
+}
+.cbaa-hl-ok       { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45) inset, 0 0 0 1px rgba(74, 222, 128, 0.65) !important; border-radius: 6px; }
+.cbaa-hl-warn     { box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.45) inset !important; border-radius: 6px; }
+.cbaa-hl-error    { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55) inset !important; border-radius: 6px; }
+.cbaa-hl-screening{ box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55) inset, 0 0 0 1px rgba(251, 191, 36, 0.75) !important; border-radius: 6px; }

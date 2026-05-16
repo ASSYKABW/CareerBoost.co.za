@@ -1,45 +1,32 @@
-// Apply Assist — Greenhouse content script (Phase 2a stub).
+// Apply Assist — Greenhouse content script orchestrator (Phase 2b).
 //
-// Phase 2a scope:
-//   - Detect when we're on a Greenhouse application form.
-//   - Ask background.js for an apply intent matching this URL.
-//   - Log the result so we can verify the bridge end-to-end.
-//
-// Phase 2b will replace this stub with the full adapter (field detection,
-// fill logic, file upload, floating panel UI). Until then the script is
-// observably inert — no DOM changes, no network calls outside the
-// extension boundary, no risk of breaking the existing capture flow on
-// Greenhouse job-listing pages.
+// Detects an apply form, fetches the matching intent from background, then
+// hands the intent off to the Greenhouse adapter and mounts the floating
+// panel to surface progress. No DOM changes happen until an intent is
+// confirmed for this URL — the script stays silent on every other
+// greenhouse.io page (job listings continue to use capture-base.js).
 
 (function () {
-  // Apply pages on Greenhouse follow predictable shapes:
-  //   - boards.greenhouse.io/{company}/jobs/{id}/apply        (older)
-  //   - job-boards.greenhouse.io/{company}/jobs/{id}          (newer; form embedded)
-  //   - {company}.greenhouse.io/jobs/{id}/apply               (legacy custom)
-  // The strongest signal across all three is an <form id="application_form">
-  // or the presence of the file-upload row used by every Greenhouse form.
   function looksLikeApplyForm() {
     if (document.getElementById("application_form")) return true;
     if (document.querySelector("form[action*='applications']")) return true;
-    if (document.querySelector("input[type='file'][name*='resume']")) return true;
-    // The newer embedded form has divs with these data attributes:
-    if (document.querySelector("[data-test='apply-now-button']")) return false; // unopened apply CTA, not the form itself
+    if (document.querySelector("input[type='file'][name*='resume' i]")) return true;
+    if (document.querySelector("input[type='file'][id*='resume' i]")) return true;
     return false;
   }
 
   function log(label, data) {
-    // Tag every log so it's grep-friendly when users send debug reports.
     if (data !== undefined) console.log("[CareerBoost Apply Assist] " + label, data);
     else console.log("[CareerBoost Apply Assist] " + label);
   }
 
-  async function lookupIntent() {
+  function lookupIntent(consume) {
     return new Promise(function (resolve) {
       try {
         chrome.runtime.sendMessage({
           type: "CB_APPLY_INTENT_LOOKUP",
           applyUrl: location.href,
-          consume: false
+          consume: !!consume
         }, function (response) {
           if (chrome.runtime.lastError) {
             log("intent lookup error", chrome.runtime.lastError.message);
@@ -55,16 +42,45 @@
     });
   }
 
+  async function runFill(intent) {
+    const panel = window.__CBApplyAssistPanel;
+    const greenhouse = window.__CBApplyAssistGreenhouse;
+    if (!greenhouse || typeof greenhouse.fill !== "function") {
+      log("Greenhouse adapter not loaded");
+      if (panel) panel.setKind("error", { error: "Greenhouse adapter not loaded." });
+      return;
+    }
+
+    if (panel) panel.show({ kind: "filling", intent: intent, stats: { filled: 0, skipped: 0, errors: 0, screening: 0 } });
+
+    let stats;
+    try {
+      stats = await greenhouse.fill(intent, {
+        onProgress: function (s) { if (panel) panel.updateStats(s); }
+      });
+    } catch (e) {
+      log("adapter threw", e && e.message);
+      if (panel) panel.setKind("error", { error: (e && e.message) || "Adapter threw." });
+      return;
+    }
+
+    log("fill complete", stats);
+    if (panel) panel.setKind("filled", { stats: stats });
+  }
+
   async function bootstrap() {
     if (!looksLikeApplyForm()) {
-      // Capture-flow content script handles the job listing case; we
-      // stay quiet to avoid double-injection.
+      // Quiet: this is a job listing page or some other greenhouse URL.
       return;
     }
     log("Greenhouse apply form detected: " + location.href);
-    const intent = await lookupIntent();
+
+    const panel = window.__CBApplyAssistPanel;
+    const intent = await lookupIntent(false);
+
     if (!intent) {
-      log("No active apply intent found for this URL. (Did you click 'Apply Assist' from CareerBoost?)");
+      log("No active apply intent for this URL.");
+      if (panel) panel.show({ kind: "no-intent" });
       return;
     }
     log("Loaded apply intent", {
@@ -75,11 +91,20 @@
       createdAt: intent.createdAt,
       expiresAt: intent.expiresAt
     });
-    // Phase 2b: hand `intent` to the Greenhouse adapter + render the panel.
+
+    await runFill(intent);
+
+    // Wire the panel's Re-fill button so the user can re-trigger the
+    // adapter without re-loading the page. Re-fill consumes the cached
+    // intent the first time only; subsequent re-fills reuse what's still
+    // in memory (we keep `intent` in this closure).
+    if (panel && typeof panel.onRefill === "function") {
+      panel.onRefill(function () { runFill(intent); });
+    }
   }
 
-  // Apply forms sometimes hydrate after document_idle (especially the newer
-  // embedded ones). Retry once a second for ~5s before giving up.
+  // Greenhouse forms occasionally hydrate after document_idle (especially
+  // the newer embedded variant). Poll for up to ~5s before giving up.
   let tries = 0;
   function poll() {
     if (looksLikeApplyForm()) {
