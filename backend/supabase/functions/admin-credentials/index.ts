@@ -143,17 +143,216 @@ function serviceRollup(items: SecretSpec[]): Record<string, { set: boolean; miss
   return out;
 }
 
+// -----------------------------------------------------------------------
+// Health checks — actually ping each provider with the configured key.
+//
+// "Set" only tells us the env var is non-empty. That doesn't mean the
+// key works: it could be revoked, the account could be out of credit,
+// the provider could be down. Each checker hits the cheapest "is this
+// usable?" endpoint the provider offers (usually GET /models or an
+// equivalent metadata call) with a tight 5s timeout.
+//
+// Returns:
+//   ok                — auth succeeded, provider is reachable
+//   unauthorized      — 401/403, key revoked or wrong
+//   rate_limited      — 429, key works but throttled (still ok-ish)
+//   quota_exhausted   — billing dead (best-effort detection from error body)
+//   network_error     — fetch threw / timeout
+//   not_configured    — env var not set
+//   not_supported     — service has no programmatic health check
+// -----------------------------------------------------------------------
+
+type HealthStatus =
+  | "ok"
+  | "unauthorized"
+  | "rate_limited"
+  | "quota_exhausted"
+  | "network_error"
+  | "not_configured"
+  | "not_supported";
+
+interface CheckResult {
+  ok: boolean;
+  status: HealthStatus;
+  message: string;
+  latencyMs?: number;
+  httpStatus?: number;
+}
+
+const CHECK_TIMEOUT_MS = 5_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function interpretHttp(status: number, bodySnippet: string): { ok: boolean; status: HealthStatus; message: string } {
+  if (status >= 200 && status < 300) return { ok: true, status: "ok", message: "Reachable." };
+  if (status === 401 || status === 403) return { ok: false, status: "unauthorized", message: "Auth failed (key invalid or revoked)." };
+  if (status === 429) return { ok: false, status: "rate_limited", message: "Rate limited — key valid but throttled." };
+  if (status === 402) return { ok: false, status: "quota_exhausted", message: "Billing required — no credit." };
+  const isQuota = /quota|billing|credit|insufficient|exceeded/i.test(bodySnippet);
+  if (status >= 400 && status < 500 && isQuota) return { ok: false, status: "quota_exhausted", message: "Provider reports quota / billing issue." };
+  return { ok: false, status: "network_error", message: "HTTP " + status + (bodySnippet ? " — " + bodySnippet.slice(0, 80) : "") };
+}
+
+async function checkAnthropic(): Promise<CheckResult> {
+  const key = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!key) return { ok: false, status: "not_configured", message: "Key not set." };
+  const started = Date.now();
+  try {
+    const res = await fetchWithTimeout("https://api.anthropic.com/v1/models?limit=1", {
+      method: "GET",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+    });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+async function checkOpenAI(): Promise<CheckResult> {
+  const key = Deno.env.get("OPENAI_API_KEY");
+  if (!key) return { ok: false, status: "not_configured", message: "Key not set." };
+  const started = Date.now();
+  try {
+    const res = await fetchWithTimeout("https://api.openai.com/v1/models?limit=1", {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + key },
+    });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+async function checkGemini(): Promise<CheckResult> {
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) return { ok: false, status: "not_configured", message: "Key not set." };
+  const started = Date.now();
+  try {
+    const url = "https://generativelanguage.googleapis.com/v1beta/models?key=" + encodeURIComponent(key) + "&pageSize=1";
+    const res = await fetchWithTimeout(url, { method: "GET" });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+async function checkGroq(): Promise<CheckResult> {
+  const key = Deno.env.get("GROQ_API_KEY");
+  if (!key) return { ok: false, status: "not_configured", message: "Key not set." };
+  const started = Date.now();
+  try {
+    const res = await fetchWithTimeout("https://api.groq.com/openai/v1/models", {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + key },
+    });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+async function checkAdzuna(): Promise<CheckResult> {
+  const id = Deno.env.get("ADZUNA_APP_ID");
+  const sec = Deno.env.get("ADZUNA_APP_KEY");
+  if (!id || !sec) return { ok: false, status: "not_configured", message: "App ID and Key both required." };
+  const started = Date.now();
+  try {
+    const url = "https://api.adzuna.com/v1/api/jobs/gb/search/1?app_id=" + encodeURIComponent(id) +
+                "&app_key=" + encodeURIComponent(sec) + "&results_per_page=1";
+    const res = await fetchWithTimeout(url, { method: "GET" });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+async function checkGoogleCSE(): Promise<CheckResult> {
+  const key = Deno.env.get("GOOGLE_CSE_API_KEY");
+  const cx = Deno.env.get("GOOGLE_CSE_CX");
+  if (!key || !cx) return { ok: false, status: "not_configured", message: "API key and engine ID both required." };
+  const started = Date.now();
+  try {
+    const url = "https://customsearch.googleapis.com/customsearch/v1?key=" + encodeURIComponent(key) +
+                "&cx=" + encodeURIComponent(cx) + "&q=test&num=1";
+    const res = await fetchWithTimeout(url, { method: "GET" });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+async function checkStripe(): Promise<CheckResult> {
+  const key = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!key) return { ok: false, status: "not_configured", message: "Key not set." };
+  const started = Date.now();
+  try {
+    const res = await fetchWithTimeout("https://api.stripe.com/v1/account", {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + key },
+    });
+    const body = await res.text().catch(() => "");
+    return { ...interpretHttp(res.status, body), latencyMs: Date.now() - started, httpStatus: res.status };
+  } catch (e) {
+    return { ok: false, status: "network_error", message: String((e as Error).message).slice(0, 120) };
+  }
+}
+
+// Map service label (matches CATALOG[].service) → checker. Services without
+// an entry get not_supported status (Supabase infra falls in this bucket —
+// the function is already authenticated via Supabase, so trivially "ok").
+const CHECKERS: Record<string, () => Promise<CheckResult>> = {
+  "Anthropic (Claude)": checkAnthropic,
+  "OpenAI": checkOpenAI,
+  "Google Gemini": checkGemini,
+  "Groq": checkGroq,
+  "Adzuna": checkAdzuna,
+  "Google Programmable Search": checkGoogleCSE,
+  "Stripe": checkStripe,
+};
+
+async function runCheck(service: string): Promise<CheckResult> {
+  const fn = CHECKERS[service];
+  if (!fn) return { ok: false, status: "not_supported", message: "No health check available for this service." };
+  return await fn();
+}
+
+interface RequestBody {
+  /** Optional: check one specific service. Omit to skip checks (status only). */
+  check?: string;
+  /** Optional: check all services in parallel (admin pressed "Test all"). */
+  checkAll?: boolean;
+}
+
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
   try {
-    // getAuthedAdmin validates the caller's JWT AND that their
-    // app_metadata.role is in ADMIN_ROLES. Non-admins get 403.
     await getAuthedAdmin(req);
   } catch (err) {
     return errorResponse(String((err as Error).message), 401);
+  }
+
+  let body: RequestBody = {};
+  try {
+    body = await req.json() as RequestBody;
+  } catch {
+    body = {};
   }
 
   const status = CATALOG.map((spec) => ({
@@ -166,12 +365,24 @@ Deno.serve(async (req) => {
     set: isSet(spec.name),
   }));
 
+  // Optional health check phase.
+  let checks: Record<string, CheckResult> | null = null;
+  if (body.check) {
+    checks = { [body.check]: await runCheck(body.check) };
+  } else if (body.checkAll === true) {
+    // Run all known checkers in parallel. Each has its own 5s timeout, so
+    // the whole batch caps out at ~5s wall time even if every provider hangs.
+    const services = Object.keys(CHECKERS);
+    const results = await Promise.all(services.map((s) => runCheck(s)));
+    checks = {};
+    services.forEach((s, i) => { checks![s] = results[i]; });
+  }
+
   return jsonResponse({
     ok: true,
     catalog: status,
     services: serviceRollup(CATALOG),
-    // Surfaced to the UI so the copy-paste command can be pre-filled.
-    // SUPABASE_URL host parsing → project ref (kddffkhwpbngiupfmcse.supabase.co → kddffkhwpbngiupfmcse).
+    checks: checks,
     projectRef: (function () {
       const url = Deno.env.get("SUPABASE_URL") || "";
       const m = url.match(/^https?:\/\/([a-z0-9]+)\.supabase\./i);
