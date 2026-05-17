@@ -629,7 +629,17 @@ export const prompts: Record<Skill, PromptSpec> = {
       ' "bullets": [{ "targetBulletId": string (the id from the input resume), ' +
       '"original": string, "rewrite": string, "rationale": string, ' +
       '"alternatives": string[] (2 additional rewrite options, each truthful), ' +
-      '"keywords": string[] (which JD keywords the rewrite surfaces) }],' +
+      '"keywords": string[] (which JD keywords the rewrite surfaces), ' +
+      // R2: per-option metadata so the UI can show meaningful labels +
+      // improvement chips instead of "Option A/B/C". Parallel array to
+      // [rewrite, ...alternatives] — same length and ordering.
+      '"optionMeta": [{ "label": string (2-4 word category like ' +
+      '"Action-first", "Metric-focused", "Recruiter-ready", "Tight & punchy"), ' +
+      '"summary": string (1 sentence explaining when to pick THIS option vs the others), ' +
+      '"improvements": string[] (2-3 short chip tags describing what THIS option ' +
+      'changes vs the original — e.g. "+3 JD keywords", "Removes filler", ' +
+      '"Active voice", "Quantified outcome", "Tighter (28 words)") }] ' +
+      '(EXACTLY the same length and ordering as [rewrite, ...alternatives]) }],' +
       ' "addSkills": [{ "skill": string, "group": "Languages"|"Frameworks"|' +
       '"Tools"|"Platforms"|"Other", "evidence": string (where in the resume ' +
       ' this skill is already implied, or empty if it\'s a gap the candidate ' +
@@ -648,7 +658,19 @@ export const prompts: Record<Skill, PromptSpec> = {
       "need a change, skip it. `rationale` should be 1-2 sentences and explain " +
       "why this rewrite is stronger and how it aligns to JD language. " +
       "Always return all three summary paragraphs (`summary` plus two " +
-      "`summaryAlternatives`) even if the JD is thin — infer from the resume + role title.",
+      "`summaryAlternatives`) even if the JD is thin — infer from the resume + role title. " +
+      // R2: structured per-option metadata
+      "For EVERY bullet you rewrite, populate `optionMeta` with one entry per " +
+      "option in the same order as [rewrite, ...alternatives] — same length. " +
+      "Each entry's `label` should describe HOW that option differs (not what " +
+      "it does generically): e.g. 'Action-first' when the verb leads, " +
+      "'Metric-focused' when a number anchors the line, 'Tight & punchy' when " +
+      "it's the shortest variant, 'Scope-led' when it foregrounds team/stakeholder " +
+      "scale, 'Recruiter-ready' when it surfaces the most ATS keywords. The " +
+      "three options for a single bullet MUST be materially different — not " +
+      "synonym swaps. `improvements` should be 2-3 concrete, scannable tags " +
+      "(use a leading + for additions like '+2 JD keywords', no leading + for " +
+      "qualitative changes like 'Active voice' or 'Removes filler').",
     userTemplate: (input) => {
       const resume = pick(input, ["resume", "resumeJson", "structured"]);
       const jd = pick(input, ["jd", "jobDescription", "jdAnalyzed", "jdStructured"]);
@@ -698,7 +720,16 @@ export const prompts: Record<Skill, PromptSpec> = {
       ' "issues": [{ "severity": "critical"|"major"|"minor", ' +
       '"section": "header"|"summary"|"experience"|"education"|"skills"|"projects"|"certifications"|"languages"|"overall", ' +
       '"message": string, "suggestion": string (required on every issue — non-empty actionable guidance, even when `target` is omitted), ' +
-      '"target": { "type": "bullet"|"field"|"section", "id": string, "replacement": string, "alternatives": string[] } }]' +
+      '"target": { "type": "bullet"|"field"|"section", "id": string, "replacement": string, "alternatives": string[], ' +
+      // R2: structured per-option metadata so the UI shows real labels +
+      // improvement chips instead of "Option A/B/C". Parallel to
+      // [replacement, ...alternatives] — same length, same order.
+      '"optionMeta": [{ "label": string (2-4 word category — "Action-first", ' +
+      '"Metric-focused", "Tight & punchy", "Recruiter-ready", "Scope-led"), ' +
+      '"summary": string (1 sentence on when to pick THIS option vs the others), ' +
+      '"improvements": string[] (2-3 short chip tags — "+2 keywords", ' +
+      '"Active voice", "Removes filler", "Quantified outcome", "Tighter (24 words)") }] ' +
+      '} }]' +
       " } " +
       "Generate 4-10 issues total, prioritizing critical > major > minor. " +
       "When the resume includes a non-empty summary, include at least one issue " +
@@ -711,10 +742,20 @@ export const prompts: Record<Skill, PromptSpec> = {
       "number exists in the original). Also provide `target.alternatives` " +
       "with EXACTLY 2 additional rewrite options for that same bullet. " +
       "Together, this gives 3 total suggestions per flagged bullet issue. " +
-      "Design them as: (1) concise, (2) balanced, (3) detailed. Keep them " +
-      "materially different in cadence and sentence construction, not just " +
-      "minor word swaps. Never append labels like '(option 2)' inside text. " +
-      "Each variant must be directly paste-ready resume content (not advice)." +
+      "The three MUST be materially different in cadence and sentence " +
+      "construction, not just minor word swaps. Each variant must be " +
+      "directly paste-ready resume content (not advice). Never append " +
+      "labels like '(option 2)' inside the text itself. " +
+      // R2: structured per-option metadata
+      "For every `target` you emit (bullet, field, or summary section), ALSO " +
+      "populate `target.optionMeta`: one entry per option in the same order " +
+      "as [replacement, ...alternatives] — same length. Each entry's " +
+      "`label` describes HOW that option differs (e.g. 'Action-first', " +
+      "'Metric-focused', 'Tight & punchy', 'Recruiter-ready', 'Scope-led'). " +
+      "`summary` is one sentence on when to pick THIS option. `improvements` " +
+      "is 2-3 concrete, scannable tags ('+1 metric', 'Active voice', " +
+      "'Removes filler', 'Tighter (24 words)' — use a leading + for additions " +
+      "and no prefix for qualitative changes)." +
       " Whenever you flag the `summary` section, include `target`: " +
       '{"type":"section","id":"summary","replacement": string (3-4 sentence paste-ready summary), ' +
       '"alternatives": string[] (EXACTLY 2 more full summaries, same facts, different cadence)} ' +

@@ -1660,22 +1660,25 @@ Built analytics dashboard used by 3 teams"></textarea>
         }
       }
       const replacements = canApplyDirect ? buildCritiqueRewriteOptions(issue) : [];
+      // R2: pull rich (text + meta) versions in parallel. The text list is
+      // the same as `replacements` above — we just attach optionMeta from
+      // issue.target when present so the renderer can show real labels.
+      // Reuses the outer-scope `target` (line ~1642) — re-deriving from
+      // it as a defensive {} so the destructure-like reads are safe.
+      const richTarget = target || {};
+      const richReplacements = canApplyDirect
+        ? getRewriteOptionsRich(richTarget.replacement, richTarget.alternatives, richTarget.optionMeta)
+        : [];
       const expanded = !!view.critiqueExpandedIds[toggleId];
       const shown = expanded ? replacements : replacements.slice(0, 1);
-      // R1: honest labels. We used to ship the suggestions as
-      // "Suggested · Concise / Balanced / Detailed", but the AI doesn't
-      // produce them in any particular order — the labels were a lie that
-      // implied a curated ranking. Until R2 wires real per-option metadata
-      // from the model (impact summary + confidence), we use neutral
-      // labels that promise nothing the data doesn't back up.
       const replacementHtml = shown.length
         ? shown.map(function (text, idx) {
             const labelIdx = expanded ? idx : 0;
-            const variantLabel = "Option " + String.fromCharCode(65 + labelIdx);
-            return '<div class="critique-bullet-after">' +
-              '<span class="critique-bullet-label">' + variantLabel + "</span>" +
-              '<p>' + st(text) + '</p>' +
-            "</div>";
+            // Walk the rich array by text match so labels stay aligned
+            // even if buildCritiqueRewriteOptions dedupes or reorders.
+            const richMatch = richReplacements.find(function (r) { return r.text === text; });
+            const meta = richMatch ? richMatch.meta : null;
+            return renderRewriteOptionCard(text, meta, String.fromCharCode(65 + labelIdx), st);
           }).join("")
         : "";
 
@@ -1815,6 +1818,65 @@ Built analytics dashboard used by 3 teams"></textarea>
       alternatives.forEach(pushIf);
     }
     return out.slice(0, 3);
+  }
+
+  // R2: rich variant of getRewriteOptions. Returns array of
+  // { text, meta? } where meta = { label, summary, improvements[] }
+  // when the AI emitted optionMeta. Falls back gracefully when meta is
+  // missing (R1 "Option A/B/C" labels handled by the renderer).
+  //
+  // Important: we re-derive index by matching the option text back to the
+  // raw [primary, ...alternatives] list, because getRewriteOptions filters
+  // empties / instruction-like strings / dupes. Without this remapping the
+  // meta would silently misalign when the AI emits a borderline-filtered
+  // string in the middle of the list.
+  function getRewriteOptionsRich(primary, alternatives, optionMeta) {
+    const texts = getRewriteOptions(primary, alternatives);
+    const rawList = [primary].concat(Array.isArray(alternatives) ? alternatives : []);
+    const metaList = Array.isArray(optionMeta) ? optionMeta : [];
+    return texts.map(function (text) {
+      const idx = rawList.findIndex(function (raw) {
+        return String(raw || "").trim() === text;
+      });
+      const meta = idx >= 0 && metaList[idx] && typeof metaList[idx] === "object" ? metaList[idx] : null;
+      return { text: text, meta: meta };
+    });
+  }
+
+  // Renders one rewrite option as a card. When `meta` is present (R2 AI
+  // emitted optionMeta), the card shows the AI's label + improvement chips
+  // + a one-line summary. When absent (legacy / cached results), it falls
+  // back to "Option A/B/C" with no extras.
+  function renderRewriteOptionCard(text, meta, indexLetter, st) {
+    const fallbackLabel = "Option " + indexLetter;
+    const label = meta && typeof meta.label === "string" && meta.label.trim()
+      ? meta.label.trim()
+      : fallbackLabel;
+    const improvements = meta && Array.isArray(meta.improvements) ? meta.improvements : [];
+    const improvementsHtml = improvements.length
+      ? '<div class="rewrite-improvements">' +
+        improvements.slice(0, 4).map(function (tag) {
+          const t = String(tag || "").trim();
+          if (!t) return "";
+          const isAddition = /^\+/.test(t);
+          return '<span class="rewrite-chip ' + (isAddition ? "rewrite-chip--add" : "rewrite-chip--qual") + '">' + st(t) + '</span>';
+        }).filter(Boolean).join("") +
+        '</div>'
+      : "";
+    const summary = meta && typeof meta.summary === "string" && meta.summary.trim();
+    const summaryHtml = summary
+      ? '<p class="rewrite-why"><i class="fa-solid fa-lightbulb"></i> ' + st(summary) + '</p>'
+      : "";
+    return (
+      '<div class="critique-bullet-after">' +
+        '<div class="rewrite-head">' +
+          '<span class="critique-bullet-label">' + st(label) + '</span>' +
+          improvementsHtml +
+        '</div>' +
+        '<p>' + st(text) + '</p>' +
+        summaryHtml +
+      '</div>'
+    );
   }
 
   function normalizeSentence(text) {
@@ -2254,6 +2316,10 @@ Built analytics dashboard used by 3 teams"></textarea>
     const applied = !!view.tailorAppliedIds[b.targetBulletId];
     const kw = (b.keywords || []).map(function (k) { return '<span class="chip subtle">' + st(k) + "</span>"; }).join(" ");
     const rewrites = getRewriteOptions(b.rewrite, b.alternatives);
+    // R2: rich variants carrying optionMeta. The text list is still
+    // `rewrites` (used by the Apply buttons below); `richRewrites` is
+    // used by the card renderer to show labels + improvement chips.
+    const richRewrites = getRewriteOptionsRich(b.rewrite, b.alternatives, b.optionMeta);
     return `
       <li class="critique-issue sev-minor tailor-bullet">
         <div class="critique-issue-head">
@@ -2265,13 +2331,9 @@ Built analytics dashboard used by 3 teams"></textarea>
           <p>${st(current)}</p>
         </div>
         ${rewrites.map(function (text, idx) {
-          // R1: "Option A / B / C" matches the critique panel's labels
-          // and stops implying we ranked them — we don't, until R2.
-          const optLabel = "Option " + String.fromCharCode(65 + idx);
-          return '<div class="critique-bullet-after">' +
-            '<span class="critique-bullet-label">' + optLabel + '</span>' +
-            '<p>' + st(text) + "</p>" +
-          "</div>";
+          const richMatch = richRewrites.find(function (r) { return r.text === text; });
+          const meta = richMatch ? richMatch.meta : null;
+          return renderRewriteOptionCard(text, meta, String.fromCharCode(65 + idx), st);
         }).join("")}
         ${b.rationale ? '<p class="critique-suggestion"><i class="fa-solid fa-lightbulb"></i> ' + st(b.rationale) + "</p>" : ""}
         <div class="critique-issue-actions">

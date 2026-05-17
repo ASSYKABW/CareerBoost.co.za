@@ -6963,6 +6963,57 @@ button.topbar-search-button,
 }
 .critique-bullet-before p { color: var(--color-text-dim, rgba(255, 255, 255, 0.7)); }
 
+/* R2: per-option metadata header + improvement chips + summary line.
+ * Rendered inside .critique-bullet-after when the AI emits optionMeta. */
+.rewrite-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.rewrite-improvements {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rewrite-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  line-height: 1.2;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.rewrite-chip--add {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.36);
+  background: rgba(74, 222, 128, 0.08);
+}
+.rewrite-chip--qual {
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.32);
+  background: rgba(148, 163, 184, 0.06);
+}
+.rewrite-why {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.6));
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.rewrite-why i {
+  color: #fbbf24;
+  font-size: 11px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
 .critique-issue-actions {
   display: flex;
   gap: 6px;
