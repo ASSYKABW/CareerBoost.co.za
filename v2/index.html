@@ -123,6 +123,9 @@
        card and a friendly recovery path if the link expired. -->
   <script src="./src/js/auth/auth.confirmed.js"></script>
   <script src="./src/js/marketing/welcome.route.js"></script>
+  <!-- Legal pages (public routes — readable without sign-in) -->
+  <script src="./src/js/marketing/privacy.route.js?v=20260517-legal"></script>
+  <script src="./src/js/marketing/terms.route.js?v=20260517-legal"></script>
   <script src="./src/js/modules/onboarding/onboarding.route.js"></script>
   <script src="./src/js/modules/dashboard/dashboard.route.js"></script>
   <script src="./src/js/modules/job-search/job-search.shared.js"></script>
@@ -164,7 +167,7 @@
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->
   <script src="./src/js/modules/settings/settings.billing.js"></script>
-  <script src="./src/js/modules/settings/settings.route.js?v=20260516-aadefer"></script>
+  <script src="./src/js/modules/settings/settings.route.js?v=20260517-deleteacct"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];

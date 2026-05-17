@@ -5,7 +5,7 @@
   // SDK parses the hash a moment later). Without it here, the click
   // would silently redirect to #/welcome and never render the success
   // card.
-  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed"];
+  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed", "privacy", "terms"];
   // Routes rendered fullscreen (no sidebar/topbar) for authed users.
   // "auth/confirmed" stays fullscreen even after the SDK establishes a
   // session mid-render, so the user sees the polished "You're in!" card

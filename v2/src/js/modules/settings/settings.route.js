@@ -2061,6 +2061,30 @@
             </div>
           </div>
         </section>` : ""}
+
+            ${showData && (window.CBV2.auth && window.CBV2.auth.isAuthenticated && window.CBV2.auth.isAuthenticated()) ? `<section class="card panel-lg settings-section">
+          <div class="panel-head">
+            <h2>Delete account</h2>
+            <span class="chip warning">Permanent</span>
+          </div>
+          <p class="page-subtitle">
+            Permanently removes your CareerBoost account and every piece of data tied to it &mdash;
+            profile, pipeline, applications, resumes, cover letters, interview history, AI usage records, and your sign-in itself.
+          </p>
+          <p class="ai-meta">
+            <i class="fa-solid fa-triangle-exclamation"></i> This cannot be undone.
+            Consider <a href="#" id="pre-delete-export">exporting your data</a> first if you want a copy.
+            See the <a href="#/privacy">Privacy Policy</a> for what's deleted and what (if anything) is retained for audit compliance.
+          </p>
+          <div class="settings-danger-zone">
+            <p class="ai-meta"><strong>Danger zone</strong> &middot; You'll be asked to type your email to confirm.</p>
+            <div class="form-actions">
+              <button class="btn-ghost" id="delete-account" type="button" style="color:#fda4af;border-color:rgba(239,68,68,0.4);">
+                <i class="fa-solid fa-trash-can"></i> Delete my account permanently
+              </button>
+            </div>
+          </div>
+        </section>` : ""}
           </section>
         </section>
       </section>
@@ -2474,6 +2498,108 @@
           viewState.message = "Cloud reset failed: " + ((err && err.message) || "unknown error");
           if (window.CBV2.toast) window.CBV2.toast.error("Cloud reset failed.");
           window.CBV2.renderCurrentRoute();
+        }
+      });
+    }
+
+    const preDeleteExport = document.getElementById("pre-delete-export");
+    if (preDeleteExport) {
+      preDeleteExport.addEventListener("click", function (e) {
+        e.preventDefault();
+        const btn = document.getElementById("export-all-data");
+        if (btn) btn.click();
+      });
+    }
+
+    const deleteAccountBtn = document.getElementById("delete-account");
+    if (deleteAccountBtn) {
+      deleteAccountBtn.addEventListener("click", async function () {
+        const user = (window.CBV2.auth && window.CBV2.auth.getUser && window.CBV2.auth.getUser()) || null;
+        const email = (user && user.email) || "";
+        if (!email) {
+          if (window.CBV2.toast) window.CBV2.toast.error("Can't read your account email. Please sign in again.");
+          return;
+        }
+        // Two-stage confirm: explicit prose + then type-to-confirm with
+        // the user's own email so accidental clicks can't slip through.
+        const modal = window.CBV2 && window.CBV2.modal;
+        let proceed = false;
+        if (modal && typeof modal.confirm === "function") {
+          proceed = await modal.confirm({
+            title: "Permanently delete this account?",
+            body:
+              "This removes your profile, pipeline, applications, resumes, cover letters, " +
+              "interview history, AI usage records, and your sign-in itself. " +
+              "Your data leaves our database within seconds. This cannot be undone.",
+            confirmLabel: "I understand, continue",
+            tone: "danger"
+          });
+        } else {
+          proceed = window.confirm("Permanently delete your account? This cannot be undone.");
+        }
+        if (!proceed) return;
+
+        let typed;
+        if (modal && typeof modal.prompt === "function") {
+          typed = await modal.prompt({
+            title: "Type your email to confirm",
+            body: "Type " + email + " exactly to permanently delete this account.",
+            placeholder: email,
+            required: true
+          });
+        } else {
+          typed = window.prompt("Type your email (" + email + ") to confirm permanent deletion:");
+        }
+        if (typed === null) return;
+        if (String(typed || "").trim().toLowerCase() !== String(email).trim().toLowerCase()) {
+          if (window.CBV2.toast) window.CBV2.toast.error("Email didn't match. Account NOT deleted.");
+          return;
+        }
+
+        // Disable the button to prevent double-fire while the network call
+        // is in flight; the rerender after redirect will tear it down.
+        deleteAccountBtn.disabled = true;
+        deleteAccountBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+
+        try {
+          const auth = window.CBV2.auth;
+          const client = auth && typeof auth.getClient === "function" ? auth.getClient() : null;
+          let response;
+          if (client && client.functions && typeof client.functions.invoke === "function") {
+            const invoked = await client.functions.invoke("delete-account", { body: {} });
+            if (invoked.error) throw invoked.error;
+            response = invoked.data || {};
+          } else {
+            const token = await auth.getAccessToken();
+            const url = window.CBV2.config.getFunctionsUrl() + "/delete-account";
+            const resp = await fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Bearer " + token,
+                apikey: window.CBV2.config.getSupabaseAnon()
+              },
+              body: "{}"
+            });
+            response = await resp.json();
+            if (!resp.ok || (response && response.ok === false && !response.authDeleted)) {
+              throw new Error((response && response.error) || ("HTTP " + resp.status));
+            }
+          }
+
+          // Best-effort signout (the auth row is gone server-side; this
+          // just clears local session state) then redirect to the
+          // landing page with a one-time confirmation flag.
+          try { await window.CBV2.auth.signOut(); } catch (e) { /* ignore */ }
+          if (window.CBV2.toast) window.CBV2.toast.success("Account deleted.");
+          window.location.hash = "#/welcome";
+          // Hard reload so any in-memory user state across modules is wiped.
+          setTimeout(function () { window.location.reload(); }, 400);
+        } catch (err) {
+          deleteAccountBtn.disabled = false;
+          deleteAccountBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Delete my account permanently';
+          const msg = (err && err.message) || "Account deletion failed.";
+          if (window.CBV2.toast) window.CBV2.toast.error("Couldn't delete account: " + msg);
         }
       });
     }

@@ -18,7 +18,15 @@
       // Supabase Dashboard → Authentication → URL Configuration →
       // Additional Redirect URLs.
       // Examples:  "https://careerboost.app"  |  "https://www.careerboost.app"
-      siteUrl: "https://www.careerboost.app",
+      //
+      // CURRENTLY EMPTY: the production domain isn't connected yet. With
+      // siteUrl blank, buildRedirect() in auth.service.js falls back to
+      // window.location.origin + pathname so OAuth + email confirmation
+      // round-trip cleanly on localhost / preview deploys / any host
+      // you're currently testing from. Set this to the live https URL
+      // ONCE the domain is connected AND the URL is added to Supabase
+      // Auth → URL Configuration → Additional Redirect URLs.
+      siteUrl: "",
       // Force local-only mode even if supabase keys are set (useful for demos)
       forceLocal: false,
       // Admin console access is granted from Supabase Auth app_metadata roles.

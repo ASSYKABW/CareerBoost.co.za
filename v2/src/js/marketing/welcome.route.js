@@ -93,8 +93,8 @@
       links: [
         { label: "About",          href: "#" },
         { label: "Contact",        href: "mailto:hello@careerboost.app" },
-        { label: "Privacy",        href: "#" },
-        { label: "Terms",          href: "#" },
+        { label: "Privacy",        href: "#/privacy" },
+        { label: "Terms",          href: "#/terms" },
       ]
     }
   ];
@@ -489,9 +489,9 @@
             '<div class="lp-footer-bar">' +
               '<p>&copy; ' + new Date().getFullYear() + ' CareerBoost. All rights reserved.</p>' +
               '<div class="lp-footer-legal">' +
-                '<a href="#">Privacy</a>' +
-                '<a href="#">Terms</a>' +
-                '<a href="#">Cookies</a>' +
+                '<a href="#/privacy">Privacy</a>' +
+                '<a href="#/terms">Terms</a>' +
+                '<a href="#/privacy">Cookies</a>' +
                 '<a href="#faq">FAQ</a>' +
               '</div>' +
             '</div>' +

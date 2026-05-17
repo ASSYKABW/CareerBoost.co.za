@@ -137,7 +137,7 @@
             renderFormBody() +
           "</form>" +
 
-          '<p class="auth-legal">By continuing you agree to the terms & privacy policy.</p>' +
+          '<p class="auth-legal">By continuing you agree to the <a href="#/terms">terms</a> &amp; <a href="#/privacy">privacy policy</a>.</p>' +
         "</div>" +
       "</section>"
     );
