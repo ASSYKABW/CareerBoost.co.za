@@ -19,14 +19,14 @@
       // Additional Redirect URLs.
       // Examples:  "https://careerboost.app"  |  "https://www.careerboost.app"
       //
-      // CURRENTLY EMPTY: the production domain isn't connected yet. With
-      // siteUrl blank, buildRedirect() in auth.service.js falls back to
-      // window.location.origin + pathname so OAuth + email confirmation
-      // round-trip cleanly on localhost / preview deploys / any host
-      // you're currently testing from. Set this to the live https URL
-      // ONCE the domain is connected AND the URL is added to Supabase
-      // Auth → URL Configuration → Additional Redirect URLs.
-      siteUrl: "",
+      // Set to the live domain bought on GoDaddy. Both apex
+      // (careerboost.co.za) and www subdomain will be served by Vercel;
+      // we canonicalize on the apex because it's shorter and the user
+      // bought it directly that way. This URL MUST also be present in
+      // Supabase Dashboard → Authentication → URL Configuration →
+      // Additional Redirect URLs so OAuth + email-confirmation links
+      // can land back here.
+      siteUrl: "https://careerboost.co.za",
       // Force local-only mode even if supabase keys are set (useful for demos)
       forceLocal: false,
       // Admin console access is granted from Supabase Auth app_metadata roles.
