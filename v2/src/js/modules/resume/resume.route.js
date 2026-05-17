@@ -57,6 +57,14 @@
     // a time. null when none. Click chip → set; click outside / Apply /
     // Dismiss → null.
     bulletPopoverOpenId: null,
+    // R4: track-changes preview. When set, the matching bullet renders
+    // an inline before/after view (struck old + new highlighted) with
+    // explicit Accept / Cancel buttons. Lives in view, not in the
+    // resume document — preview never mutates the actual bullet text
+    // until the user clicks Accept.
+    //   { bulletId, text, source: "tailor"|"critique", optionIndex,
+    //     issueKey?, optionLabel? }
+    preview: null,
     // Phase 4 — Export dialog
     exportOpen: false,
     exportTemplate: "classic",
@@ -733,13 +741,12 @@ Built analytics dashboard used by 3 teams"></textarea>
   function renderExperienceSection(r) {
     const items = (r.experience || []).map(function (e, i) {
       const bullets = (e.bullets || []).map(function (b) {
+        const isPreviewing = !!(view.preview && view.preview.bulletId === b.id);
+        const rowCls = isPreviewing ? "bullet-row is-previewing" : "bullet-row";
         return `
-          <li class="bullet-row" data-bullet-id="${st(b.id)}">
+          <li class="${rowCls}" data-bullet-id="${st(b.id)}">
             <i class="fa-solid fa-circle-dot bullet-dot"></i>
-            <textarea rows="2" data-bullet-text data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" placeholder="• Shipped X that lifted Y by Z%...">${st(b.text)}</textarea>
-            <button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" aria-label="Strengthen bullet" title="Strengthen bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
-            <button type="button" class="icon-btn" data-bullet-save-asset data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" title="Save to Career Assets"><i class="fa-solid fa-bookmark"></i></button>
-            <button type="button" class="icon-btn danger" data-bullet-remove data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" aria-label="Remove bullet"><i class="fa-solid fa-xmark"></i></button>
+            ${renderBulletInlineContent(b, e.id, "experience")}
             ${renderBulletAiAffordance(b.id)}
           </li>
         `;
@@ -863,13 +870,12 @@ Built analytics dashboard used by 3 teams"></textarea>
     }
     const items = r.projects.map(function (p, i) {
       const bullets = (p.bullets || []).map(function (b) {
+        const isPreviewing = !!(view.preview && view.preview.bulletId === b.id);
+        const rowCls = isPreviewing ? "bullet-row is-previewing" : "bullet-row";
         return `
-          <li class="bullet-row" data-bullet-id="${st(b.id)}">
+          <li class="${rowCls}" data-bullet-id="${st(b.id)}">
             <i class="fa-solid fa-circle-dot bullet-dot"></i>
-            <textarea rows="2" data-bullet-text data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects">${st(b.text)}</textarea>
-            <button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects" aria-label="Strengthen bullet" title="Strengthen bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
-            <button type="button" class="icon-btn" data-bullet-save-asset data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects" title="Save to Career Assets"><i class="fa-solid fa-bookmark"></i></button>
-            <button type="button" class="icon-btn danger" data-bullet-remove data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects" aria-label="Remove"><i class="fa-solid fa-xmark"></i></button>
+            ${renderBulletInlineContent(b, p.id, "projects")}
             ${renderBulletAiAffordance(b.id)}
           </li>
         `;
@@ -2183,6 +2189,32 @@ Built analytics dashboard used by 3 teams"></textarea>
     return topImprovement ? (countLabel + " · " + topImprovement) : countLabel;
   }
 
+  // R4: resolves the proposed rewrite text for a (bulletId, source,
+  // optionIndex, issueKey?) tuple. Returns "" when no match — caller
+  // skips activating the preview in that case. Resolution uses the same
+  // getRewriteOptions ordering the popover renders from, so optionIndex
+  // is consistent between Preview button and Accept callback.
+  function computePreviewText(bulletId, source, optionIndex, key) {
+    if (!bulletId) return "";
+    const idx = Math.max(0, Number(optionIndex) || 0);
+    if (source === "tailor") {
+      const tailor = getPendingTailorForBullet(bulletId);
+      if (!tailor) return "";
+      const opts = getRewriteOptions(tailor.rewrite, tailor.alternatives);
+      return opts[idx] || opts[0] || "";
+    }
+    if (source === "critique" && key) {
+      const issues = getPendingCritiqueIssuesForBullet(bulletId);
+      // issueKey() is the function defined at module scope; comparing its
+      // derived value to the caller's key string locates the right issue.
+      const issue = issues.find(function (i) { return issueKey(i) === key; });
+      if (!issue) return "";
+      const opts = buildCritiqueRewriteOptions(issue);
+      return opts[idx] || opts[0] || "";
+    }
+    return "";
+  }
+
   // Renders the inline chip (always visible when ≥1 pending suggestion)
   // plus the expanded popover when this bullet is the active one. Returns
   // an empty string when there's nothing pending so existing layout is
@@ -2221,12 +2253,26 @@ Built analytics dashboard used by 3 teams"></textarea>
       const optionsHtml = richRewrites.map(function (item, idx) {
         const letter = String.fromCharCode(65 + idx);
         const card = renderRewriteOptionCard(item.text, item.meta, letter, st);
-        const applyBtn =
-          '<button type="button" class="btn-primary btn-sm" data-apply-bullet' +
-          ' data-id="' + st(bulletId) + '" data-option-index="' + idx + '">' +
-          '<i class="fa-solid fa-wand-magic-sparkles"></i> Apply</button>';
-        return '<div class="bullet-ai-option">' + card +
-          '<div class="bullet-ai-option-actions">' + applyBtn + '</div></div>';
+        // R4: Preview-first flow. The button stages a preview in the bullet
+        // (struck old + new highlighted) and the user confirms with Accept
+        // there. The is-previewing class on the OPTION card makes it visually
+        // clear which one is currently staged when the popover stays open.
+        const isCurrentPreview = !!(view.preview &&
+          view.preview.bulletId === bulletId &&
+          view.preview.source === "tailor" &&
+          view.preview.optionIndex === idx);
+        const optionLabel = (item.meta && item.meta.label) ? item.meta.label : ("Option " + letter);
+        const previewBtn = isCurrentPreview
+          ? '<span class="chip cyan"><i class="fa-solid fa-eye"></i> Previewing</span>'
+          : '<button type="button" class="btn-secondary btn-sm" data-preview-bullet' +
+            ' data-bullet-id="' + st(bulletId) + '"' +
+            ' data-source="tailor"' +
+            ' data-option-index="' + idx + '"' +
+            ' data-option-label="' + st(optionLabel) + '">' +
+            '<i class="fa-solid fa-eye"></i> Preview</button>';
+        const wrapCls = isCurrentPreview ? 'bullet-ai-option is-previewing' : 'bullet-ai-option';
+        return '<div class="' + wrapCls + '">' + card +
+          '<div class="bullet-ai-option-actions">' + previewBtn + '</div></div>';
       }).join("");
       const rationale = tailor.rationale
         ? '<p class="critique-suggestion"><i class="fa-solid fa-lightbulb"></i> ' + st(tailor.rationale) + '</p>'
@@ -2252,12 +2298,24 @@ Built analytics dashboard used by 3 teams"></textarea>
       const optionsHtml = richReplacements.map(function (item, idx) {
         const letter = String.fromCharCode(65 + idx);
         const card = renderRewriteOptionCard(item.text, item.meta, letter, st);
-        const applyBtn =
-          '<button type="button" class="btn-primary btn-sm" data-critique-apply' +
-          ' data-issue-key="' + st(key) + '" data-option-index="' + idx + '">' +
-          '<i class="fa-solid fa-wand-magic-sparkles"></i> Apply</button>';
-        return '<div class="bullet-ai-option">' + card +
-          '<div class="bullet-ai-option-actions">' + applyBtn + '</div></div>';
+        const isCurrentPreview = !!(view.preview &&
+          view.preview.bulletId === bulletId &&
+          view.preview.source === "critique" &&
+          view.preview.issueKey === key &&
+          view.preview.optionIndex === idx);
+        const optionLabel = (item.meta && item.meta.label) ? item.meta.label : ("Option " + letter);
+        const previewBtn = isCurrentPreview
+          ? '<span class="chip cyan"><i class="fa-solid fa-eye"></i> Previewing</span>'
+          : '<button type="button" class="btn-secondary btn-sm" data-preview-bullet' +
+            ' data-bullet-id="' + st(bulletId) + '"' +
+            ' data-source="critique"' +
+            ' data-issue-key="' + st(key) + '"' +
+            ' data-option-index="' + idx + '"' +
+            ' data-option-label="' + st(optionLabel) + '">' +
+            '<i class="fa-solid fa-eye"></i> Preview</button>';
+        const wrapCls = isCurrentPreview ? 'bullet-ai-option is-previewing' : 'bullet-ai-option';
+        return '<div class="' + wrapCls + '">' + card +
+          '<div class="bullet-ai-option-actions">' + previewBtn + '</div></div>';
       }).join("");
       const sevTone = issue.severity === "critical" ? "warning"
         : (issue.severity === "major" ? "amber" : "subtle");
@@ -2286,6 +2344,71 @@ Built analytics dashboard used by 3 teams"></textarea>
         '</button>' +
         sections.join("") +
       '</div>'
+    );
+  }
+
+  // R4: returns the inline content for a bullet row — either the normal
+  // textarea + icon buttons, OR a track-changes preview view (struck
+  // original + highlighted new text + Accept/Cancel). The preview is
+  // session state (view.preview), never persisted; Accept commits via
+  // the existing apply paths, Cancel restores the textarea.
+  //
+  // Used by both renderExperienceSection and renderProjectsSection so
+  // the preview UX is identical across both bullet pools.
+  function renderBulletInlineContent(b, parentId, scope) {
+    // Defensive: if the preview targets this bullet but the underlying
+    // suggestion has since been applied / dismissed / wiped by a fresh
+    // critique or tailor run, computePreviewText returns "" and we
+    // self-clean. Without this the user could see a stale before/after
+    // long after the source suggestion is gone.
+    if (view.preview && view.preview.bulletId === b.id) {
+      const stillThere = computePreviewText(
+        view.preview.bulletId,
+        view.preview.source,
+        view.preview.optionIndex,
+        view.preview.issueKey
+      );
+      if (!stillThere) view.preview = null;
+    }
+    const isPreviewing = !!(view.preview && view.preview.bulletId === b.id);
+    if (isPreviewing) {
+      const newText = String(view.preview.text || "");
+      const optionLabel = view.preview.optionLabel || "Preview";
+      const sourceLabel = view.preview.source === "tailor" ? "Tailor" : "Critique";
+      return (
+        '<div class="bullet-preview" data-bullet-preview-id="' + st(b.id) + '">' +
+          '<div class="bullet-preview-head">' +
+            '<span class="chip cyan"><i class="fa-solid fa-eye"></i> Preview · ' + st(sourceLabel) + ' · ' + st(optionLabel) + '</span>' +
+          '</div>' +
+          '<div class="bullet-preview-diff">' +
+            '<div class="bullet-preview-old">' +
+              '<span class="bullet-preview-label">Current</span>' +
+              '<p><s>' + st(b.text || "") + '</s></p>' +
+            '</div>' +
+            '<div class="bullet-preview-new">' +
+              '<span class="bullet-preview-label">After Accept</span>' +
+              '<p>' + st(newText) + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="bullet-preview-actions">' +
+            '<button type="button" class="btn-primary btn-sm" data-preview-accept data-bullet-id="' + st(b.id) + '">' +
+              '<i class="fa-solid fa-check"></i> Accept' +
+            '</button>' +
+            '<button type="button" class="btn-ghost btn-sm" data-preview-cancel>' +
+              '<i class="fa-solid fa-rotate-left"></i> Cancel' +
+            '</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+    // Normal mode — original textarea + 3 icon buttons.
+    const scopeAttr = scope === "projects" ? ' data-scope="projects"' : '';
+    return (
+      '<textarea rows="2" data-bullet-text data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr +
+        ' placeholder="' + (scope === "projects" ? '' : '• Shipped X that lifted Y by Z%...') + '">' + st(b.text) + '</textarea>' +
+      '<button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr + ' aria-label="Strengthen bullet" title="Strengthen bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></button>' +
+      '<button type="button" class="icon-btn" data-bullet-save-asset data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr + ' title="Save to Career Assets"><i class="fa-solid fa-bookmark"></i></button>' +
+      '<button type="button" class="icon-btn danger" data-bullet-remove data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr + ' aria-label="Remove ' + (scope === "projects" ? '' : 'bullet') + '"><i class="fa-solid fa-xmark"></i></button>'
     );
   }
 
@@ -3174,6 +3297,55 @@ Built analytics dashboard used by 3 teams"></textarea>
       }
       if (btn.matches("[data-critique-dismiss]")) {
         view.critiqueDismissedIds[btn.getAttribute("data-issue-key")] = true;
+        rerenderEditor();
+        return;
+      }
+
+      // R4: track-changes preview lifecycle.
+      //   Preview → stage the proposed text in view.preview, rerender.
+      //   Accept  → delegate to the existing apply path (applyTailorBullet
+      //             or applyCritiqueFix), clear preview. Note: the apply
+      //             functions already call rerenderEditor themselves.
+      //   Cancel  → clear preview, rerender. Popover stays open so the
+      //             user can try a different option.
+      if (btn.matches("[data-preview-bullet]")) {
+        const bulletId = btn.getAttribute("data-bullet-id");
+        const source = btn.getAttribute("data-source") || "tailor";
+        const optionIndex = Number(btn.getAttribute("data-option-index") || "0");
+        const optionLabel = btn.getAttribute("data-option-label") || "";
+        // Local var name avoids shadowing the module-scope issueKey()
+        // function used by computePreviewText.
+        const critiqueKey = btn.getAttribute("data-issue-key") || null;
+        const text = computePreviewText(bulletId, source, optionIndex, critiqueKey);
+        if (!text) return;
+        view.preview = {
+          bulletId: bulletId,
+          text: text,
+          source: source,
+          optionIndex: optionIndex,
+          issueKey: critiqueKey,
+          optionLabel: optionLabel
+        };
+        rerenderEditor();
+        return;
+      }
+      if (btn.matches("[data-preview-accept]")) {
+        const p = view.preview;
+        if (!p) return;
+        // Clear preview FIRST so the upcoming rerender shows the new
+        // textarea text (committed by the apply call) rather than the
+        // diff view. The apply functions call rerenderEditor for us.
+        view.preview = null;
+        view.bulletPopoverOpenId = null;
+        if (p.source === "tailor") {
+          applyTailorBullet(p.bulletId, p.optionIndex);
+        } else if (p.source === "critique" && p.issueKey) {
+          applyCritiqueFix(p.issueKey, p.optionIndex);
+        }
+        return;
+      }
+      if (btn.matches("[data-preview-cancel]")) {
+        view.preview = null;
         rerenderEditor();
         return;
       }
