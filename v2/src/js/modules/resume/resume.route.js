@@ -46,6 +46,13 @@
     tailorDismissedIds: {},
     summaryApplied: false,
     appliedSkills: {},
+    // R1: union of bullet IDs the user has already accepted an AI rewrite
+    // for, via critique OR tailor. Sent to the AI on the next critique /
+    // tailor-plan call so the model can skip them and avoid suggesting the
+    // same change twice. Maps bulletId → true. Lives for the session;
+    // cleared when a fresh resume is loaded or critique/tailor is re-run
+    // against new content.
+    appliedAiBulletIds: {},
     // Phase 4 — Export dialog
     exportOpen: false,
     exportTemplate: "classic",
@@ -1655,12 +1662,18 @@ Built analytics dashboard used by 3 teams"></textarea>
       const replacements = canApplyDirect ? buildCritiqueRewriteOptions(issue) : [];
       const expanded = !!view.critiqueExpandedIds[toggleId];
       const shown = expanded ? replacements : replacements.slice(0, 1);
+      // R1: honest labels. We used to ship the suggestions as
+      // "Suggested · Concise / Balanced / Detailed", but the AI doesn't
+      // produce them in any particular order — the labels were a lie that
+      // implied a curated ranking. Until R2 wires real per-option metadata
+      // from the model (impact summary + confidence), we use neutral
+      // labels that promise nothing the data doesn't back up.
       const replacementHtml = shown.length
         ? shown.map(function (text, idx) {
             const labelIdx = expanded ? idx : 0;
-            const variantLabel = ["Concise", "Balanced", "Detailed"][labelIdx] || ("Suggested " + (labelIdx + 1));
+            const variantLabel = "Option " + String.fromCharCode(65 + labelIdx);
             return '<div class="critique-bullet-after">' +
-              '<span class="critique-bullet-label">Suggested · ' + variantLabel + "</span>" +
+              '<span class="critique-bullet-label">' + variantLabel + "</span>" +
               '<p>' + st(text) + '</p>' +
             "</div>";
           }).join("")
@@ -2252,8 +2265,11 @@ Built analytics dashboard used by 3 teams"></textarea>
           <p>${st(current)}</p>
         </div>
         ${rewrites.map(function (text, idx) {
+          // R1: "Option A / B / C" matches the critique panel's labels
+          // and stops implying we ranked them — we don't, until R2.
+          const optLabel = "Option " + String.fromCharCode(65 + idx);
           return '<div class="critique-bullet-after">' +
-            '<span class="critique-bullet-label">Suggested ' + (idx + 1) + '</span>' +
+            '<span class="critique-bullet-label">' + optLabel + '</span>' +
             '<p>' + st(text) + "</p>" +
           "</div>";
         }).join("")}
@@ -3842,7 +3858,10 @@ Built analytics dashboard used by 3 teams"></textarea>
       const compact = compactResumeForAi(r, true);
       const result = await ai.runSkill("resume-critique", {
         targetRole: view.critiqueTargetRole || "",
-        resume: clipText(JSON.stringify(compact), AI_LIMITS.resumeJsonChars)
+        resume: clipText(JSON.stringify(compact), AI_LIMITS.resumeJsonChars),
+        // R1: send the bullet IDs whose rewrites the user already accepted
+        // so the model doesn't re-flag them on a second run.
+        appliedBulletIds: Object.keys(view.appliedAiBulletIds || {})
       });
       const isBackendResult = result && result.provider === "backend-primary";
       let critiqueOut = normalizeCritiqueIssues(result);
@@ -3859,6 +3878,15 @@ Built analytics dashboard used by 3 teams"></textarea>
       view.critiqueBusy = false;
       rerenderSidebar();
     }
+  }
+
+  // R1: record that the user accepted an AI rewrite for this bullet. The
+  // ID is sent on the next critique / tailor-plan call so the model skips
+  // already-fixed bullets. Idempotent and safe to call with falsy values.
+  function recordAppliedAiBulletId(bulletId) {
+    if (!bulletId || typeof bulletId !== "string") return;
+    view.appliedAiBulletIds = view.appliedAiBulletIds || {};
+    view.appliedAiBulletIds[bulletId] = true;
   }
 
   function applyCritiqueFix(issueKeyStr, optionIndex) {
@@ -3891,6 +3919,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     }
     if (!(target.type === "field" && target.id)) saveResume(r);
     view.critiqueAppliedIds[issueKeyStr] = true;
+    if (target.type === "bullet") recordAppliedAiBulletId(target.id);
     toast("success", "Fix applied.");
     rerenderEditor();
   }
@@ -3921,6 +3950,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         return;
       }
       view.critiqueAppliedIds[key] = true;
+      if (target.type === "bullet" && target.id) recordAppliedAiBulletId(target.id);
       applied += 1;
     });
     if (!applied) {
@@ -4124,7 +4154,11 @@ Built analytics dashboard used by 3 teams"></textarea>
         jdAnalyzed: view.jdAnalyzed
           ? clipText(JSON.stringify(analyzedForAi), AI_LIMITS.resumeJsonChars)
           : "",
-        targetRole: roleForAi
+        targetRole: roleForAi,
+        // R1: bullet IDs the user already accepted an AI rewrite for
+        // (union of critique + earlier tailor applies). The prompt skips
+        // these so the user doesn't see the same bullet flagged twice.
+        appliedBulletIds: Object.keys(view.appliedAiBulletIds || {})
       });
       const planData = result.data || result;
       if (planData && typeof planData === "object") ensureTailorPlanSummaryVariants(planData);
@@ -4179,6 +4213,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     bullet.text = selected;
     saveResume(r);
     view.tailorAppliedIds[id] = true;
+    recordAppliedAiBulletId(id);
     persistTailorView();
     toast("success", "Bullet rewritten.");
     rerenderEditor();
@@ -4236,6 +4271,7 @@ Built analytics dashboard used by 3 teams"></textarea>
       if (!bullet || !options.length) return;
       bullet.text = options[0];
       view.tailorAppliedIds[id] = true;
+      recordAppliedAiBulletId(id);
       appliedBullets += 1;
     });
 

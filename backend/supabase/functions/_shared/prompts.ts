@@ -64,6 +64,32 @@ function aiContextBlock(input: unknown): string {
   );
 }
 
+// Resume Lab Phase R1: client sends `appliedBulletIds` listing bullet IDs
+// whose AI rewrites the user already accepted (via critique or a prior
+// tailor-plan run). Both resume-critique and tailor-plan prepend this
+// block so the model can skip those bullets and avoid suggesting the
+// same change twice. Silent when empty.
+function appliedBulletsBlock(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const o = input as Record<string, unknown>;
+  const raw = o.appliedBulletIds;
+  if (!Array.isArray(raw)) return "";
+  const ids = raw
+    .filter((x) => typeof x === "string")
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  if (!ids.length) return "";
+  // Cap to keep the prompt small even if the user has rewritten many bullets.
+  const shown = ids.slice(0, 40);
+  return (
+    "\n\nBULLETS ALREADY REWRITTEN BY THE USER (skip these — they already accepted an AI " +
+    "rewrite, so do NOT generate a new suggestion for them; rewrite or flag a different " +
+    "bullet instead):\n" +
+    shown.map((id) => "- " + id).join("\n") +
+    (ids.length > shown.length ? "\n(…and " + (ids.length - shown.length) + " more)" : "")
+  );
+}
+
 const JSON_ONLY =
   " Respond with ONLY a single JSON object matching the requested schema. " +
   "Do NOT wrap the JSON in code fences, markdown, or commentary. " +
@@ -633,6 +659,7 @@ export const prompts: Record<Skill, PromptSpec> = {
         (jd || "(no JD provided)") +
         "\n\nCANDIDATE RESUME (JSON — bullets have stable `id` fields to reference):\n" +
         (resume || "(no resume provided)") +
+        appliedBulletsBlock(input) +
         aiContextBlock(input) +
         "\n\nReturn the JSON tailoring plan now."
       );
@@ -704,6 +731,7 @@ export const prompts: Record<Skill, PromptSpec> = {
         (industry ? "\nINDUSTRY FOCUS: " + industry : "") +
         "\n\nSTRUCTURED RESUME (JSON — includes stable bullet IDs to reference in `target.id`):\n" +
         (resume || "(no resume provided)") +
+        appliedBulletsBlock(input) +
         aiContextBlock(input) +
         "\n\nReturn the JSON critique now."
       );
