@@ -172,6 +172,15 @@
     },
     "chat-assist": function (data) {
       return Boolean(data && typeof data.reply === "string");
+    },
+    "bullet-strengthen": function (data) {
+      return Boolean(
+        data &&
+          typeof data === "object" &&
+          Array.isArray(data.rewrites) &&
+          data.rewrites.length >= 1 &&
+          data.rewrites.every(function (x) { return typeof x === "string"; })
+      );
     }
   };
 
@@ -192,7 +201,8 @@
     "jd-analyze": "jd-analyze@v1.0.0",
     "tailor-plan": "tailor-plan@v1.0.0",
     "skill-action-plan": "skill-action-plan@v1.0.0",
-    "chat-assist": "chat-assist@v1.0.0"
+    "chat-assist": "chat-assist@v1.0.0",
+    "bullet-strengthen": "bullet-strengthen@v1.0.0"
   };
 
   window.CBAI = window.CBAI || {};

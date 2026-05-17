@@ -18,7 +18,8 @@ export type Skill =
   | "jd-analyze"
   | "tailor-plan"
   | "skill-action-plan"
-  | "chat-assist";
+  | "chat-assist"
+  | "bullet-strengthen";
 
 type Validator = (data: unknown) => boolean;
 
@@ -125,6 +126,14 @@ export const schemas: Record<Skill, Validator> = {
       return isStr(pp.skill) && isArr(pp.actions);
     }),
   "chat-assist": (d) => isObj(d) && isStr(d.reply),
+  // bullet-strengthen: single-bullet rewrite. Returns 2-3 options with the
+  // same optionMeta shape as tailor-plan so the inline popover can render
+  // them with the R2 cards without special-casing.
+  "bullet-strengthen": (d) =>
+    isObj(d) &&
+    isArr(d.rewrites) &&
+    d.rewrites.every(function (x) { return typeof x === "string"; }) &&
+    (d.rewrites as unknown[]).length >= 1,
 };
 
 export function validateSkillPayload(skill: string, data: unknown): void {

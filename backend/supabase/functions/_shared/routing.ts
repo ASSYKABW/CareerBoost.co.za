@@ -62,12 +62,21 @@ export const SKILL_ROUTING: Record<Skill, SkillRoute> = {
   // Haiku only — cheap, fast, plenty smart for "explain this feature"
   // questions. Short replies cap cost.
   "chat-assist":              { provider: "anthropic", model: "claude-haiku-4-5",     tier: "cheap" },
+
+  // ----- Single-bullet strengthen ------------------------------------------
+  // Cheap and high-volume — invoked from the wand icon next to each bullet.
+  // Single bullet in, 3 rewrites out, no JD context. Sonnet's quality on
+  // bullet rewrites is meaningfully better than Haiku's so we pay the small
+  // bump (output is capped at ~500 tokens anyway).
+  "bullet-strengthen":        { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "mid" },
 };
 
 /** Per-tier max output token budget. */
 export function maxTokensFor(skill: Skill): number {
   // Chat replies should stay short — 500 tokens is roughly 3 short paragraphs.
   if (skill === "chat-assist") return 500;
+  // Single-bullet strengthen returns 3 short rewrites + meta. 600 is plenty.
+  if (skill === "bullet-strengthen") return 600;
   const route = SKILL_ROUTING[skill];
   if (route?.longForm) return 2800;
   if (route?.tier === "top") return 2200;

@@ -813,6 +813,49 @@ export const prompts: Record<Skill, PromptSpec> = {
     },
   },
 
+  // Single-bullet "Strengthen" — invoked from the wand icon next to each
+  // resume bullet in the editor. Same output shape as a tailor-plan
+  // bullet's rewrites + optionMeta so the inline popover renders the R2
+  // cards uniformly. Cheap, focused, no JD context required.
+  "bullet-strengthen": {
+    systemStable:
+      "You are a senior career coach rewriting a single resume bullet to be " +
+      "stronger. Preserve every fact the candidate wrote — you cannot invent " +
+      "metrics, scope, technologies, or outcomes that aren't in the original. " +
+      "Replace weak verbs with strong action verbs, switch passive constructions " +
+      "to active voice, surface the most concrete detail at the front, and " +
+      "tighten to <= 34 words. If the original bullet contains numbers, keep " +
+      "them; do not add new numbers. Never use these phrases unless they " +
+      "already appear in the source: results-driven, proven track record, " +
+      "highly motivated, dynamic professional, team player, go-getter, " +
+      "self-starter, detail-oriented. Return EXACTLY 3 rewrites that are " +
+      "materially different in cadence and emphasis — not synonym swaps." +
+      JSON_ONLY +
+      ' Schema: { "rewrites": string[] (EXACTLY 3, paste-ready resume bullets, ' +
+      'no labels or quotation marks inside the text), ' +
+      '"optionMeta": [{ "label": string (2-4 word category — "Action-first", ' +
+      '"Metric-focused", "Tight & punchy", "Scope-led", "Outcome-led"), ' +
+      '"summary": string (1 sentence on when to pick THIS option vs others), ' +
+      '"improvements": string[] (2-3 concrete tags — "Active voice", ' +
+      '"+1 metric" if the source had a metric we surfaced, "Tighter (24 words)", ' +
+      '"Removes filler", "Stronger verb") }] (parallel array to `rewrites`, ' +
+      'same length and order) }',
+    userTemplate: (input) => {
+      const bullet = pick(input, ["bullet", "bulletText", "text", "currentText"]);
+      const role = pick(input, ["role", "targetRole"]);
+      const industry = pick(input, ["industry", "sector", "domain"]);
+      const resume = pick(input, ["resume", "background"]);
+      return (
+        "CURRENT BULLET (the only line to rewrite):\n" + (bullet || "(no bullet provided)") +
+        (role ? "\n\nCANDIDATE ROLE CONTEXT: " + role : "") +
+        (industry ? "\nINDUSTRY: " + industry : "") +
+        (resume ? "\n\nWIDER RESUME (for voice + tone reference, do NOT copy facts from):\n" + resume.slice(0, 3000) : "") +
+        aiContextBlock(input) +
+        "\n\nReturn the JSON now."
+      );
+    },
+  },
+
   // In-app guidance chat. Single-turn-with-history. The client passes a
   // composed system prompt (built from FEATURES + CONCEPTS in
   // ai-chat-knowledge.js) plus the user's question, recent turns, and

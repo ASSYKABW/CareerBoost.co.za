@@ -74,6 +74,15 @@
     // The queue is snapshotted at start so a mid-walk apply doesn't
     // shift remaining indices under us.
     walkthrough: null,
+    // Strengthen-bullet results, keyed by bulletId. Generated on-demand
+    // by the wand icon (calls the bullet-strengthen AI skill). Same
+    // shape as a tailor-plan bullet so the inline popover + queue can
+    // render them uniformly. Cleared on Apply / Dismiss / bullet delete.
+    //   { [bulletId]: { rewrites: string[], optionMeta?: [...], generatedAt } }
+    strengthenResults: {},
+    // bulletId currently being processed by bullet-strengthen (shows
+    // a spinner on the wand icon while the AI call is in flight).
+    strengthenLoadingId: null,
     // Phase 4 — Export dialog
     exportOpen: false,
     exportTemplate: "classic",
@@ -1531,11 +1540,14 @@ Built analytics dashboard used by 3 teams"></textarea>
 
     const rows = queue.map(function (item, i) {
       const snippet = bulletTextSnippet(r, item.bulletId, 64);
-      const srcIcon = item.source === "tailor" ? "fa-bullseye" : "fa-triangle-exclamation";
+      const srcIcon = item.source === "tailor"
+        ? "fa-bullseye"
+        : (item.source === "strengthen" ? "fa-wand-magic-sparkles" : "fa-triangle-exclamation");
       const sevChip = (function () {
-        if (item.severity === "critical") return '<span class="chip warning">CRITICAL</span>';
-        if (item.severity === "major")    return '<span class="chip amber">MAJOR</span>';
-        if (item.severity === "tailor")   return '<span class="chip cyan">TAILOR</span>';
+        if (item.severity === "critical")   return '<span class="chip warning">CRITICAL</span>';
+        if (item.severity === "major")      return '<span class="chip amber">MAJOR</span>';
+        if (item.severity === "strengthen") return '<span class="chip cyan">STRENGTHEN</span>';
+        if (item.severity === "tailor")     return '<span class="chip cyan">TAILOR</span>';
         return '<span class="chip subtle">MINOR</span>';
       })();
       const labelHint = item.firstOptionLabel
@@ -2309,7 +2321,8 @@ Built analytics dashboard used by 3 teams"></textarea>
   function pendingSuggestionCountForBullet(bulletId) {
     const tailorCount = getPendingTailorForBullet(bulletId) ? 1 : 0;
     const critiqueCount = getPendingCritiqueIssuesForBullet(bulletId).length;
-    return tailorCount + critiqueCount;
+    const strengthenCount = getPendingStrengthenForBullet(bulletId) ? 1 : 0;
+    return tailorCount + critiqueCount + strengthenCount;
   }
 
   // Short headline summarizing what the AI is offering, surfaced on the
@@ -2410,8 +2423,25 @@ Built analytics dashboard used by 3 teams"></textarea>
       });
     });
 
-    // Severity ordering: critical (0) > major (1) > tailor (2) > minor (3)
-    const rank = { critical: 0, major: 1, tailor: 2, minor: 3 };
+    // Strengthen results (user-triggered per-bullet AI rewrites)
+    const strengthenMap = view.strengthenResults || {};
+    Object.keys(strengthenMap).forEach(function (bulletId) {
+      if (!allBulletIds[bulletId]) return;
+      const row = strengthenMap[bulletId];
+      if (!row || !Array.isArray(row.rewrites) || !row.rewrites.length) return;
+      out.push({
+        source: "strengthen",
+        bulletId: bulletId,
+        severity: "strengthen",
+        headline: "On-demand AI rewrite",
+        firstOptionLabel: firstOptionLabelFromMeta(row.optionMeta) || ""
+      });
+    });
+
+    // Severity ordering: critical > major > strengthen (user-asked) > tailor > minor.
+    // Strengthen ranks ahead of tailor because the user explicitly clicked
+    // the wand on that bullet — they want to see those results first.
+    const rank = { critical: 0, major: 1, strengthen: 2, tailor: 3, minor: 4 };
     out.sort(function (a, b) {
       return (rank[a.severity] != null ? rank[a.severity] : 4) -
              (rank[b.severity] != null ? rank[b.severity] : 4);
@@ -2469,6 +2499,11 @@ Built analytics dashboard used by 3 teams"></textarea>
       const opts = buildCritiqueRewriteOptions(issue);
       return opts[idx] || opts[0] || "";
     }
+    if (source === "strengthen") {
+      const pending = getPendingStrengthenForBullet(bulletId);
+      if (!pending) return "";
+      return pending.rewrites[idx] || pending.rewrites[0] || "";
+    }
     return "";
   }
 
@@ -2503,7 +2538,49 @@ Built analytics dashboard used by 3 teams"></textarea>
   function renderBulletAiPopover(bulletId) {
     const tailor = getPendingTailorForBullet(bulletId);
     const critiques = getPendingCritiqueIssuesForBullet(bulletId);
+    const strengthen = getPendingStrengthenForBullet(bulletId);
     const sections = [];
+
+    // Strengthen section — placed FIRST when present because the user
+    // explicitly clicked the wand to summon it; they expect to see it
+    // immediately, not buried under tailor/critique.
+    if (strengthen) {
+      const meta = Array.isArray(strengthen.optionMeta) ? strengthen.optionMeta : [];
+      const optionsHtml = strengthen.rewrites.map(function (text, idx) {
+        const letter = String.fromCharCode(65 + idx);
+        const m = meta[idx] && typeof meta[idx] === "object" ? meta[idx] : null;
+        const card = renderRewriteOptionCard(text, m, letter, st);
+        const isCurrentPreview = !!(view.preview &&
+          view.preview.bulletId === bulletId &&
+          view.preview.source === "strengthen" &&
+          view.preview.optionIndex === idx);
+        const optionLabel = (m && m.label) ? m.label : ("Option " + letter);
+        const previewBtn = isCurrentPreview
+          ? '<span class="chip cyan"><i class="fa-solid fa-eye"></i> Previewing</span>'
+          : '<button type="button" class="btn-secondary btn-sm" data-preview-bullet' +
+            ' data-bullet-id="' + st(bulletId) + '"' +
+            ' data-source="strengthen"' +
+            ' data-option-index="' + idx + '"' +
+            ' data-option-label="' + st(optionLabel) + '">' +
+            '<i class="fa-solid fa-eye"></i> Preview</button>';
+        const wrapCls = isCurrentPreview ? 'bullet-ai-option is-previewing' : 'bullet-ai-option';
+        return '<div class="' + wrapCls + '">' + card +
+          '<div class="bullet-ai-option-actions">' + previewBtn + '</div></div>';
+      }).join("");
+      sections.push(
+        '<section class="bullet-ai-section">' +
+          '<div class="bullet-ai-section-head">' +
+            '<span class="chip cyan"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Strengthen</span>' +
+          '</div>' +
+          optionsHtml +
+          '<div class="bullet-ai-section-foot">' +
+            '<button type="button" class="btn-ghost btn-sm" data-dismiss-strengthen data-id="' + st(bulletId) + '">' +
+              '<i class="fa-solid fa-xmark"></i> Discard rewrites' +
+            '</button>' +
+          '</div>' +
+        '</section>'
+      );
+    }
 
     if (tailor) {
       const richRewrites = getRewriteOptionsRich(tailor.rewrite, tailor.alternatives, tailor.optionMeta);
@@ -2659,11 +2736,20 @@ Built analytics dashboard used by 3 teams"></textarea>
       );
     }
     // Normal mode — original textarea + 3 icon buttons.
+    // Wand icon shows a spinner while bullet-strengthen is in flight for
+    // this bullet, and gets disabled to prevent double-fires.
     const scopeAttr = scope === "projects" ? ' data-scope="projects"' : '';
+    const isLoading = view.strengthenLoadingId === b.id;
+    const wandIcon = isLoading
+      ? '<i class="fa-solid fa-spinner fa-spin"></i>'
+      : '<i class="fa-solid fa-wand-magic-sparkles"></i>';
+    const wandTitle = isLoading ? "Generating rewrites…" : "Strengthen with AI";
     return (
       '<textarea rows="2" data-bullet-text data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr +
         ' placeholder="' + (scope === "projects" ? '' : '• Shipped X that lifted Y by Z%...') + '">' + st(b.text) + '</textarea>' +
-      '<button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr + ' aria-label="Strengthen bullet" title="Strengthen bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></button>' +
+      '<button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr +
+        ' aria-label="' + wandTitle + '" title="' + wandTitle + '"' +
+        (isLoading ? ' disabled' : '') + '>' + wandIcon + '</button>' +
       '<button type="button" class="icon-btn" data-bullet-save-asset data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr + ' title="Save to Career Assets"><i class="fa-solid fa-bookmark"></i></button>' +
       '<button type="button" class="icon-btn danger" data-bullet-remove data-exp-id="' + st(parentId) + '" data-bullet-id="' + st(b.id) + '"' + scopeAttr + ' aria-label="Remove ' + (scope === "projects" ? '' : 'bullet') + '"><i class="fa-solid fa-xmark"></i></button>'
     );
@@ -3599,9 +3685,18 @@ Built analytics dashboard used by 3 teams"></textarea>
           applyTailorBullet(p.bulletId, p.optionIndex);
         } else if (p.source === "critique" && p.issueKey) {
           applyCritiqueFix(p.issueKey, p.optionIndex);
+        } else if (p.source === "strengthen") {
+          applyStrengthenBullet(p.bulletId, p.optionIndex);
         }
         // R5: auto-advance the walkthrough on Accept.
         if (inWalk) advanceWalkthrough();
+        return;
+      }
+      // Discard the AI-strengthen results for this bullet (chip + popover
+      // disappear; bullet text stays as-is).
+      if (btn.matches("[data-dismiss-strengthen]")) {
+        const id = btn.getAttribute("data-id");
+        dismissStrengthenBullet(id);
         return;
       }
       if (btn.matches("[data-preview-cancel]")) {
@@ -4391,7 +4486,13 @@ Built analytics dashboard used by 3 teams"></textarea>
     rerenderEditor();
   }
 
-  function strengthenBullet(scope, expId, bId) {
+  // Strengthen-bullet (rewritten): replaces the old 4-window.prompt +
+  // string-template stub with a real AI skill (bullet-strengthen) whose
+  // 3 rewrites land in view.strengthenResults[bId]. Same inline popover
+  // and track-changes preview as tailor/critique — the user clicks the
+  // wand, the popover slides open with 3 labelled options, hits Preview
+  // to see before/after, Accept to commit. Consistent with R1-R5.
+  async function strengthenBullet(scope, expId, bId) {
     const r = currentResume();
     const entry = (r && r[scope] || []).find(function (x) { return x.id === expId; });
     if (!entry) return;
@@ -4402,59 +4503,87 @@ Built analytics dashboard used by 3 teams"></textarea>
       toast("warning", "Write the bullet first, then strengthen it.");
       return;
     }
-    const evidence = collectBulletEvidence(current);
-    const improved = buildStrongerBullet(current, evidence);
-    if (!improved || improved === current) {
-      toast("warning", "Could not improve that bullet yet.");
+    const ai = window.CBAI;
+    if (!ai || typeof ai.runSkill !== "function") {
+      toast("error", "AI orchestrator unavailable.");
       return;
     }
-    const ok = window.confirm("Apply this rewrite?\n\n" + improved);
-    if (!ok) return;
-    bullet.text = improved;
+
+    // Mark this bullet as "generating" so the chip shows a spinner state.
+    view.strengthenLoadingId = bId;
+    rerenderEditor();
+    try {
+      // Pull voice context from the broader resume so the rewrite reads
+      // in the candidate's tone, not a generic AI tone.
+      const role = inferTargetRoleFromResume(r) || "";
+      const resumeContext = String(r.summary || "").slice(0, 1500);
+      const envelope = await ai.runSkill("bullet-strengthen", {
+        bullet: current,
+        role: role,
+        resume: resumeContext
+      });
+      const data = (envelope && (envelope.data || envelope)) || {};
+      const rewrites = Array.isArray(data.rewrites) ? data.rewrites.filter(function (x) { return typeof x === "string" && x.trim(); }) : [];
+      if (!rewrites.length) {
+        toast("error", "AI didn't return any rewrites — please try again.");
+        return;
+      }
+      view.strengthenResults = view.strengthenResults || {};
+      view.strengthenResults[bId] = {
+        rewrites: rewrites.slice(0, 3),
+        optionMeta: Array.isArray(data.optionMeta) ? data.optionMeta.slice(0, 3) : null,
+        generatedAt: Date.now()
+      };
+      // Auto-open the chip popover so the user sees results immediately.
+      view.bulletPopoverOpenId = bId;
+      toast("success", "AI generated " + rewrites.length + " rewrite" + (rewrites.length === 1 ? "" : "s") + ".");
+    } catch (err) {
+      const msg = (err && err.message) ? err.message : "AI rewrite failed.";
+      toast("error", msg);
+    } finally {
+      view.strengthenLoadingId = null;
+      rerenderEditor();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strengthen results — same shape as a single tailor bullet so the
+  // popover + queue can render uniformly. Cleared on Apply / Dismiss /
+  // bullet deletion.
+  // ---------------------------------------------------------------------------
+  function getPendingStrengthenForBullet(bulletId) {
+    if (!bulletId) return null;
+    const map = view.strengthenResults || {};
+    const r = map[bulletId];
+    if (!r || !Array.isArray(r.rewrites) || !r.rewrites.length) return null;
+    return r;
+  }
+
+  // Apply path — commits the chosen rewrite to bullet.text, clears the
+  // strengthen entry + any preview/popover state, persists.
+  function applyStrengthenBullet(bulletId, optionIndex) {
+    const r = currentResume();
+    if (!r) return;
+    const bullet = findBulletById(r, bulletId);
+    if (!bullet) return;
+    const pending = getPendingStrengthenForBullet(bulletId);
+    if (!pending) return;
+    const idx = Math.max(0, Number(optionIndex) || 0);
+    const text = pending.rewrites[idx] || pending.rewrites[0];
+    if (!text) return;
+    bullet.text = text;
+    if (view.strengthenResults) delete view.strengthenResults[bulletId];
     saveResume(r);
     toast("success", "Bullet strengthened.");
     rerenderEditor();
   }
 
-  function collectBulletEvidence(currentText) {
-    const hasNumber = /\d/.test(currentText);
-    const scope = window.prompt("What changed because of this work? (e.g. conversion, speed, quality, cost, risk, customer satisfaction)", "");
-    const magnitude = hasNumber ? "" : window.prompt("Any metric or scale? (e.g. 18%, 3 days, 1.2M records, $50k)", "");
-    const method = window.prompt("How did you do it? (tool/process/approach)", "");
-    const audience = window.prompt("Who benefited? (team, customers, leadership, operations)", "");
-    return {
-      scope: String(scope || "").trim(),
-      magnitude: String(magnitude || "").trim(),
-      method: String(method || "").trim(),
-      audience: String(audience || "").trim()
-    };
-  }
-
-  function buildStrongerBullet(text, evidence) {
-    const t = String(text || "").replace(/\s+/g, " ").trim();
-    if (!t) return "";
-    const ev = evidence || {};
-    const verbs = ["Led", "Built", "Designed", "Implemented", "Optimized", "Delivered", "Automated", "Reduced", "Improved", "Scaled"];
-    const startsWithStrongVerb = /^(led|built|designed|implemented|optimized|delivered|automated|reduced|improved|scaled)\b/i.test(t);
-    let out = t;
-    if (!startsWithStrongVerb) {
-      const pick = verbs.find(function (v) { return t.toLowerCase().indexOf(v.toLowerCase()) !== 0; }) || "Delivered";
-      out = pick + " " + t.charAt(0).toLowerCase() + t.slice(1);
+  function dismissStrengthenBullet(bulletId) {
+    if (view.strengthenResults) delete view.strengthenResults[bulletId];
+    if (view.preview && view.preview.bulletId === bulletId && view.preview.source === "strengthen") {
+      view.preview = null;
     }
-    if (!/\d/.test(out) && ev.magnitude) {
-      out += " (" + ev.magnitude + ")";
-    }
-    if (ev.scope) {
-      out += " to improve " + ev.scope;
-    }
-    if (ev.method) {
-      out += " using " + ev.method;
-    }
-    if (ev.audience) {
-      out += " for " + ev.audience;
-    }
-    if (!/[.!?]$/.test(out)) out += ".";
-    return out;
+    rerenderEditor();
   }
 
   // ---------------------------------------------------------------------------

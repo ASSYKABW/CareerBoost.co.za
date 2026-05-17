@@ -37,6 +37,10 @@ const DEFAULT_DAILY_LIMITS: Record<Skill, number> = {
   "skill-action-plan":         30,
   // V1 in-app guidance chat — Haiku, short replies. Cheap but high-volume.
   "chat-assist":              100,
+  // Single-bullet strengthen — wand icon next to each resume bullet. Users
+  // may invoke it dozens of times in a single resume polish session, so
+  // the cap is set generously. Output is small (3 rewrites + meta).
+  "bullet-strengthen":         60,
 };
 
 const DEFAULT_DAILY_COST_CAP_USD = Number(
