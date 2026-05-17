@@ -65,6 +65,15 @@
     //   { bulletId, text, source: "tailor"|"critique", optionIndex,
     //     issueKey?, optionLabel? }
     preview: null,
+    // R5: "Review all" walkthrough — walks the user through the unified
+    // AI Review Queue one bullet at a time. Each step scrolls to the
+    // bullet, opens its chip popover, and stages option A as a preview.
+    // Accept / Cancel / Skip advances; finishing or pressing End closes
+    // the walkthrough.
+    //   { active: bool, idx: number, queueSnapshot: [item, ...] }
+    // The queue is snapshotted at start so a mid-walk apply doesn't
+    // shift remaining indices under us.
+    walkthrough: null,
     // Phase 4 — Export dialog
     exportOpen: false,
     exportTemplate: "classic",
@@ -1025,6 +1034,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${renderLabInspectorCard(health)}
         ${renderPhase4ResumeIntelligence(r, health)}
         ${renderFixQueueCard(health)}
+        ${renderAiReviewQueueCard(r)}
         ${renderMissingInfoCard(health)}
 
         <article class="card resume-scorecard">
@@ -1469,6 +1479,161 @@ Built analytics dashboard used by 3 teams"></textarea>
         <p class="resume-inspector-note">${st(health.status)} - ${health.fixes.length ? st(health.fixes[0].detail) : "Your resume is ready for final export review."}</p>
       </article>
     `;
+  }
+
+  // R5: sidebar card listing every pending AI suggestion across critique
+  // and tailor, ordered by impact. Each row has a Review button that
+  // scrolls the bullet into view + opens its inline popover + stages
+  // option A as a track-changes preview. The "Review all" button at the
+  // top kicks off the walkthrough mode that auto-advances on Accept /
+  // Cancel.
+  function renderAiReviewQueueCard(r) {
+    const queue = buildAiReviewQueue(r);
+    const inWalkthrough = !!(view.walkthrough && view.walkthrough.active);
+    const total = queue.length;
+    if (total === 0 && !inWalkthrough) {
+      // Empty state still rendered (so the user knows where suggestions
+      // will appear once they run critique / tailor), but compact.
+      const hasAiContext = !!view.critiqueResult || !!view.tailorPlan;
+      const emptyMsg = hasAiContext
+        ? "No pending AI rewrites for individual bullets. Critique a section or tailor against a JD to populate."
+        : "Run Critique or Tailor to generate per-bullet AI suggestions. They'll queue here for quick review.";
+      return (
+        '<article class="card resume-review-queue-card resume-review-queue-card--empty">' +
+          '<div class="resume-section-head">' +
+            '<h3><i class="fa-solid fa-list-check"></i> AI Review Queue</h3>' +
+            '<span class="chip subtle">0 pending</span>' +
+          '</div>' +
+          '<p class="muted">' + st(emptyMsg) + '</p>' +
+        '</article>'
+      );
+    }
+
+    const walkthroughHeader = inWalkthrough
+      ? '<div class="resume-review-walkthrough">' +
+          '<span class="chip cyan"><i class="fa-solid fa-circle-play"></i> Step ' +
+          st(String((view.walkthrough.idx || 0) + 1)) + ' of ' +
+          st(String(view.walkthrough.queueSnapshot.length)) + '</span>' +
+          '<button class="btn-ghost btn-sm" type="button" data-walk-skip>' +
+            '<i class="fa-solid fa-forward-step"></i> Skip' +
+          '</button>' +
+          '<button class="btn-ghost btn-sm" type="button" data-walk-end>' +
+            '<i class="fa-solid fa-xmark"></i> End walkthrough' +
+          '</button>' +
+        '</div>'
+      : (total > 0
+        ? '<div class="resume-review-actions">' +
+            '<button class="btn-primary btn-sm" type="button" data-walk-start>' +
+              '<i class="fa-solid fa-circle-play"></i> Review all (' + st(String(total)) + ')' +
+            '</button>' +
+          '</div>'
+        : '');
+
+    const rows = queue.map(function (item, i) {
+      const snippet = bulletTextSnippet(r, item.bulletId, 64);
+      const srcIcon = item.source === "tailor" ? "fa-bullseye" : "fa-triangle-exclamation";
+      const sevChip = (function () {
+        if (item.severity === "critical") return '<span class="chip warning">CRITICAL</span>';
+        if (item.severity === "major")    return '<span class="chip amber">MAJOR</span>';
+        if (item.severity === "tailor")   return '<span class="chip cyan">TAILOR</span>';
+        return '<span class="chip subtle">MINOR</span>';
+      })();
+      const labelHint = item.firstOptionLabel
+        ? '<span class="resume-review-label-hint">→ ' + st(item.firstOptionLabel) + '</span>'
+        : "";
+      return (
+        '<li class="resume-review-row" data-review-idx="' + st(String(i)) + '">' +
+          '<i class="resume-review-icon fa-solid ' + srcIcon + '"></i>' +
+          '<div class="resume-review-body">' +
+            '<div class="resume-review-meta">' + sevChip + labelHint + '</div>' +
+            '<p class="resume-review-snippet">' + (snippet ? st(snippet) : '<em class="muted">(bullet not found)</em>') + '</p>' +
+            '<p class="resume-review-headline">' + st(String(item.headline || "").slice(0, 120)) + '</p>' +
+          '</div>' +
+          '<button class="btn-ghost btn-sm" type="button" data-review-jump' +
+            ' data-bullet-id="' + st(item.bulletId) + '"' +
+            ' data-source="' + st(item.source) + '"' +
+            (item.issueKey ? ' data-issue-key="' + st(item.issueKey) + '"' : '') +
+            '><i class="fa-solid fa-magnifying-glass"></i> Review</button>' +
+        '</li>'
+      );
+    }).join("");
+
+    return (
+      '<article class="card resume-review-queue-card">' +
+        '<div class="resume-section-head">' +
+          '<h3><i class="fa-solid fa-list-check"></i> AI Review Queue</h3>' +
+          '<span class="chip ' + (total > 0 ? "cyan" : "subtle") + '">' + st(String(total)) + ' pending</span>' +
+        '</div>' +
+        walkthroughHeader +
+        (rows ? '<ul class="resume-review-list">' + rows + '</ul>' : '') +
+      '</article>'
+    );
+  }
+
+  // R5: walkthrough helpers ---------------------------------------------------
+
+  function startWalkthrough(r) {
+    const queue = buildAiReviewQueue(r);
+    if (!queue.length) return;
+    view.walkthrough = { active: true, idx: 0, queueSnapshot: queue };
+    stepWalkthroughTo(0);
+  }
+
+  function endWalkthrough() {
+    view.walkthrough = null;
+    view.preview = null;
+    rerenderEditor();
+  }
+
+  function advanceWalkthrough() {
+    if (!view.walkthrough || !view.walkthrough.active) return;
+    const next = (view.walkthrough.idx || 0) + 1;
+    if (next >= view.walkthrough.queueSnapshot.length) {
+      endWalkthrough();
+      if (window.CBV2 && window.CBV2.toast) {
+        window.CBV2.toast.success("Walkthrough complete.");
+      }
+      return;
+    }
+    view.walkthrough.idx = next;
+    stepWalkthroughTo(next);
+  }
+
+  // Shared helper used by both "Review" (single item) and walkthrough steps.
+  // Scrolls to the bullet, opens its chip popover, stages option A as a
+  // preview. Re-renders THEN scrolls because jumpToBullet relies on the
+  // DOM being current.
+  function reviewQueueItem(item) {
+    if (!item || !item.bulletId) return;
+    view.bulletPopoverOpenId = item.bulletId;
+    const text = computePreviewText(item.bulletId, item.source, 0, item.issueKey);
+    if (text) {
+      view.preview = {
+        bulletId: item.bulletId,
+        text: text,
+        source: item.source,
+        optionIndex: 0,
+        issueKey: item.issueKey || null,
+        optionLabel: item.firstOptionLabel || ""
+      };
+    } else {
+      view.preview = null;
+    }
+    rerenderEditor();
+    // jumpToBullet scrolls the textarea (or preview view) into view.
+    // requestAnimationFrame so the just-rerendered DOM is queryable.
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () { jumpToBullet(item.bulletId); });
+    } else {
+      jumpToBullet(item.bulletId);
+    }
+  }
+
+  function stepWalkthroughTo(idx) {
+    if (!view.walkthrough || !view.walkthrough.queueSnapshot) return;
+    const item = view.walkthrough.queueSnapshot[idx];
+    if (!item) { endWalkthrough(); return; }
+    reviewQueueItem(item);
   }
 
   function renderFixQueueCard(health) {
@@ -2187,6 +2352,98 @@ Built analytics dashboard used by 3 teams"></textarea>
       ? (totalOptions === 1 ? "1 rewrite" : totalOptions + " options")
       : (totalSuggestions + " suggestions");
     return topImprovement ? (countLabel + " · " + topImprovement) : countLabel;
+  }
+
+  // ---------------------------------------------------------------------------
+  // R5: unified AI Review Queue.
+  //
+  // Merges every pending bullet-targeted suggestion from tailor + critique
+  // into one ordered list. Severity order: critical critique > major
+  // critique > tailor rewrites > minor critique. This is the data behind
+  // the new sidebar card AND the "Review all" walkthrough.
+  //
+  // Critique issues WITHOUT a bullet target (summary, section, field) are
+  // out of scope here — they stay in the existing critique card. R5 is
+  // about replacing the bullet-suggestion experience, not the whole panel.
+  // ---------------------------------------------------------------------------
+  function buildAiReviewQueue(r) {
+    if (!r) return [];
+    const out = [];
+
+    const allBulletIds = collectAllBulletIds(r);
+
+    // Critique issues (bullet target only)
+    const critiqueData = view.critiqueResult ? (view.critiqueResult.data || view.critiqueResult) : null;
+    const critiqueIssues = critiqueData && Array.isArray(critiqueData.issues) ? critiqueData.issues : [];
+    critiqueIssues.forEach(function (issue) {
+      const t = issue && issue.target;
+      if (!t || t.type !== "bullet" || !t.id) return;
+      if (!allBulletIds[t.id]) return;
+      const key = issueKey(issue);
+      if (!key) return;
+      if (view.critiqueAppliedIds[key]) return;
+      if (view.critiqueDismissedIds[key]) return;
+      out.push({
+        source: "critique",
+        bulletId: t.id,
+        issueKey: key,
+        severity: String(issue.severity || "minor").toLowerCase(),
+        headline: issue.message || displayCritiqueSuggestion(issue) || "Critique suggestion",
+        firstOptionLabel: firstOptionLabelFromMeta(t.optionMeta) || ""
+      });
+    });
+
+    // Tailor bullets
+    const tailorData = view.tailorPlan ? (view.tailorPlan.data || view.tailorPlan) : null;
+    const tailorBullets = tailorData && Array.isArray(tailorData.bullets) ? tailorData.bullets : [];
+    tailorBullets.forEach(function (b) {
+      if (!b || !b.targetBulletId) return;
+      if (!allBulletIds[b.targetBulletId]) return;
+      if (view.tailorAppliedIds[b.targetBulletId]) return;
+      if (view.tailorDismissedIds[b.targetBulletId]) return;
+      out.push({
+        source: "tailor",
+        bulletId: b.targetBulletId,
+        severity: "tailor",
+        headline: b.rationale || "JD-aligned rewrite",
+        firstOptionLabel: firstOptionLabelFromMeta(b.optionMeta) || ""
+      });
+    });
+
+    // Severity ordering: critical (0) > major (1) > tailor (2) > minor (3)
+    const rank = { critical: 0, major: 1, tailor: 2, minor: 3 };
+    out.sort(function (a, b) {
+      return (rank[a.severity] != null ? rank[a.severity] : 4) -
+             (rank[b.severity] != null ? rank[b.severity] : 4);
+    });
+    return out;
+  }
+
+  function collectAllBulletIds(r) {
+    const ids = {};
+    [r.experience, r.projects].forEach(function (pool) {
+      (pool || []).forEach(function (entry) {
+        (entry.bullets || []).forEach(function (b) { if (b && b.id) ids[b.id] = true; });
+      });
+    });
+    return ids;
+  }
+
+  function firstOptionLabelFromMeta(metaArr) {
+    if (!Array.isArray(metaArr)) return "";
+    for (let i = 0; i < metaArr.length; i += 1) {
+      const m = metaArr[i];
+      if (m && typeof m.label === "string" && m.label.trim()) return m.label.trim();
+    }
+    return "";
+  }
+
+  function bulletTextSnippet(r, bulletId, max) {
+    const b = findBulletById(r, bulletId);
+    if (!b) return "";
+    const t = String(b.text || "").replace(/\s+/g, " ").trim();
+    const lim = max || 70;
+    return t.length > lim ? (t.slice(0, lim - 1) + "…") : t;
   }
 
   // R4: resolves the proposed rewrite text for a (bulletId, source,
@@ -3332,6 +3589,7 @@ Built analytics dashboard used by 3 teams"></textarea>
       if (btn.matches("[data-preview-accept]")) {
         const p = view.preview;
         if (!p) return;
+        const inWalk = !!(view.walkthrough && view.walkthrough.active);
         // Clear preview FIRST so the upcoming rerender shows the new
         // textarea text (committed by the apply call) rather than the
         // diff view. The apply functions call rerenderEditor for us.
@@ -3342,11 +3600,19 @@ Built analytics dashboard used by 3 teams"></textarea>
         } else if (p.source === "critique" && p.issueKey) {
           applyCritiqueFix(p.issueKey, p.optionIndex);
         }
+        // R5: auto-advance the walkthrough on Accept.
+        if (inWalk) advanceWalkthrough();
         return;
       }
       if (btn.matches("[data-preview-cancel]")) {
+        const inWalk = !!(view.walkthrough && view.walkthrough.active);
         view.preview = null;
-        rerenderEditor();
+        if (inWalk) {
+          // R5: in walkthrough mode, Cancel = skip this option, move on.
+          advanceWalkthrough();
+        } else {
+          rerenderEditor();
+        }
         return;
       }
 
@@ -3746,6 +4012,43 @@ Built analytics dashboard used by 3 teams"></textarea>
         if (btn.matches("[data-critique-dismiss]")) {
           view.critiqueDismissedIds[btn.getAttribute("data-issue-key")] = true;
           rerenderSidebar();
+          return;
+        }
+        // R5: AI Review Queue actions (single-item review + walkthrough)
+        if (btn.matches("[data-review-jump]")) {
+          // Per-row "Review" button. Builds an item from the dataset and
+          // delegates to the shared reviewQueueItem helper so the visual
+          // behavior matches a walkthrough step (scroll + open + preview).
+          const item = {
+            bulletId: btn.getAttribute("data-bullet-id"),
+            source: btn.getAttribute("data-source") || "tailor",
+            issueKey: btn.getAttribute("data-issue-key") || null
+          };
+          // Pull firstOptionLabel from the live queue for nicer UX.
+          const r = currentResume();
+          const queue = r ? buildAiReviewQueue(r) : [];
+          const match = queue.find(function (q) {
+            return q.bulletId === item.bulletId &&
+                   q.source === item.source &&
+                   (q.issueKey || null) === item.issueKey;
+          });
+          if (match) item.firstOptionLabel = match.firstOptionLabel;
+          reviewQueueItem(item);
+          return;
+        }
+        if (btn.matches("[data-walk-start]")) {
+          const r = currentResume();
+          if (r) startWalkthrough(r);
+          return;
+        }
+        if (btn.matches("[data-walk-skip]")) {
+          // Skip = drop the preview without applying, then advance.
+          view.preview = null;
+          advanceWalkthrough();
+          return;
+        }
+        if (btn.matches("[data-walk-end]")) {
+          endWalkthrough();
           return;
         }
         if (btn.matches("[data-ats-fix]")) {
