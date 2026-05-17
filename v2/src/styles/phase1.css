@@ -6337,6 +6337,116 @@ button.topbar-search-button,
   resize: vertical;
 }
 
+/* R3: inline AI suggestion chip + popover.
+ *
+ * The bullet row is a 3-col grid (dot · textarea · buttons). The chip
+ * and popover slot in as additional grid items that span the full row,
+ * landing on the next implicit grid line so the existing layout above
+ * doesn't shift. The chip is small and right-aligned so it feels like
+ * an inline affordance rather than another action button.
+ */
+.bullet-ai-chip {
+  grid-column: 1 / -1;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px 9px 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 227, 255, 0.4);
+  background: rgba(34, 227, 255, 0.08);
+  color: #67eaff;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.bullet-ai-chip:hover {
+  background: rgba(34, 227, 255, 0.16);
+  border-color: rgba(34, 227, 255, 0.6);
+  color: #9ef0ff;
+}
+.bullet-ai-chip.is-open {
+  background: linear-gradient(135deg, rgba(34, 227, 255, 0.22), rgba(99, 102, 241, 0.22));
+  border-color: rgba(34, 227, 255, 0.7);
+  color: #f8fbff;
+}
+.bullet-ai-chip > i { font-size: 11px; }
+.bullet-ai-chip-label {
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.bullet-ai-chip-caret { font-size: 9px; opacity: 0.75; }
+
+.bullet-ai-popover {
+  grid-column: 1 / -1;
+  position: relative;
+  margin-top: 8px;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 227, 255, 0.32);
+  background: rgba(10, 14, 26, 0.92);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.bullet-ai-popover-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.bullet-ai-popover-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fbff;
+}
+
+.bullet-ai-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bullet-ai-section + .bullet-ai-section {
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.bullet-ai-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 32px; /* leave room for the close button */
+}
+.bullet-ai-section-foot {
+  margin-top: 2px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Each option = a card (R2's renderRewriteOptionCard) + an Apply button
+ * row underneath. The card brings its own internal styles (.critique-
+ * bullet-after, .rewrite-head, etc) — we just stack them tightly here. */
+.bullet-ai-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bullet-ai-option-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 /* Skills groups */
 .skill-group {
   padding: 12px;

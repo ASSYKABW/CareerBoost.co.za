@@ -53,6 +53,10 @@
     // cleared when a fresh resume is loaded or critique/tailor is re-run
     // against new content.
     appliedAiBulletIds: {},
+    // R3: which bullet's inline AI suggestion popover is open. Only one at
+    // a time. null when none. Click chip → set; click outside / Apply /
+    // Dismiss → null.
+    bulletPopoverOpenId: null,
     // Phase 4 — Export dialog
     exportOpen: false,
     exportTemplate: "classic",
@@ -736,6 +740,7 @@ Built analytics dashboard used by 3 teams"></textarea>
             <button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" aria-label="Strengthen bullet" title="Strengthen bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
             <button type="button" class="icon-btn" data-bullet-save-asset data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" title="Save to Career Assets"><i class="fa-solid fa-bookmark"></i></button>
             <button type="button" class="icon-btn danger" data-bullet-remove data-exp-id="${st(e.id)}" data-bullet-id="${st(b.id)}" aria-label="Remove bullet"><i class="fa-solid fa-xmark"></i></button>
+            ${renderBulletAiAffordance(b.id)}
           </li>
         `;
       }).join("");
@@ -859,12 +864,13 @@ Built analytics dashboard used by 3 teams"></textarea>
     const items = r.projects.map(function (p, i) {
       const bullets = (p.bullets || []).map(function (b) {
         return `
-          <li class="bullet-row">
+          <li class="bullet-row" data-bullet-id="${st(b.id)}">
             <i class="fa-solid fa-circle-dot bullet-dot"></i>
             <textarea rows="2" data-bullet-text data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects">${st(b.text)}</textarea>
             <button type="button" class="icon-btn" data-bullet-strengthen data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects" aria-label="Strengthen bullet" title="Strengthen bullet"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
             <button type="button" class="icon-btn" data-bullet-save-asset data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects" title="Save to Career Assets"><i class="fa-solid fa-bookmark"></i></button>
             <button type="button" class="icon-btn danger" data-bullet-remove data-exp-id="${st(p.id)}" data-bullet-id="${st(b.id)}" data-scope="projects" aria-label="Remove"><i class="fa-solid fa-xmark"></i></button>
+            ${renderBulletAiAffordance(b.id)}
           </li>
         `;
       }).join("");
@@ -2083,6 +2089,207 @@ Built analytics dashboard used by 3 teams"></textarea>
   }
 
   // ---------------------------------------------------------------------------
+  // R3: inline per-bullet AI suggestion affordance.
+  //
+  // Before R3, every tailor / critique suggestion lived in the right sidebar.
+  // The user had to mentally bridge "I see suggestion in sidebar → find bullet
+  // in editor → click apply → trust the right thing changed". With R3, every
+  // bullet that has a pending AI suggestion grows a small chip at the end of
+  // its row, and clicking the chip expands a popover with the R2 option cards
+  // anchored AT the bullet. The sidebar still lists everything for users who
+  // want an overview, but the primary interaction surface is now inline.
+  // ---------------------------------------------------------------------------
+
+  // Returns the pending tailor bullet (if any) targeting this bullet, or null.
+  // Pending = exists in tailorPlan AND not already applied AND not dismissed.
+  function getPendingTailorForBullet(bulletId) {
+    if (!bulletId) return null;
+    const plan = view.tailorPlan;
+    if (!plan) return null;
+    const data = plan.data || plan;
+    const bullets = (data && Array.isArray(data.bullets)) ? data.bullets : [];
+    const match = bullets.find(function (b) { return b && b.targetBulletId === bulletId; });
+    if (!match) return null;
+    if (view.tailorAppliedIds[bulletId]) return null;
+    if (view.tailorDismissedIds[bulletId]) return null;
+    return match;
+  }
+
+  // Returns the array of pending critique issues whose target is this bullet.
+  // Same filter logic (not applied, not dismissed).
+  function getPendingCritiqueIssuesForBullet(bulletId) {
+    if (!bulletId) return [];
+    const result = view.critiqueResult;
+    if (!result) return [];
+    const data = result.data || result;
+    const issues = (data && Array.isArray(data.issues)) ? data.issues : [];
+    return issues.filter(function (issue) {
+      const t = issue && issue.target;
+      if (!t || t.type !== "bullet" || t.id !== bulletId) return false;
+      const key = issueKey(issue);
+      if (!key) return false;
+      if (view.critiqueAppliedIds[key]) return false;
+      if (view.critiqueDismissedIds[key]) return false;
+      return true;
+    });
+  }
+
+  // Total count of pending suggestions for the chip badge.
+  function pendingSuggestionCountForBullet(bulletId) {
+    const tailorCount = getPendingTailorForBullet(bulletId) ? 1 : 0;
+    const critiqueCount = getPendingCritiqueIssuesForBullet(bulletId).length;
+    return tailorCount + critiqueCount;
+  }
+
+  // Short headline summarizing what the AI is offering, surfaced on the
+  // closed chip. Format: "3 rewrites · +2 keywords" — count + the first
+  // strong improvement from the first suggestion, so the user gets a
+  // signal of *what's good about it* without clicking.
+  function bulletChipHeadline(bulletId) {
+    const tailor = getPendingTailorForBullet(bulletId);
+    const critiques = getPendingCritiqueIssuesForBullet(bulletId);
+    const totalSuggestions = (tailor ? 1 : 0) + critiques.length;
+    const totalOptions = (tailor ? getRewriteOptions(tailor.rewrite, tailor.alternatives).length : 0) +
+      critiques.reduce(function (s, i) { return s + buildCritiqueRewriteOptions(i).length; }, 0);
+
+    // Pull the first improvement tag we can find (tailor takes precedence).
+    let topImprovement = "";
+    const pickFirstImprovement = function (meta) {
+      if (!meta || !Array.isArray(meta.improvements)) return "";
+      for (let i = 0; i < meta.improvements.length; i += 1) {
+        const t = String(meta.improvements[i] || "").trim();
+        if (t) return t;
+      }
+      return "";
+    };
+    if (tailor && Array.isArray(tailor.optionMeta)) {
+      for (let i = 0; i < tailor.optionMeta.length && !topImprovement; i += 1) {
+        topImprovement = pickFirstImprovement(tailor.optionMeta[i]);
+      }
+    }
+    if (!topImprovement) {
+      for (let i = 0; i < critiques.length && !topImprovement; i += 1) {
+        const t = critiques[i] && critiques[i].target;
+        const meta = t && Array.isArray(t.optionMeta) ? t.optionMeta : [];
+        for (let j = 0; j < meta.length && !topImprovement; j += 1) {
+          topImprovement = pickFirstImprovement(meta[j]);
+        }
+      }
+    }
+
+    const countLabel = totalSuggestions === 1
+      ? (totalOptions === 1 ? "1 rewrite" : totalOptions + " options")
+      : (totalSuggestions + " suggestions");
+    return topImprovement ? (countLabel + " · " + topImprovement) : countLabel;
+  }
+
+  // Renders the inline chip (always visible when ≥1 pending suggestion)
+  // plus the expanded popover when this bullet is the active one. Returns
+  // an empty string when there's nothing pending so existing layout is
+  // untouched.
+  function renderBulletAiAffordance(bulletId) {
+    if (!bulletId) return "";
+    const count = pendingSuggestionCountForBullet(bulletId);
+    if (count === 0) return "";
+    const isOpen = view.bulletPopoverOpenId === bulletId;
+    const headline = bulletChipHeadline(bulletId);
+    const chipCls = isOpen ? "bullet-ai-chip is-open" : "bullet-ai-chip";
+    const chip =
+      '<button type="button" class="' + chipCls + '"' +
+      ' data-bullet-ai-toggle data-bullet-id="' + st(bulletId) + '"' +
+      ' title="AI suggestion for this bullet — click to expand">' +
+        '<i class="fa-solid fa-wand-magic-sparkles"></i>' +
+        '<span class="bullet-ai-chip-label">' + st(headline) + '</span>' +
+        '<i class="fa-solid fa-chevron-' + (isOpen ? "up" : "down") + ' bullet-ai-chip-caret"></i>' +
+      '</button>';
+    if (!isOpen) return chip;
+    return chip + renderBulletAiPopover(bulletId);
+  }
+
+  // The inline popover shown when the chip is open. Lists every pending
+  // suggestion for this bullet (tailor first if present, then critique
+  // issues), each rendered with the R2 cards. Apply buttons delegate to
+  // the existing data-apply-bullet / data-critique-apply handlers, so the
+  // accept logic is shared with the sidebar entry points.
+  function renderBulletAiPopover(bulletId) {
+    const tailor = getPendingTailorForBullet(bulletId);
+    const critiques = getPendingCritiqueIssuesForBullet(bulletId);
+    const sections = [];
+
+    if (tailor) {
+      const richRewrites = getRewriteOptionsRich(tailor.rewrite, tailor.alternatives, tailor.optionMeta);
+      const optionsHtml = richRewrites.map(function (item, idx) {
+        const letter = String.fromCharCode(65 + idx);
+        const card = renderRewriteOptionCard(item.text, item.meta, letter, st);
+        const applyBtn =
+          '<button type="button" class="btn-primary btn-sm" data-apply-bullet' +
+          ' data-id="' + st(bulletId) + '" data-option-index="' + idx + '">' +
+          '<i class="fa-solid fa-wand-magic-sparkles"></i> Apply</button>';
+        return '<div class="bullet-ai-option">' + card +
+          '<div class="bullet-ai-option-actions">' + applyBtn + '</div></div>';
+      }).join("");
+      const rationale = tailor.rationale
+        ? '<p class="critique-suggestion"><i class="fa-solid fa-lightbulb"></i> ' + st(tailor.rationale) + '</p>'
+        : "";
+      sections.push(
+        '<section class="bullet-ai-section">' +
+          '<div class="bullet-ai-section-head"><span class="chip cyan"><i class="fa-solid fa-bullseye"></i> Tailor rewrite</span></div>' +
+          rationale +
+          optionsHtml +
+          '<div class="bullet-ai-section-foot">' +
+            '<button type="button" class="btn-ghost btn-sm" data-dismiss-bullet data-id="' + st(bulletId) + '">' +
+              '<i class="fa-solid fa-xmark"></i> Dismiss this rewrite' +
+            '</button>' +
+          '</div>' +
+        '</section>'
+      );
+    }
+
+    critiques.forEach(function (issue) {
+      const key = issueKey(issue) || "";
+      const target = issue.target || {};
+      const richReplacements = getRewriteOptionsRich(target.replacement, target.alternatives, target.optionMeta);
+      const optionsHtml = richReplacements.map(function (item, idx) {
+        const letter = String.fromCharCode(65 + idx);
+        const card = renderRewriteOptionCard(item.text, item.meta, letter, st);
+        const applyBtn =
+          '<button type="button" class="btn-primary btn-sm" data-critique-apply' +
+          ' data-issue-key="' + st(key) + '" data-option-index="' + idx + '">' +
+          '<i class="fa-solid fa-wand-magic-sparkles"></i> Apply</button>';
+        return '<div class="bullet-ai-option">' + card +
+          '<div class="bullet-ai-option-actions">' + applyBtn + '</div></div>';
+      }).join("");
+      const sevTone = issue.severity === "critical" ? "warning"
+        : (issue.severity === "major" ? "amber" : "subtle");
+      const sevLabel = String(issue.severity || "minor").toUpperCase();
+      sections.push(
+        '<section class="bullet-ai-section">' +
+          '<div class="bullet-ai-section-head">' +
+            '<span class="chip ' + sevTone + '"><i class="fa-solid fa-triangle-exclamation"></i> Critique · ' + st(sevLabel) + '</span>' +
+          '</div>' +
+          '<p class="critique-message">' + st(issue.message || "") + '</p>' +
+          '<p class="critique-suggestion"><i class="fa-solid fa-lightbulb"></i> ' + st(displayCritiqueSuggestion(issue)) + '</p>' +
+          optionsHtml +
+          '<div class="bullet-ai-section-foot">' +
+            '<button type="button" class="btn-ghost btn-sm" data-critique-dismiss data-issue-key="' + st(key) + '">' +
+              '<i class="fa-solid fa-xmark"></i> Dismiss this issue' +
+            '</button>' +
+          '</div>' +
+        '</section>'
+      );
+    });
+
+    return (
+      '<div class="bullet-ai-popover" data-bullet-ai-popover="' + st(bulletId) + '">' +
+        '<button type="button" class="bullet-ai-popover-close" data-bullet-ai-close aria-label="Close suggestions">' +
+          '<i class="fa-solid fa-xmark"></i>' +
+        '</button>' +
+        sections.join("") +
+      '</div>'
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Tailor workspace (Phase 3 — Tailor-for-a-Job mode)
   // ---------------------------------------------------------------------------
   function renderTailorWorkspace(r) {
@@ -2927,6 +3134,47 @@ Built analytics dashboard used by 3 teams"></textarea>
         const bId = btn.getAttribute("data-bullet-id");
         const scope = btn.getAttribute("data-scope") || "experience";
         saveBulletAsCareerAsset(scope, expId, bId);
+        return;
+      }
+
+      // R3: inline AI suggestion popover handlers. The popover is rendered
+      // inside the bullet <li> so clicks bubble through #resume-main, not
+      // the sidebar — we wire the same apply/dismiss verbs here so the
+      // inline path uses the same accept logic the sidebar already uses.
+      if (btn.matches("[data-bullet-ai-toggle]")) {
+        const bId = btn.getAttribute("data-bullet-id");
+        view.bulletPopoverOpenId = view.bulletPopoverOpenId === bId ? null : bId;
+        rerenderEditor();
+        return;
+      }
+      if (btn.matches("[data-bullet-ai-close]")) {
+        view.bulletPopoverOpenId = null;
+        rerenderEditor();
+        return;
+      }
+      if (btn.matches("[data-apply-bullet]")) {
+        applyTailorBullet(
+          btn.getAttribute("data-id"),
+          Number(btn.getAttribute("data-option-index") || "0")
+        );
+        return;
+      }
+      if (btn.matches("[data-critique-apply]")) {
+        applyCritiqueFix(
+          btn.getAttribute("data-issue-key"),
+          Number(btn.getAttribute("data-option-index") || "0")
+        );
+        return;
+      }
+      if (btn.matches("[data-dismiss-bullet]")) {
+        view.tailorDismissedIds[btn.getAttribute("data-id")] = true;
+        persistTailorView();
+        rerenderEditor();
+        return;
+      }
+      if (btn.matches("[data-critique-dismiss]")) {
+        view.critiqueDismissedIds[btn.getAttribute("data-issue-key")] = true;
+        rerenderEditor();
         return;
       }
 
@@ -5146,4 +5394,25 @@ Built analytics dashboard used by 3 teams"></textarea>
     hydrateTailorView();
     bindAll();
   };
+
+  // R3: document-level handlers for the inline AI suggestion popover.
+  // Attached once at module load (not per-render) so they don't stack.
+  //   • click outside any open popover/chip → close
+  //   • ESC → close
+  document.addEventListener("click", function (e) {
+    if (!view.bulletPopoverOpenId) return;
+    if (!e.target || !e.target.closest) return;
+    // Click was inside the popover or on its trigger — let the dedicated
+    // editor handler run.
+    if (e.target.closest("[data-bullet-ai-popover]")) return;
+    if (e.target.closest("[data-bullet-ai-toggle]")) return;
+    view.bulletPopoverOpenId = null;
+    rerenderEditor();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (!view.bulletPopoverOpenId) return;
+    view.bulletPopoverOpenId = null;
+    rerenderEditor();
+  });
 })();
