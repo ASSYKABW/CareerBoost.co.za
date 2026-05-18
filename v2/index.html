@@ -172,7 +172,7 @@
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];
        admin.route.js (loaded last) wires the dispatcher + fetchers + bindings. -->
-  <script src="./src/js/modules/admin/admin-helpers.js?v=20260518-adminA4"></script>
+  <script src="./src/js/modules/admin/admin-helpers.js?v=20260518-adminA5"></script>
   <!-- Phase 8: realtime subscriptions for admin_incidents + audit_log.
        Must load after admin-helpers (state caches) but before
        admin.route.js (which sets up the afterRender hook). -->
@@ -181,7 +181,7 @@
        The old sections/overview.js stays in the tree as a fallback for any
        caller that still requests section=overview, but it's no longer the
        primary home — currentSection() redirects "overview" → "command-center". -->
-  <script src="./src/js/modules/admin/sections/command-center.js"></script>
+  <script src="./src/js/modules/admin/sections/command-center.js?v=20260518-adminA5"></script>
   <script src="./src/js/modules/admin/sections/growth.js"></script>
   <!-- Phase E4: Product Intelligence — the ROI board. Reads
        data.productIntelligence from admin-overview. Sits at the top of
@@ -193,7 +193,7 @@
   <script src="./src/js/modules/admin/sections/funnel.js"></script>
   <!-- Phase E3: sections/users.js registers BOTH "users" and the legacy
        "user-support" ID, so user-support.js is no longer loaded. -->
-  <script src="./src/js/modules/admin/sections/users.js?v=20260518-adminA4"></script>
+  <script src="./src/js/modules/admin/sections/users.js?v=20260518-adminA5"></script>
   <script src="./src/js/modules/admin/sections/job-feed.js"></script>
   <script src="./src/js/modules/admin/sections/ai-cost.js"></script>
   <script src="./src/js/modules/admin/sections/extension.js"></script>
@@ -206,7 +206,7 @@
        job-feed; Operations folds in reports + settings + logs. Legacy
        section URLs still work via their original renderers above. -->
   <script src="./src/js/modules/admin/sections/health.js"></script>
-  <script src="./src/js/modules/admin/sections/operations.js"></script>
+  <script src="./src/js/modules/admin/sections/operations.js?v=20260518-adminA5"></script>
   <!-- Operational: API key status + rotation commands. Read-only — talks
        to the admin-credentials edge function which never returns values. -->
   <script src="./src/js/modules/admin/sections/credentials.js?v=20260517-health"></script>
@@ -214,7 +214,7 @@
        (built but hidden because V1 only covers Greenhouse — see the section
        itself for re-enable criteria). -->
   <script src="./src/js/modules/admin/sections/apply-assist.js"></script>
-  <script src="./src/js/modules/admin/admin.route.js?v=20260518-adminA4"></script>
+  <script src="./src/js/modules/admin/admin.route.js?v=20260518-adminA5"></script>
   <script src="./src/js/app/router.js"></script>
   <script src="./src/js/app/bootstrap.js"></script>
 </body>

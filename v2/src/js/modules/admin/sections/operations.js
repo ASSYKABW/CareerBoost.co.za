@@ -49,8 +49,13 @@
       ? access.allowedRoles
       : ["admin", "owner", "developer"];
     const operators = (op.data && Array.isArray(op.data.operators)) ? op.data.operators : [];
+    // A5: fetch-error banner uses shared helper so a Retry button is
+    // wired inline. Mutation errors stay as plain banners (no fetcher
+    // to retry — the operator just resubmits the form).
     const errorLine = op.error
-      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.error) + '</p>'
+      ? (h.renderErrorBanner
+          ? h.renderErrorBanner(op.error, "operators")
+          : '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.error) + '</p>')
       : "";
     const mutationErr = op.mutationError
       ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.mutationError) + '</p>'
@@ -78,13 +83,21 @@
       : (op.status === "loading"
           ? '<p class="admin-copy">Loading operators…</p>'
           : '<p class="admin-copy">No active admin operators returned. Deploy admin-list-operators if the function is missing.</p>');
+    // A5: replaced the bespoke refresh button with the shared freshness
+    // badge. The badge's built-in refresh icon hits [data-admin-refresh]
+    // which dispatches to fetchAdminOperators(true). The old
+    // #admin-operators-refresh button stays on the page only via the
+    // legacy binding code path for code that may still reference it.
+    const operatorsBadge = h.renderFreshnessBadge
+      ? h.renderFreshnessBadge(op, "operators", { ttlMs: 60_000 })
+      : "";
     return (
       '<article class="admin-panel admin-panel--wide" id="admin-operator-management">' +
         '<div class="admin-panel-head">' +
           '<div><span>Operator management</span><h2>Who has admin access</h2></div>' +
           '<div class="admin-topbar-actions" style="display:flex;gap:6px;align-items:center;">' +
             '<span class="chip blue">' + st(operators.length || 0) + ' operator' + (operators.length === 1 ? "" : "s") + '</span>' +
-            '<button type="button" class="btn-ghost btn-sm" id="admin-operators-refresh"' + (op.inFlight ? " disabled" : "") + '><i class="fa-solid fa-rotate' + (op.inFlight ? " fa-spin" : "") + '"></i> Refresh</button>' +
+            operatorsBadge +
           '</div>' +
         '</div>' +
         errorLine +
@@ -116,8 +129,11 @@
     const meta = data && data.page ? data.page : null;
     const mix = (data && Array.isArray(data.actionMix)) ? data.actionMix : [];
     const status = op.status;
+    // A5: shared error banner with Retry button wired to audit fetcher.
     const errLine = op.error
-      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.error) + '</p>'
+      ? (h.renderErrorBanner
+          ? h.renderErrorBanner(op.error, "audit")
+          : '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(op.error) + '</p>')
       : "";
     const mixChips = mix.length
       ? mix.map(function (row) { return '<span class="chip subtle">' + st(row.action) + ' · ' + st(row.count) + '</span>'; }).join(" ")
@@ -175,11 +191,20 @@
       : (status === "loading"
           ? '<p class="admin-copy">Loading audit entries…</p>'
           : '<p class="admin-copy">No audit entries match these filters. Promote/demote or resolve an incident to populate the log.</p>');
+    // A5: freshness badge in the audit log panel head. TTL matches the
+    // fetcher's 30s cache so badge tone (fresh/aging/stale) aligns with
+    // when the cache actually expires.
+    const auditBadge = h.renderFreshnessBadge
+      ? h.renderFreshnessBadge(op, "audit", { ttlMs: 30_000 })
+      : "";
     return (
       '<article class="admin-panel admin-panel--wide" id="admin-audit-panel">' +
         '<div class="admin-panel-head">' +
           '<div><span>Audit log</span><h2>Mutation history</h2></div>' +
-          '<span class="chip blue">' + st(totalRows || 0) + ' entr' + ((totalRows || 0) === 1 ? "y" : "ies") + '</span>' +
+          '<div class="admin-topbar-actions" style="display:flex;gap:6px;align-items:center;">' +
+            '<span class="chip blue">' + st(totalRows || 0) + ' entr' + ((totalRows || 0) === 1 ? "y" : "ies") + '</span>' +
+            auditBadge +
+          '</div>' +
         '</div>' +
         (mixChips ? '<p class="admin-copy"><strong>Last 30 days:</strong> ' + mixChips + '</p>' : "") +
         errLine +

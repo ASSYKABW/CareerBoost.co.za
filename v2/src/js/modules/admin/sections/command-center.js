@@ -271,12 +271,21 @@
       return (i.status || "open") === "open";
     }).length;
 
+    // A5: freshness badge on the status banner — the admin-overview
+    // fetcher has a 60s TTL, so the badge tone matches the cache state.
+    // Sits alongside the incident/alert chip strip so the operator sees
+    // "data is N minutes old → Refresh" without scrolling.
+    const metricsBadge = h.renderFreshnessBadge
+      ? h.renderFreshnessBadge(h.adminRemote, "metrics", { ttlMs: h.ADMIN_METRICS_TTL_MS || 60_000 })
+      : "";
+
     return (
       '<section class="admin-status-banner admin-status-banner--' + st(data.cloud.connected ? "live" : (data.cloud.status === "error" ? "warn" : "local")) + '">' +
         '<div><strong>' + st(data.cloud.connected ? "Admin backend connected" : "Admin backend waiting") + '</strong><span>' + st(cloudLine) + '</span></div>' +
         '<div class="admin-status-counts">' +
           '<span class="chip ' + (incidentCount ? "rose" : "green") + '">' + st(incidentCount) + ' open incident' + (incidentCount === 1 ? "" : "s") + '</span>' +
           '<span class="chip ' + (alertCount ? "amber" : "subtle") + '">' + st(alertCount) + ' alert' + (alertCount === 1 ? "" : "s") + '</span>' +
+          metricsBadge +
         '</div>' +
       '</section>' +
       renderNorthStar(data.northStar, h) +

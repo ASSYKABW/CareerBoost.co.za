@@ -185,13 +185,20 @@
     }
   };
 
+  // A5: list of legacy → canonical section rewrites. Sourced from the
+  // phase-E migrations: E1 collapsed overview → command-center, E3 folded
+  // user-support → users. Add new entries here as boards consolidate.
+  const SECTION_ALIASES = {
+    "overview": "command-center",
+    "user-support": "users"
+  };
+
   function currentSection() {
     const params = (window.CBV2.getRouteParams && window.CBV2.getRouteParams()) || {};
-    let section = String(params.section || "command-center").trim();
-    // Phase E1: "overview" is the old home — redirect to command-center.
-    if (section === "overview") section = "command-center";
-    // Phase E3: "user-support" is folded into "users".
-    if (section === "user-support") section = "users";
+    const rawSection = String(params.section || "command-center").trim();
+    let section = rawSection;
+    if (SECTION_ALIASES[section]) section = SECTION_ALIASES[section];
+
     // Phase E5: hard aliases that fully fold into a new board (no need to
     // keep the legacy renderer around because the new board covers it).
     // Note these are different from LEGACY_SECTION_IDS, which keep their
@@ -200,7 +207,34 @@
       return out.concat(group.items.map(function (item) { return item.id; }));
     }, []);
     const allValidIds = navIds.concat(LEGACY_SECTION_IDS);
-    return allValidIds.indexOf(section) >= 0 ? section : "command-center";
+    const resolved = allValidIds.indexOf(section) >= 0 ? section : "command-center";
+
+    // A5: when the URL contains a legacy alias, rewrite the hash so
+    // operators see the canonical path in the address bar (and copy/
+    // paste the right link). Guarded by rawSection !== resolved so
+    // it's a no-op on every other render. Uses replaceState so the
+    // back button doesn't ping-pong.
+    if (rawSection !== resolved && SECTION_ALIASES[rawSection] === resolved) {
+      try {
+        const url = new URL(window.location.href);
+        const hash = url.hash || "";
+        // Hash format: "#/admin?section=user-support&other=foo". Swap
+        // just the section param, leave everything else intact.
+        const qIdx = hash.indexOf("?");
+        if (qIdx >= 0) {
+          const pathPart = hash.slice(0, qIdx);
+          const search = new URLSearchParams(hash.slice(qIdx + 1));
+          if (search.get("section") === rawSection) {
+            search.set("section", resolved);
+            const newHash = pathPart + "?" + search.toString();
+            if (newHash !== hash) {
+              window.history.replaceState(null, "", url.pathname + url.search + newHash);
+            }
+          }
+        }
+      } catch (_e) { /* non-blocking */ }
+    }
+    return resolved;
   }
 
   function cloudDataIsFresh() {
@@ -1239,6 +1273,13 @@
       bindOperatorManagementControls();
     }
 
+    // A5: generic refresh dispatcher — any [data-admin-refresh="<key>"]
+    // button bound anywhere in the admin tree gets routed to the right
+    // force-fetch. Used by the freshness chips on each panel head AND
+    // by Retry buttons inside error banners. Single binding pass keeps
+    // the per-section code free of repetitive refresh wiring.
+    bindRefreshDispatcher();
+
     startStalenessTicker();
     // Phase 8: subscribe to Supabase Realtime postgres_changes for
     // admin_incidents + admin_audit_log so the admin sees updates
@@ -1247,6 +1288,41 @@
       window.CBV2.adminRealtime.setup();
     }
   };
+
+  // A5: refresh dispatcher — maps fetcher keys to force-fetch calls.
+  // New keys here as we add freshness badges to more panels.
+  function bindRefreshDispatcher() {
+    document.querySelectorAll("[data-admin-refresh]").forEach(function (btn) {
+      // Skip if already bound (event listener idempotency). We tag the
+      // node with a dataset flag rather than relying on listener
+      // dedup (which can't be detected after the fact).
+      if (btn.dataset.adminRefreshBound === "1") return;
+      btn.dataset.adminRefreshBound = "1";
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = btn.getAttribute("data-admin-refresh") || "";
+        runRefresh(key);
+      });
+    });
+  }
+  function runRefresh(key) {
+    switch (key) {
+      case "users":     return fetchAdminUsers({ force: true });
+      case "audit":     return fetchAdminAudit({ force: true });
+      case "operators": return fetchAdminOperators(true);
+      case "metrics":   return fetchAdminMetrics(true);
+      case "timeline": {
+        const id = adminUserTimelineRemote.activeUserId;
+        const email = adminUserTimelineRemote.activeUserEmail;
+        if (id) return fetchAdminUserTimeline(id, email);
+        return null;
+      }
+      default:
+        if (window.CBV2.toast) window.CBV2.toast.error("Unknown refresh key: " + key);
+        return null;
+    }
+  }
 
   // -- Bindings -------------------------------------------------------------
 

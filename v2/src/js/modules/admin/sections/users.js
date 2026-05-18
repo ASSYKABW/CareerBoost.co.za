@@ -109,12 +109,13 @@
     const hasNext     = pageMeta ? Boolean(pageMeta.hasNext) : false;
     const hasPrev     = pageMeta ? Boolean(pageMeta.hasPrev) : false;
 
-    const sourceLabel = paginated
-      ? "Paginated · " + (adminUsersRemote.status === "refreshing" ? "refreshing" : ("page " + currentPage + " of " + totalPages))
-      : (adminUsersRemote.status === "loading" || adminUsersRemote.status === "refreshing"
-         ? "Loading paginated view…"
-         : "Top-25 snapshot");
-    const sourceTone = paginated ? "blue" : (adminUsersRemote.status === "loading" ? "cyan" : "amber");
+    // A5: replaced the old static source-label chip with the shared
+    // freshness badge. Operator now sees "Just now / 2m ago / stale"
+    // + a Refresh button, and Fetch failed → Retry chain inline. The
+    // page-count detail moved into the pager status line below.
+    const headBadge = h.renderFreshnessBadge
+      ? h.renderFreshnessBadge(adminUsersRemote, "users", { ttlMs: 60_000 })
+      : "";
 
     const sortOptions = [
       { value: "health",   label: "Health (lowest first)" },
@@ -127,8 +128,13 @@
       return '<option value="' + st(opt.value) + '"' + sel + '>' + st(opt.label) + '</option>';
     }).join("");
 
+    // A5: error banner uses the shared helper so a Retry button appears
+    // inline next to the message — wired to the [data-admin-refresh]
+    // dispatcher in admin.route.js.
     const errorBanner = adminUsersRemote.status === "error"
-      ? '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(adminUsersRemote.error || "Paginated users fetch failed.") + '</p>'
+      ? (h.renderErrorBanner
+          ? h.renderErrorBanner(adminUsersRemote.error || "Paginated users fetch failed.", "users")
+          : '<p class="admin-copy admin-error-banner"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(adminUsersRemote.error || "Paginated users fetch failed.") + '</p>')
       : "";
 
     const segmentNote = activeSegment
@@ -192,7 +198,7 @@
         renderStat("No job captured", queues.jobCaptureNeeded || 0, "users without a saved/tracked role", queues.jobCaptureNeeded ? "amber" : "cyan") +
       '</section>' +
       '<article class="admin-panel admin-panel--wide">' +
-        '<div class="admin-panel-head"><div><span>Account health queue</span><h2>Who needs attention</h2></div><span class="chip ' + st(sourceTone) + '">' + st(sourceLabel) + '</span></div>' +
+        '<div class="admin-panel-head"><div><span>Account health queue</span><h2>Who needs attention</h2></div>' + headBadge + '</div>' +
         toolbar +
         bulkToolbar +
         segmentNote +

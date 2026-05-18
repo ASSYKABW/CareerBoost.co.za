@@ -441,6 +441,96 @@
     );
   }
 
+  // -- A5: freshness badges + error banners with retry -----------------------
+  //
+  // Every admin panel that pulls remote data has a state cache with at
+  // least { status, loadedAt, error }. These two helpers render a
+  // consistent "freshness chip + refresh button" header decoration and
+  // a "Retry" button on error banners, so operators never have to wonder
+  // whether what they're looking at is stale or how to recover from
+  // a transient fetch error.
+  //
+  // renderFreshnessBadge(remote, key, opts)
+  //   remote: state cache (must have status + loadedAt)
+  //   key:    string that the [data-admin-refresh] handler uses to look
+  //           up the right fetcher (e.g. "users", "audit", "operators",
+  //           "metrics", "timeline")
+  //   opts:   { label?: string, ttlMs?: number, hideRefresh?: boolean }
+  function renderFreshnessBadge(remote, key, opts) {
+    opts = opts || {};
+    const ttl = Number(opts.ttlMs) || 60_000;
+    const status = String(remote && remote.status || "idle");
+    const loadedAt = Number(remote && remote.loadedAt || 0);
+    const error = String(remote && remote.error || "");
+
+    // Refreshing chip wins over freshness — operator needs to know
+    // "data is updating" not "data was fetched 2m ago".
+    if (status === "loading" || status === "refreshing") {
+      return (
+        '<span class="admin-freshness admin-freshness--loading" title="Fetching latest data">' +
+          '<i class="fa-solid fa-circle-notch fa-spin"></i> Refreshing…' +
+        '</span>'
+      );
+    }
+    if (status === "error") {
+      return (
+        '<span class="admin-freshness admin-freshness--error" title="' + st(error) + '">' +
+          '<i class="fa-solid fa-triangle-exclamation"></i> Fetch failed' +
+          (opts.hideRefresh ? '' : ' <button type="button" class="admin-freshness-btn" data-admin-refresh="' + st(key) + '" title="Retry"><i class="fa-solid fa-rotate"></i></button>') +
+        '</span>'
+      );
+    }
+    if (!loadedAt) {
+      // Idle / never loaded yet.
+      return (
+        '<span class="admin-freshness admin-freshness--idle">' +
+          '<i class="fa-solid fa-clock"></i> Not loaded' +
+          (opts.hideRefresh ? '' : ' <button type="button" class="admin-freshness-btn" data-admin-refresh="' + st(key) + '" title="Load"><i class="fa-solid fa-arrows-rotate"></i></button>') +
+        '</span>'
+      );
+    }
+    // Fresh / aging / stale based on TTL multiples.
+    const ageMs = Date.now() - loadedAt;
+    const ageSec = Math.round(ageMs / 1000);
+    const ageStr = ageSec < 5
+      ? "Just now"
+      : ageSec < 60
+        ? ageSec + "s ago"
+        : ageSec < 3600
+          ? Math.round(ageSec / 60) + "m ago"
+          : Math.round(ageSec / 3600) + "h ago";
+    let tone = "fresh";
+    if (ageMs > ttl * 5)      tone = "stale";
+    else if (ageMs > ttl * 2) tone = "aging";
+    const title = "Loaded " + new Date(loadedAt).toLocaleString();
+    return (
+      '<span class="admin-freshness admin-freshness--' + tone + '" title="' + st(title) + '">' +
+        '<i class="fa-solid fa-check-circle"></i> ' + st(ageStr) +
+        (opts.hideRefresh ? '' : ' <button type="button" class="admin-freshness-btn" data-admin-refresh="' + st(key) + '" title="Refresh now"><i class="fa-solid fa-arrows-rotate"></i></button>') +
+      '</span>'
+    );
+  }
+
+  // renderErrorBanner(message, key, opts)
+  //   message: the user-facing error
+  //   key:     fetcher key for the retry button (same vocab as renderFreshnessBadge)
+  //   opts:    { hideRetry?: boolean, extraClass?: string }
+  // Used by sections that show an error in the body of the panel (not
+  // just the head chip). Adds a Retry button wired to the same
+  // [data-admin-refresh] dispatcher.
+  function renderErrorBanner(message, key, opts) {
+    opts = opts || {};
+    const extra = opts.extraClass ? " " + opts.extraClass : "";
+    const retry = opts.hideRetry || !key
+      ? ""
+      : ' <button type="button" class="btn-ghost btn-sm admin-error-retry" data-admin-refresh="' + st(key) + '"><i class="fa-solid fa-rotate"></i> Retry</button>';
+    return (
+      '<p class="admin-copy admin-error-banner' + extra + '">' +
+        '<i class="fa-solid fa-triangle-exclamation"></i> ' + st(message || "Request failed") + retry +
+      '</p>'
+    );
+  }
+
   function renderCountTable(rows, emptyLabel) {
     const items = safeArray(rows);
     if (!items.length) return '<p class="admin-copy">' + st(emptyLabel || "No session rows are available yet.") + '</p>';
@@ -496,6 +586,9 @@
     renderProviderRows: renderProviderRows,
     renderCountBars: renderCountBars,
     renderCountTable: renderCountTable,
-    searchTrend: searchTrend
+    searchTrend: searchTrend,
+    // A5
+    renderFreshnessBadge: renderFreshnessBadge,
+    renderErrorBanner: renderErrorBanner
   };
 })();
