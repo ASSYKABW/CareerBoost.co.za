@@ -20,7 +20,12 @@
   // session mid-render, so the user sees the polished "You're in!" card
   // until they actively click a CTA — instead of snapping into the app
   // shell behind their back.
-  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin", "auth/confirmed"];
+  // P3: auth/reset is also fullscreen-authed. Supabase's recovery link
+  // signs the user into a partial recovery session as soon as the SDK
+  // parses the URL token. Without this entry, the bootstrap would mount
+  // the normal app shell + redirect them to dashboard before they ever
+  // see the "Choose a new password" form.
+  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin", "auth/confirmed", "auth/reset"];
 
   function mountAppShell() {
     const app = document.getElementById("app");
@@ -206,6 +211,12 @@
           // they really haven't done it yet.
           if (currentRouteName() === "auth/confirmed") {
             renderFullscreenAuthed("auth/confirmed");
+          } else if (currentRouteName() === "auth/reset") {
+            // P3: same guard as auth/confirmed — Supabase's recovery
+            // session auto-signs the user in, but they need to stay on
+            // the "Choose a new password" form, not get shoved into
+            // onboarding before they finish the reset.
+            renderFullscreenAuthed("auth/reset");
           } else if (currentRouteName() !== "onboarding") {
             window.location.hash = "#/onboarding";
           } else {
@@ -218,6 +229,14 @@
           // "Skip — open dashboard"; we don't shove them anywhere.
           if (current === "auth/confirmed") {
             renderFullscreenAuthed("auth/confirmed");
+            return;
+          }
+          // P3: same for auth/reset — the recovery session auto-signs
+          // in, but the user MUST stay on the form to actually pick a
+          // new password. Without this they get auto-redirected to
+          // dashboard and never see the form.
+          if (current === "auth/reset") {
+            renderFullscreenAuthed("auth/reset");
             return;
           }
           mountAppShell();

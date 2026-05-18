@@ -129,7 +129,7 @@
        capture any error from the rest of the bootstrap. It installs
        window.onerror + unhandledrejection handlers immediately. -->
   <script src="./src/js/services/observability/observability.js"></script>
-  <script src="./src/js/auth/auth.service.js?v=20260519-p3"></script>
+  <script src="./src/js/auth/auth.service.js?v=20260519-p3b"></script>
   <!-- Phase E2: acquisition attribution. Captures UTM + referrer on
        every page load (first-touch wins), then POSTs to the signup-
        attribution Edge Function once the user is authenticated. -->
@@ -195,7 +195,7 @@
   <script src="./src/js/services/candidate/application.command-center.js"></script>
   <script src="./src/js/services/candidate/product.intelligence.js"></script>
 
-  <script src="./src/js/auth/auth.route.js?v=20260519-p3"></script>
+  <script src="./src/js/auth/auth.route.js?v=20260519-p3b"></script>
   <!-- Post-confirmation landing. Reached after a user clicks the
        confirmation link in their signup email (or an OAuth round-trip).
        Replaces the bare #/dashboard redirect with a polished "You're in!"
@@ -204,11 +204,11 @@
   <!-- P3 signup-security: OTP code-entry route. Primary post-signup
        destination; the user types the 6-digit code from their email.
        The email link still works (→ auth.confirmed.js) as a fallback. -->
-  <script src="./src/js/auth/auth.verify.js?v=20260519-p3"></script>
+  <script src="./src/js/auth/auth.verify.js?v=20260519-p3b"></script>
   <!-- P3 reset-password: "type your new password" route reached from
        the password-reset email link. Calls supabase.auth.updateUser
        with the recovery session token. -->
-  <script src="./src/js/auth/auth.reset.js?v=20260519-p3"></script>
+  <script src="./src/js/auth/auth.reset.js?v=20260519-p3b"></script>
   <script src="./src/js/marketing/welcome.route.js"></script>
   <!-- Legal pages (public routes — readable without sign-in) -->
   <script src="./src/js/marketing/privacy.route.js?v=20260517-legal"></script>
@@ -307,6 +307,6 @@
   <script src="./src/js/modules/admin/sections/apply-assist.js"></script>
   <script src="./src/js/modules/admin/admin.route.js?v=20260518-adminA5"></script>
   <script src="./src/js/app/router.js"></script>
-  <script src="./src/js/app/bootstrap.js?v=20260519-p3"></script>
+  <script src="./src/js/app/bootstrap.js?v=20260519-p3b"></script>
 </body>
 </html>
