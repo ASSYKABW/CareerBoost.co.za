@@ -2852,3 +2852,103 @@
 @media (max-width: 640px) {
   .admin-econ-hero-stats { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------------
+ * Admin user-detail drawer — A1 additions.
+ *
+ * The base drawer styles (.admin-user-drawer, .admin-user-drawer-stats,
+ * etc.) already exist above. These rules cover the new sections shipped
+ * by phase A1: head-row chips, the AI usage table, and the recent AI
+ * call log with inline error rows.
+ * --------------------------------------------------------------------- */
+
+.admin-user-drawer-head-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* AI usage by skill — tight grid table inside a drawer section. */
+.admin-user-drawer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.admin-user-drawer-table th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(248, 251, 255, 0.5);
+  font-weight: 600;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.admin-user-drawer-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: #e8eefc;
+}
+.admin-user-drawer-table tr:last-child td { border-bottom: 0; }
+.admin-user-drawer-table th:nth-child(2),
+.admin-user-drawer-table td:nth-child(2),
+.admin-user-drawer-table th:nth-child(3),
+.admin-user-drawer-table td:nth-child(3),
+.admin-user-drawer-table th:nth-child(4),
+.admin-user-drawer-table td:nth-child(4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recent AI calls — vertical stream with optional error sub-row.
+ * Each <li> renders one call. Status chip + skill + provider + cost +
+ * latency on the first line; full error text underneath when present
+ * so an operator can copy-paste it straight into a support reply. */
+.admin-user-drawer-ai-log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-user-drawer-ai-log li {
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.admin-user-drawer-ai-log li > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: rgba(232, 238, 252, 0.92);
+}
+.admin-user-drawer-ai-log strong {
+  color: #f8fbff;
+  font-weight: 600;
+}
+.admin-user-drawer-ai-log time {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.5);
+}
+.admin-user-drawer-error {
+  display: block;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.18);
+  color: #fda4af;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

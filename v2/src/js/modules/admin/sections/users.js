@@ -202,6 +202,12 @@
 
   // Per-user expanded drawer. Renders inline below the table row when
   // adminUserTimelineRemote.activeUserId matches.
+  //
+  // A1 expansion: now also surfaces AI spend (30d + lifetime), per-skill
+  // usage breakdown, and the last 10 AI calls (with status, latency, error
+  // text). This is what makes the drawer "operational" rather than "look
+  // at the user" — an operator can answer "how much is this user costing
+  // me?" and "what did they do right before the bug?" without SQL access.
   function renderTimelineDrawer(h) {
     const st = h.st;
     const safeArray = h.safeArray;
@@ -221,6 +227,49 @@
     const applications = safeArray(tl.applications);
     const outcomes = safeArray(tl.outcomes);
     const sessions = safeArray(tl.recent_sessions);
+    const aiSpend = tl.ai_spend || {};
+    const aiUsage30d = (tl.ai_usage_30d && typeof tl.ai_usage_30d === "object") ? tl.ai_usage_30d : {};
+    const recentAiCalls = safeArray(tl.recent_ai_calls);
+
+    // Compact USD formatter — sub-cent values still readable, $X.XX for
+    // anything > $1, $0.0123 with 4 decimals below that.
+    const usd = function (n) {
+      const v = Number(n || 0);
+      if (!isFinite(v) || v === 0) return "$0";
+      if (v >= 100) return "$" + v.toFixed(0);
+      if (v >= 1)   return "$" + v.toFixed(2);
+      return "$" + v.toFixed(4);
+    };
+    const aiSpend30 = usd(aiSpend["30d"]);
+    const aiSpendLifetime = usd(aiSpend.lifetime);
+
+    // Sort skills by 30d cost descending — biggest line items at the top
+    // so cost outliers jump out immediately.
+    const skillRows = Object.keys(aiUsage30d)
+      .map(function (skill) {
+        const row = aiUsage30d[skill] || {};
+        return {
+          skill: skill,
+          count: Number(row.count) || 0,
+          cost: Number(row.cost_usd) || 0,
+          failed: Number(row.failed) || 0
+        };
+      })
+      .sort(function (a, b) { return b.cost - a.cost; })
+      .slice(0, 8);
+
+    // Identity bullets — onboarding + last sign-in + age. Augments the
+    // existing Acquisition kv card so the operator sees "is this user
+    // engaged or dormant?" at a glance.
+    const ageDays = Number(profile.account_age_days);
+    const signinDays = profile.days_since_signin == null ? null : Number(profile.days_since_signin);
+    const ageStr = isFinite(ageDays) ? (ageDays + " day" + (ageDays === 1 ? "" : "s") + " old") : "—";
+    const signinStr = signinDays == null
+      ? "never"
+      : (signinDays === 0 ? "today" : (signinDays + " day" + (signinDays === 1 ? "" : "s") + " ago"));
+    const onboardChip = profile.onboarding_completed
+      ? '<span class="chip green">Onboarded</span>'
+      : '<span class="chip warning">Onboarding incomplete</span>';
 
     return (
       '<div class="admin-user-drawer">' +
@@ -228,16 +277,23 @@
           '<div><strong>' + st(profile.email || op.activeUserEmail || "User") + '</strong><span>' +
             (profile.country_code ? st(profile.country_code) + ' · ' : '') +
             (profile.utm_source ? st(profile.utm_source) + ' · ' : 'direct · ') +
-            'joined ' + st(formatDateTime(profile.signup_at || profile.created_at)) +
+            'joined ' + st(formatDateTime(profile.signup_at || profile.created_at)) + ' · ' +
+            st(ageStr) +
           '</span></div>' +
-          '<button type="button" class="btn-ghost btn-sm" data-admin-user-close="1"><i class="fa-solid fa-xmark"></i> Close</button>' +
+          '<div class="admin-user-drawer-head-chips">' +
+            onboardChip +
+            '<button type="button" class="btn-ghost btn-sm" data-admin-user-close="1"><i class="fa-solid fa-xmark"></i> Close</button>' +
+          '</div>' +
         '</header>' +
         '<div class="admin-user-drawer-stats">' +
           '<span><strong>' + st(counts.applications || 0) + '</strong><em>applications</em></span>' +
           '<span><strong>' + st(counts.saved_jobs || 0) + '</strong><em>saved jobs</em></span>' +
           '<span><strong>' + st(counts.placements || 0) + '</strong><em>placements</em></span>' +
           '<span><strong>' + st(counts.ai_calls_30d || 0) + '</strong><em>AI calls (30d)</em></span>' +
+          '<span><strong>' + st(aiSpend30) + '</strong><em>AI spend (30d)</em></span>' +
+          '<span><strong>' + st(aiSpendLifetime) + '</strong><em>AI spend (lifetime)</em></span>' +
           '<span><strong>' + st(counts.sessions_30d || 0) + '</strong><em>sessions (30d)</em></span>' +
+          '<span><strong>' + st(signinStr) + '</strong><em>last sign-in</em></span>' +
         '</div>' +
         '<div class="admin-user-drawer-grid">' +
           '<section class="admin-user-drawer-section">' +
@@ -259,7 +315,7 @@
               : '<p class="admin-copy">No interview or offer milestones yet.</p>') +
           '</section>' +
           '<section class="admin-user-drawer-section">' +
-            '<h4><i class="fa-solid fa-bullhorn"></i> Acquisition</h4>' +
+            '<h4><i class="fa-solid fa-bullhorn"></i> Acquisition &amp; identity</h4>' +
             '<ul class="admin-user-drawer-kv">' +
               '<li><span>Source</span><strong>' + st(profile.utm_source || "direct") + '</strong></li>' +
               '<li><span>Medium</span><strong>' + st(profile.utm_medium || "—") + '</strong></li>' +
@@ -268,6 +324,7 @@
               '<li><span>Landing</span><strong>' + st((profile.landing_path || "—").slice(0, 60)) + '</strong></li>' +
               '<li><span>Country</span><strong>' + st(profile.country_code || "—") + '</strong></li>' +
               '<li><span>Plan</span><strong>' + st(profile.plan || "free") + '</strong></li>' +
+              '<li><span>Name</span><strong>' + st(profile.full_name || "—") + '</strong></li>' +
             '</ul>' +
           '</section>' +
           '<section class="admin-user-drawer-section">' +
@@ -278,6 +335,43 @@
                   return '<li><strong>' + st(formatDateTime(s.last_activity_at)) + '</strong> · ' + st(formatDuration(s.duration_seconds || 0)) + ' · ' + st(s.route_count || 0) + ' routes<span class="admin-user-drawer-modules">' + st(mods) + '</span></li>';
                 }).join("") + '</ul>'
               : '<p class="admin-copy">No recent sessions tracked.</p>') +
+          '</section>' +
+          '<section class="admin-user-drawer-section">' +
+            '<h4><i class="fa-solid fa-coins"></i> AI usage by skill (30d)</h4>' +
+            (skillRows.length
+              ? '<table class="admin-user-drawer-table"><thead><tr><th>Skill</th><th>Calls</th><th>Cost</th><th>Failed</th></tr></thead>' +
+                '<tbody>' + skillRows.map(function (s) {
+                  const failChip = s.failed > 0
+                    ? '<span class="chip ' + (s.failed >= s.count / 2 ? "warning" : "amber") + '">' + s.failed + '</span>'
+                    : '<span class="chip subtle">0</span>';
+                  return '<tr><td>' + st(s.skill) + '</td><td>' + s.count + '</td><td>' + st(usd(s.cost)) + '</td><td>' + failChip + '</td></tr>';
+                }).join("") + '</tbody></table>'
+              : '<p class="admin-copy">No AI activity in the last 30 days.</p>') +
+          '</section>' +
+          '<section class="admin-user-drawer-section">' +
+            '<h4><i class="fa-solid fa-list-check"></i> Recent AI calls</h4>' +
+            (recentAiCalls.length
+              ? '<ul class="admin-user-drawer-ai-log">' + recentAiCalls.slice(0, 10).map(function (c) {
+                  const okChip = c.status === "failed"
+                    ? '<span class="chip warning">FAILED</span>'
+                    : '<span class="chip subtle">ok</span>';
+                  const cache = c.cache_hit ? ' · <span class="chip subtle">cache</span>' : '';
+                  const latency = c.latency_ms ? ' · ' + Number(c.latency_ms) + 'ms' : '';
+                  const errorRow = c.error
+                    ? '<small class="admin-user-drawer-error">' + st(String(c.error).slice(0, 220)) + '</small>'
+                    : '';
+                  return '<li>' +
+                    '<div>' + okChip +
+                      ' <strong>' + st(c.skill || "?") + '</strong>' +
+                      ' · ' + st(c.provider || "?") +
+                      ' · ' + st(usd(c.cost_usd)) +
+                      latency + cache +
+                      ' <time>' + st(formatDateTime(c.created_at)) + '</time>' +
+                    '</div>' +
+                    errorRow +
+                  '</li>';
+                }).join("") + '</ul>'
+              : '<p class="admin-copy">No AI calls recorded for this user.</p>') +
           '</section>' +
         '</div>' +
       '</div>'
