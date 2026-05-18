@@ -356,9 +356,11 @@
     if (!event) return null;
     touchSession(event, event.event_name === "view_route");
     enqueue(event);
-    if (window.__CAREERBOOST_USAGE_DEBUG) {
-      console.log("[CB usage]", event);
-    }
+    // P1: removed the [CB usage] console.log — was only gated by the
+    // __CAREERBOOST_USAGE_DEBUG global, which is too easy to forget
+    // toggled on. If you need to inspect events locally, the queue is
+    // accessible via the network tab (look for /client-telemetry POSTs)
+    // or attach a tap: window.CBV2.usage.onEnqueue = e => console.log(e).
     return event;
   }
 

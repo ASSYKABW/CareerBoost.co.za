@@ -87,6 +87,10 @@
        Loads before any module that uses it. Gracefully no-op if not loaded;
        all callsites fall back to native confirm/prompt. -->
   <script src="./src/js/components/modal-service.js"></script>
+  <!-- P1: cookie / privacy notice banner. Self-installs on DOMContentLoaded,
+       shown only until the user dismisses (or 24h after "Not now").
+       No tracking — just a notice. -->
+  <script src="./src/js/components/cookie-banner.js?v=20260518-p1"></script>
   <!-- Phase Billing: entitlements + upgrade modal + gate helper. Must
        load AFTER auth.service.js (consumed via window.CBV2.auth) but
        BEFORE the feature modules that gate behavior (resume, cover-

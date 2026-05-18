@@ -99,11 +99,16 @@
     }
   ];
 
+  // P1: social profiles aren't live yet. Rather than ship dead "#" links
+  // that confuse visitors, mark unbuilt socials as disabled with a
+  // "Coming soon" tooltip. The Email tile stays live since it's a real
+  // mailto: link. When you create the LinkedIn/X/GitHub accounts, just
+  // swap href + drop the `pending: true` flag.
   const SOCIAL_LINKS = [
-    { label: "LinkedIn",  icon: "fa-linkedin-in", href: "#", brand: true },
-    { label: "Twitter / X", icon: "fa-x-twitter", href: "#", brand: true },
-    { label: "GitHub",    icon: "fa-github",    href: "#", brand: true },
-    { label: "Email",     icon: "fa-envelope",  href: "mailto:hello@careerboost.app", brand: false },
+    { label: "LinkedIn",    icon: "fa-linkedin-in", href: "#", brand: true,  pending: true },
+    { label: "Twitter / X", icon: "fa-x-twitter",   href: "#", brand: true,  pending: true },
+    { label: "GitHub",      icon: "fa-github",      href: "#", brand: true,  pending: true },
+    { label: "Email",       icon: "fa-envelope",    href: "mailto:hello@careerboost.app", brand: false, pending: false },
   ];
 
   const STEPS = [
@@ -171,6 +176,17 @@
   function renderFooterBrand() {
     const socials = SOCIAL_LINKS.map(function (s) {
       const cls = s.brand ? "fa-brands" : "fa-solid";
+      const isPending = !!s.pending;
+      // P1: render pending socials as <span> (not clickable) with a
+      // "Coming soon" tooltip + disabled styling. aria-disabled tells
+      // screen readers they're inactive. Live ones stay as <a>.
+      if (isPending) {
+        return (
+          '<span class="lp-social lp-social--pending" aria-label="' + s.label + ' — coming soon" aria-disabled="true" title="' + s.label + ' — coming soon">' +
+            '<i class="' + cls + ' ' + s.icon + '" aria-hidden="true"></i>' +
+          '</span>'
+        );
+      }
       return (
         '<a href="' + s.href + '" class="lp-social" aria-label="' + s.label + '" title="' + s.label + '">' +
           '<i class="' + cls + ' ' + s.icon + '" aria-hidden="true"></i>' +
