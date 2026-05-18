@@ -10,7 +10,11 @@
   // (the verifyOtp call IS what creates the session). Otherwise the
   // unauthed-redirect would bounce them to /welcome before they can
   // type the code.
-  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed", "auth/verify", "privacy", "terms"];
+  // auth/reset is the new "set new password" landing page reached
+  // from the password-reset email link. Public because the user
+  // isn't fully authenticated yet (recovery session is a partial
+  // auth state that only allows updateUser({password})).
+  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed", "auth/verify", "auth/reset", "privacy", "terms"];
   // Routes rendered fullscreen (no sidebar/topbar) for authed users.
   // "auth/confirmed" stays fullscreen even after the SDK establishes a
   // session mid-render, so the user sees the polished "You're in!" card

@@ -26,17 +26,17 @@ keeps the link AND adds the code.
 
 ### 1. Open the email template editor
 
-Go to:
-https://supabase.com/dashboard/project/kddffkhwpbngiupfmcse/auth/templates
-
-You should see four templates in the left nav:
-- Confirm signup ← **this one**
+In the Supabase dashboard, navigate to **Authentication → Emails →
+Templates** tab. (Sidebar wording may vary; on the current dashboard
+it's under the **NOTIFICATIONS** group, "Email" item.) You should see
+five templates listed:
+- Confirm sign up ← **update this one for OTP**
 - Invite user
 - Magic link
-- Reset password
 - Change email address
+- Reset password ← **update this one too for branded reset email**
 
-Click "Confirm signup."
+Click "Confirm sign up" first.
 
 ### 2. Replace the body with this template
 
@@ -96,8 +96,61 @@ Your CareerBoost confirmation code
 
 ### 4. Save
 
-Click "Save changes" at the top right. The new template is live
+Click "Save changes" at the bottom. The new template is live
 immediately — next signup will receive it.
+
+---
+
+## Bonus: branded "Reset password" template
+
+While you're in the editor, click **"Reset password"** and paste this
+in. Matches the same branded card style.
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: #f6f8fc; padding: 24px; color: #0f172a; }
+    .card { max-width: 480px; margin: 0 auto; background: #fff;
+            border-radius: 16px; padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+    .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #5eead4, #a78bfa);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; }
+    h1 { font-size: 22px; margin: 16px 0 8px; }
+    p { font-size: 14px; line-height: 1.55; color: #475569; }
+    .btn { display: inline-block; padding: 12px 22px; border-radius: 10px;
+           background: linear-gradient(135deg, #5eead4, #a78bfa);
+           color: #0f172a !important; text-decoration: none; font-weight: 600;
+           margin-top: 12px; }
+    .meta { margin-top: 28px; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">CareerBoost</div>
+    <h1>Reset your password</h1>
+    <p>We received a request to reset the password on your CareerBoost account. Click the button below to choose a new password:</p>
+    <p><a class="btn" href="{{ .ConfirmationURL }}">Reset my password</a></p>
+    <p class="meta">
+      This link expires in 1 hour. If you didn't request a password
+      reset, you can safely ignore this email — your password won't
+      change.
+    </p>
+  </div>
+</body>
+</html>
+```
+
+Subject line:
+```
+Reset your CareerBoost password
+```
+
+Click "Save changes" again.
 
 ---
 

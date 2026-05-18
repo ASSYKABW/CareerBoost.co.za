@@ -133,7 +133,11 @@
   async function sendPasswordReset(email) {
     const client = ensureClient();
     if (!client) throw new Error("Backend not configured.");
-    const redirectTo = buildRedirect("#/auth?reset=1");
+    // P3 reset: point the recovery link at the new #/auth/reset route
+    // (auth.reset.js) which provides the "type your new password" UI.
+    // Previously this went to #/auth?reset=1 which silently dropped
+    // users on the sign-in page with no way to actually reset.
+    const redirectTo = buildRedirect("#/auth/reset");
     const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
   }
