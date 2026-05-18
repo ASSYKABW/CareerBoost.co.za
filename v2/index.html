@@ -171,7 +171,11 @@
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->
   <script src="./src/js/modules/settings/settings.billing.js"></script>
-  <script src="./src/js/modules/settings/settings.route.js?v=20260517-deleteacct"></script>
+  <!-- P2: candidate-intelligence card extracted from settings.route.js
+       as first step of splitting the 3387-line file. Loaded before
+       settings.route.js which calls window.CBV2.settingsIntel.render(). -->
+  <script src="./src/js/modules/settings/settings.intel.js?v=20260518-p2"></script>
+  <script src="./src/js/modules/settings/settings.route.js?v=20260518-p2"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];

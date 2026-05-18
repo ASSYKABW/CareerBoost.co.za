@@ -1241,39 +1241,15 @@
     `;
   }
 
+  // P2: extracted to settings.intel.js. Shim kept here so existing
+  // callsites inside renderView() don't need touching — they still
+  // call renderCandidateIntelligenceSettingsSection() and we delegate.
+  // When settings.route.js eventually shrinks below the audit target,
+  // callsites can switch to window.CBV2.settingsIntel.render() directly
+  // and this shim can be dropped.
   function renderCandidateIntelligenceSettingsSection() {
-    const api = window.CBV2.candidateIntel;
-    if (!api || typeof api.build !== "function") return "";
-    const st = getSt();
-    const intel = api.build();
-    const topSkills = (intel.skills && intel.skills.top ? intel.skills.top : []).slice(0, 8);
-    const missing = (intel.skills && intel.skills.missingTarget ? intel.skills.missingTarget : []).slice(0, 5);
-    const actions = (intel.nextActions || []).slice(0, 3);
-    const missingHtml = missing.length
-      ? missing.map(function (skill) {
-        return '<span class="chip warning">' + st(api.formatSkill ? api.formatSkill(skill) : skill) + "</span>";
-      }).join("")
-      : '<span class="chip green">Target skills covered</span>';
-    if (window.CBV2.ui && typeof window.CBV2.ui.candidateIntelligenceCard === "function") {
-      return window.CBV2.ui.candidateIntelligenceCard({
-        className: "candidate-intel-card--settings settings-section",
-        title: "Candidate intelligence",
-        badge: "Shared profile model",
-        description: "This is the reusable candidate brain behind search ranking, probability scoring, resume tailoring, cover letters, and interview prep.",
-        intel: intel,
-        skills: topSkills,
-        skillLimit: 8,
-        skillsInside: false,
-        emptySkillsLabel: "No skills mapped yet",
-        metrics: [
-          { value: String(intel.evidence.count || 0), label: "evidence items" },
-          { value: String(intel.evidence.quantifiedCount || 0), label: "quantified proof" },
-          { value: String(intel.resume.savedCvCount || 0), label: "saved CVs" }
-        ],
-        gapsHtml: '<strong>Target gaps</strong>' + missingHtml,
-        actions: actions,
-        actionClass: "settings-action-list"
-      });
+    if (window.CBV2.settingsIntel && typeof window.CBV2.settingsIntel.render === "function") {
+      return window.CBV2.settingsIntel.render();
     }
     return "";
   }

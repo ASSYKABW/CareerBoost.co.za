@@ -22,5 +22,12 @@
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "//": "P2: SPA fallback. Hash fragments (#/applications) don't hit the server, so refresh on a hash route already works. But if someone types or shares a non-hash path (e.g. /privacy, /admin, /onboarding) we want to serve index.html and let JS routing pick it up — otherwise Vercel returns 404. Negative-lookahead exempts real assets (src/* files, common file extensions) so they continue to 404 properly when missing, instead of returning an HTML page that breaks downstream <script> tags.",
+      "source": "/((?!src/|api/|.*\\.(?:js|css|svg|png|jpg|jpeg|webp|woff|woff2|ico|json|txt|xml|zip|map|webmanifest|html)).*)",
+      "destination": "/index.html"
+    }
   ]
 }
