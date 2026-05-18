@@ -15,7 +15,47 @@
     info: ""
   };
 
+  // P3 signup security: live password checklist requirements.
+  // Each rule is { id, label, test }. The signup form re-evaluates
+  // them on every keystroke and renders a checkmark/cross per rule.
+  // Submit is blocked until all required rules pass.
+  const PASSWORD_RULES = [
+    { id: "len",    label: "At least 10 characters",          test: function (p) { return String(p || "").length >= 10; } },
+    { id: "letter", label: "Contains a letter",                test: function (p) { return /[A-Za-z]/.test(String(p || "")); } },
+    { id: "number", label: "Contains a number",                test: function (p) { return /\d/.test(String(p || "")); } },
+    { id: "common", label: "Not a common password",            test: function (p) {
+      // Tiny rejection list — blocks the dumbest ones without a heavy
+      // library. Supabase doesn't enforce password complexity, so this
+      // is purely client-side defence in depth.
+      const blocklist = ["password", "password1", "qwerty", "12345678", "1234567890", "letmein", "iloveyou", "abc12345"];
+      return blocklist.indexOf(String(p || "").toLowerCase()) === -1;
+    } }
+  ];
+  function failingPasswordRules(pwd) {
+    return PASSWORD_RULES.filter(function (r) { return !r.test(pwd); });
+  }
+
   function st() { return window.CBV2.sanitizeText || function (s) { return String(s == null ? "" : s); }; }
+
+  // P3 signup security: live password checklist component.
+  // Renders 4 rules with a pass/fail chip next to each. Updated on
+  // every keystroke via the input handler (which re-renders the form).
+  function renderPasswordChecklist(pwd) {
+    const s = st();
+    return (
+      '<ul class="auth-pw-checklist">' +
+        PASSWORD_RULES.map(function (rule) {
+          const ok = rule.test(pwd);
+          const cls = ok ? "is-pass" : "is-fail";
+          const icon = ok ? "fa-circle-check" : "fa-circle";
+          return '<li class="' + cls + '">' +
+            '<i class="fa-solid ' + icon + '" aria-hidden="true"></i> ' +
+            s(rule.label) +
+          '</li>';
+        }).join("") +
+      '</ul>'
+    );
+  }
   function renderBrand() {
     if (window.CBV2.brandKit && typeof window.CBV2.brandKit.logo === "function") {
       return window.CBV2.brandKit.logo({ compact: false, tagline: true });
@@ -48,7 +88,9 @@
         ? ""
         : '<label>Password<input id="auth-password" type="password" autocomplete="' +
           (mode === "signup" ? "new-password" : "current-password") +
-          '" required value="' + s(viewState.password) + '" /></label>';
+          '" required value="' + s(viewState.password) + '" /></label>' +
+          // P3: live password rule checklist visible only on signup.
+          (mode === "signup" ? renderPasswordChecklist(viewState.password) : "");
     const fullName =
       mode === "signup"
         ? '<label>Full name<input id="auth-fullname" type="text" autocomplete="name" value="' +
@@ -172,35 +214,47 @@
         await window.CBV2.auth.signInWithPassword(viewState.email, viewState.password);
         window.location.hash = "#/dashboard";
       } else if (viewState.mode === "signup") {
-        // Phase 4: auto-sign-in flow.
-        // 1. Sign up. If the project has email-confirmation OFF, signUp returns
-        //    a session immediately and the user is already authed → straight to
-        //    dashboard. If confirmation is ON, signUp returns user-without-session
-        //    and we show "Check your inbox".
-        // 2. As a belt-and-braces step, attempt signInWithPassword right after.
-        //    On confirmation-OFF projects this is a no-op (already signed in).
-        //    On confirmation-ON projects it predictably fails with "Email not
-        //    confirmed" — we catch that and fall through to the inbox view.
+        // P3 signup security: enforce password rules client-side BEFORE
+        // hitting the network. Supabase doesn't validate complexity, so
+        // this is the only place we can stop "password123" at the door.
+        const failing = failingPasswordRules(viewState.password);
+        if (failing.length) {
+          throw new Error("Password doesn't meet requirements: " + failing[0].label.toLowerCase() + ".");
+        }
+        // Phase 4 + P3: signup → verify-code flow.
+        // 1. Sign up. If the project has email-confirmation OFF, signUp
+        //    returns a session immediately and the user is already authed
+        //    → straight to dashboard.
+        // 2. If confirmation is ON (the production setup), signUp returns
+        //    user-without-session and Supabase sends an email containing
+        //    BOTH a 6-digit OTP code and a magic link. Route the user to
+        //    #/auth/verify?email=... where they type the code; the link
+        //    in the email also works as a fallback (lands on /auth/confirmed).
         await window.CBV2.auth.signUpWithPassword(
           viewState.email, viewState.password, viewState.fullName
         );
+        // Try a session probe — if confirmation is off, we're already
+        // signed in and can skip the verify route entirely.
         let signedIn = false;
         try {
           await window.CBV2.auth.signInWithPassword(viewState.email, viewState.password);
           signedIn = true;
         } catch (signInErr) {
-          // Most common failure here: "Email not confirmed". Fall through.
+          // Most common failure here: "Email not confirmed" — expected
+          // on the production setup. Fall through to the verify route.
           const msg = (signInErr && signInErr.message) || "";
           if (!/not\s+confirmed|verify|confirm/i.test(msg)) {
-            // Unexpected failure — surface it. User can still sign in manually
-            // once they receive the confirmation email.
+            // Unexpected failure — surface it. User can still sign in
+            // manually after they verify their email.
           }
         }
         if (signedIn) {
           window.location.hash = "#/dashboard";
         } else {
-          viewState.info = "Account created. Check your inbox for a confirmation email, then sign in.";
-          viewState.mode = "signin";
+          // Stash email in sessionStorage too so a hash-only navigation
+          // (no query string) still finds it.
+          try { sessionStorage.setItem("cb_signup_pending_email", viewState.email); } catch (_e) {}
+          window.location.hash = "#/auth/verify?email=" + encodeURIComponent(viewState.email);
         }
       } else if (viewState.mode === "forgot") {
         await window.CBV2.auth.sendPasswordReset(viewState.email);
@@ -247,6 +301,21 @@
 
     const form = document.getElementById("auth-form");
     if (form) form.addEventListener("submit", submit);
+
+    // P3 signup security: live-update the password checklist as the
+    // user types. We re-render the form body but NOT the whole page
+    // (keeps focus on the password input, no caret jump). To do that
+    // cleanly we just update the checklist DOM in place.
+    const pwdInput = document.getElementById("auth-password");
+    if (pwdInput && viewState.mode === "signup") {
+      pwdInput.addEventListener("input", function () {
+        viewState.password = pwdInput.value;
+        const existing = document.querySelector(".auth-pw-checklist");
+        if (existing) {
+          existing.outerHTML = renderPasswordChecklist(viewState.password);
+        }
+      });
+    }
 
     document.querySelectorAll("[data-auth-mode]").forEach(function (a) {
       a.addEventListener("click", function (ev) {

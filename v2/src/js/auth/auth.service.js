@@ -138,6 +138,43 @@
     if (error) throw error;
   }
 
+  // P3 (signup security): verify a 6-digit OTP from the confirmation
+  // email. Supabase's email template needs to include {{ .Token }} for
+  // this to work — see docs/SUPABASE-EMAIL-OTP.md for the dashboard
+  // change. The link in the email (using {{ .ConfirmationURL }}) still
+  // works as a fallback for users who can't see / type the code.
+  //
+  // On success the returned session is automatically stored by the
+  // SDK and onChange listeners (including the router) fire.
+  async function verifyEmailOtp(email, token) {
+    const client = ensureClient();
+    if (!client) throw new Error("Backend not configured.");
+    const cleaned = String(token || "").replace(/\D/g, "").slice(0, 6);
+    if (cleaned.length !== 6) throw new Error("Enter the 6-digit code from your email.");
+    const { data, error } = await client.auth.verifyOtp({
+      email: String(email || "").trim().toLowerCase(),
+      token: cleaned,
+      type: "signup"
+    });
+    if (error) throw error;
+    trackUsage("verify_email_otp", { method: "otp" });
+    return data;
+  }
+
+  // Resend the signup confirmation email. Rate-limited by Supabase to
+  // 1 per 60s per email (default), so the UI debounces accordingly.
+  async function resendSignupOtp(email) {
+    const client = ensureClient();
+    if (!client) throw new Error("Backend not configured.");
+    const { error } = await client.auth.resend({
+      type: "signup",
+      email: String(email || "").trim().toLowerCase(),
+      options: { emailRedirectTo: buildRedirect("#/auth/confirmed") }
+    });
+    if (error) throw error;
+    trackUsage("resend_signup_otp", {});
+  }
+
   async function signOut() {
     const client = ensureClient();
     if (!client) return;
@@ -165,6 +202,8 @@
     signUpWithPassword,
     signInWithOAuth,
     sendPasswordReset,
+    verifyEmailOtp,
+    resendSignupOtp,
     signOut,
     getSession,
     getUser,

@@ -39,6 +39,81 @@
   <link rel="stylesheet" href="./src/styles/admin.css" />
 </head>
 <body>
+  <!-- P3: Boot splash. Renders BEFORE any JS / app CSS loads, so even
+       a cold visit shows the brand mark + spinner instead of a blank
+       white flash. Removed by bootstrap.js once the app shell is
+       rendered. Styles are inline (not in main bundle) because the
+       bundle may take 300-800ms to arrive on a slow connection or
+       after a deploy.
+       Hidden once the body gets the .cb-booted class. -->
+  <style id="cb-boot-splash-styles">
+    /* Hide app shell until the splash fades out — prevents the brief
+       "Loading Dashboard V2…" fallback from flashing into view. */
+    body:not(.cb-booted) #app { visibility: hidden; }
+    #cb-boot-splash {
+      position: fixed; inset: 0; z-index: 2147483640;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px;
+      background: radial-gradient(ellipse at top, #0f172a 0%, #05070f 70%);
+      color: #f8fbff;
+      font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      transition: opacity 240ms ease;
+    }
+    body.cb-booted #cb-boot-splash { opacity: 0; pointer-events: none; }
+    #cb-boot-splash .cb-boot-mark {
+      width: 64px; height: 64px; border-radius: 16px;
+      background: linear-gradient(135deg, #5eead4, #a78bfa);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 28px; color: #05070f;
+      letter-spacing: -0.04em;
+      box-shadow: 0 12px 40px rgba(94, 234, 212, 0.35);
+    }
+    #cb-boot-splash .cb-boot-name {
+      font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+    }
+    #cb-boot-splash .cb-boot-name span {
+      background: linear-gradient(135deg, #5eead4, #a78bfa);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+    }
+    #cb-boot-splash .cb-boot-spinner {
+      width: 24px; height: 24px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.12);
+      border-top-color: #5eead4;
+      animation: cb-boot-spin 600ms linear infinite;
+      margin-top: 4px;
+    }
+    @keyframes cb-boot-spin { to { transform: rotate(360deg); } }
+    #cb-boot-splash .cb-boot-hint {
+      font-size: 12px; color: rgba(248, 251, 255, 0.5);
+      max-width: 280px; text-align: center; margin-top: 10px;
+    }
+    /* Slow-network failsafe: if the app isn't booted after 8s, show
+       a "Still loading?" line so the user knows it's not stuck. */
+    #cb-boot-splash .cb-boot-stuck { display: none; }
+    body:not(.cb-booted) #cb-boot-splash.is-slow .cb-boot-stuck { display: block; }
+  </style>
+  <div id="cb-boot-splash" role="status" aria-label="Loading CareerBoost">
+    <div class="cb-boot-mark" aria-hidden="true">CB</div>
+    <div class="cb-boot-name">Career<span>Boost</span></div>
+    <div class="cb-boot-spinner" aria-hidden="true"></div>
+    <p class="cb-boot-hint">Loading your workspace…</p>
+    <p class="cb-boot-hint cb-boot-stuck">
+      Still loading? Check your connection or
+      <a href="#" onclick="window.location.reload();return false;" style="color:#5eead4;">refresh the page</a>.
+    </p>
+  </div>
+  <script>
+    // After 8s without boot, mark the splash as slow so the help line
+    // appears. Removed automatically when bootstrap.js sets .cb-booted.
+    setTimeout(function () {
+      if (!document.body.classList.contains("cb-booted")) {
+        var s = document.getElementById("cb-boot-splash");
+        if (s) s.classList.add("is-slow");
+      }
+    }, 8000);
+  </script>
+
   <div id="app">
     <section class="page-container">
       <h1 class="page-title">Loading Dashboard V2...</h1>
@@ -54,7 +129,7 @@
        capture any error from the rest of the bootstrap. It installs
        window.onerror + unhandledrejection handlers immediately. -->
   <script src="./src/js/services/observability/observability.js"></script>
-  <script src="./src/js/auth/auth.service.js?v=20260515-oauth"></script>
+  <script src="./src/js/auth/auth.service.js?v=20260518-p3"></script>
   <!-- Phase E2: acquisition attribution. Captures UTM + referrer on
        every page load (first-touch wins), then POSTs to the signup-
        attribution Edge Function once the user is authenticated. -->
@@ -120,12 +195,16 @@
   <script src="./src/js/services/candidate/application.command-center.js"></script>
   <script src="./src/js/services/candidate/product.intelligence.js"></script>
 
-  <script src="./src/js/auth/auth.route.js"></script>
+  <script src="./src/js/auth/auth.route.js?v=20260518-p3"></script>
   <!-- Post-confirmation landing. Reached after a user clicks the
        confirmation link in their signup email (or an OAuth round-trip).
        Replaces the bare #/dashboard redirect with a polished "You're in!"
        card and a friendly recovery path if the link expired. -->
   <script src="./src/js/auth/auth.confirmed.js"></script>
+  <!-- P3 signup-security: OTP code-entry route. Primary post-signup
+       destination; the user types the 6-digit code from their email.
+       The email link still works (→ auth.confirmed.js) as a fallback. -->
+  <script src="./src/js/auth/auth.verify.js?v=20260518-p3"></script>
   <script src="./src/js/marketing/welcome.route.js"></script>
   <!-- Legal pages (public routes — readable without sign-in) -->
   <script src="./src/js/marketing/privacy.route.js?v=20260517-legal"></script>
@@ -224,6 +303,6 @@
   <script src="./src/js/modules/admin/sections/apply-assist.js"></script>
   <script src="./src/js/modules/admin/admin.route.js?v=20260518-adminA5"></script>
   <script src="./src/js/app/router.js"></script>
-  <script src="./src/js/app/bootstrap.js"></script>
+  <script src="./src/js/app/bootstrap.js?v=20260518-p3"></script>
 </body>
 </html>

@@ -255,3 +255,129 @@
   color: #fde68a;
 }
 .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+/* ---------------------------------------------------------------------
+ * P3 signup security additions:
+ *   - .auth-pw-checklist      live password rule chips below the password
+ *                              input on the signup form.
+ *   - .auth-verify-card       the dedicated OTP entry page (#/auth/verify).
+ *   - .auth-otp-row           6 individual digit boxes.
+ *   - .auth-otp-box           one box; auto-advance / paste handled in JS.
+ * --------------------------------------------------------------------- */
+
+.auth-pw-checklist {
+  list-style: none;
+  padding: 8px 12px;
+  margin: 6px 0 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.auth-pw-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(248, 251, 255, 0.55);
+  transition: color 120ms ease;
+}
+.auth-pw-checklist li i { font-size: 11px; opacity: 0.7; }
+.auth-pw-checklist li.is-pass {
+  color: #86efac;
+}
+.auth-pw-checklist li.is-pass i {
+  color: #34d399;
+  opacity: 1;
+}
+.auth-pw-checklist li.is-fail {
+  color: rgba(248, 251, 255, 0.55);
+}
+.auth-pw-checklist li.is-fail i {
+  color: rgba(248, 251, 255, 0.35);
+}
+
+/* Verify (OTP) page ------------------------------------------------- */
+
+.auth-verify-card { max-width: 480px; }
+.auth-verify-target {
+  font-size: 13px;
+  color: rgba(248, 251, 255, 0.65);
+  margin: -4px 0 16px;
+}
+.auth-verify-target strong { color: #f8fbff; }
+.auth-verify-target a {
+  color: #5eead4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  margin-left: 4px;
+}
+.auth-verify-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(248, 251, 255, 0.55);
+  margin-bottom: 8px;
+}
+.auth-verify-hint {
+  font-size: 12px;
+  color: rgba(248, 251, 255, 0.5);
+  margin-top: 12px;
+}
+.auth-verify-hint code {
+  background: rgba(94, 234, 212, 0.08);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  color: #5eead4;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+.auth-verify-form .auth-submit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* OTP digit boxes --------------------------------------------------- */
+
+.auth-otp-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.auth-otp-box {
+  width: 100%;
+  height: 56px;
+  font-size: 24px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #f8fbff;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  transition: border-color 120ms ease, background 120ms ease, transform 60ms ease;
+  caret-color: #5eead4;
+}
+.auth-otp-box:focus {
+  outline: none;
+  border-color: #5eead4;
+  background: rgba(94, 234, 212, 0.06);
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
+}
+.auth-otp-box:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.auth-otp-box:not(:placeholder-shown):not(:focus) {
+  border-color: rgba(94, 234, 212, 0.4);
+}
+/* Slightly smaller boxes on phones so all 6 fit comfortably at 375px. */
+@media (max-width: 420px) {
+  .auth-otp-row { gap: 6px; }
+  .auth-otp-box { height: 48px; font-size: 20px; }
+}

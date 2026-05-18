@@ -5,7 +5,12 @@
   // SDK parses the hash a moment later). Without it here, the click
   // would silently redirect to #/welcome and never render the success
   // card.
-  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed", "privacy", "terms"];
+  // P3 signup: "auth/verify" is the new OTP code-entry route. Public
+  // because the user lands there BEFORE their session is established
+  // (the verifyOtp call IS what creates the session). Otherwise the
+  // unauthed-redirect would bounce them to /welcome before they can
+  // type the code.
+  const PUBLIC_ROUTES = ["welcome", "auth", "auth/confirmed", "auth/verify", "privacy", "terms"];
   // Routes rendered fullscreen (no sidebar/topbar) for authed users.
   // "auth/confirmed" stays fullscreen even after the SDK establishes a
   // session mid-render, so the user sees the polished "You're in!" card
@@ -255,6 +260,21 @@
       mountAppShell();
       window.CBV2.renderCurrentRoute();
     }
+
+    // P3 boot splash: mark body as booted so the splash fades + the
+    // app outlet becomes visible. requestAnimationFrame ensures the
+    // first paint of the actual UI lands before we kick off the fade
+    // — gets us a clean handoff without a flash of empty shell.
+    requestAnimationFrame(function () {
+      document.body.classList.add("cb-booted");
+      // Remove the splash element entirely after the fade so it isn't
+      // sitting in the DOM intercepting (already pointer-events:none
+      // but cleaner to drop it).
+      setTimeout(function () {
+        const splash = document.getElementById("cb-boot-splash");
+        if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
+      }, 280);
+    });
 
     window.addEventListener("hashchange", renderForCurrentMode);
     wireAuthStateTransitions();
