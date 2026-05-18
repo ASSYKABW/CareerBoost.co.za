@@ -593,12 +593,38 @@
     const data = getAdminData();
     const registry = window.CBV2.adminSections || {};
     const section = registry[active] || registry.overview;
-    // section is guaranteed to exist because currentSection() rejects unknown
-    // IDs and the section files self-register at script load. Defensive
-    // fallback below in case a section script failed to load.
-    const content = section && typeof section.render === "function"
-      ? section.render(data)
-      : '<p class="admin-copy">Admin section "' + st(active) + '" failed to load.</p>';
+
+    // P3: when the user first lands on /admin (cold load) the
+    // admin-overview RPC hasn't returned yet — adminRemote.data is
+    // null and status is "loading". Previously we still called the
+    // section renderer with mostly-empty `data`, which produced 4
+    // blank-looking cards while waiting for the fetch. That's the
+    // "ugly blank cards" the operator saw on first nav.
+    //
+    // Now: render a brand loading panel inside the admin shell (keeps
+    // the nav + toolbar visible — only the content area shows the
+    // loading state). Once data lands, the normal section renderer
+    // takes over on the re-render.
+    //
+    // Conditions for showing the loader instead:
+    //   - cloud is supposed to be connected (backend enabled), AND
+    //   - we have no cached admin snapshot yet (first load), AND
+    //   - the fetch is in progress (status === "loading"|"idle").
+    // If status is "refreshing", we already have stale data and
+    // should keep showing it — don't blank the page mid-refresh.
+    const wantBackend = isBackendAdminRuntime && typeof isBackendAdminRuntime === "function"
+      ? isBackendAdminRuntime()
+      : false;
+    const firstLoad = wantBackend
+      && !adminRemote.data
+      && (adminRemote.status === "loading" || adminRemote.status === "idle");
+
+    const content = firstLoad
+      ? renderFirstLoadPanel()
+      : (section && typeof section.render === "function"
+          ? section.render(data)
+          : '<p class="admin-copy">Admin section "' + st(active) + '" failed to load.</p>');
+
     return (
       '<section class="admin-shell">' +
         renderAdminNav(active) +
@@ -606,6 +632,20 @@
           renderToolbar(access) +
           '<div class="admin-content">' + content + '</div>' +
         '</main>' +
+      '</section>'
+    );
+  }
+
+  // P3: brand-matched loading panel shown on the very first admin load
+  // before the metrics fetch completes. Uses the same CB mark + spinner
+  // pattern as the boot splash so the transition feels continuous.
+  function renderFirstLoadPanel() {
+    return (
+      '<section class="admin-first-load">' +
+        '<div class="admin-first-load-mark" aria-hidden="true">CB</div>' +
+        '<div class="admin-first-load-spinner" aria-hidden="true"></div>' +
+        '<h2>Loading admin console</h2>' +
+        '<p>Fetching the latest metrics from Supabase. This usually takes 1-2 seconds.</p>' +
       '</section>'
     );
   }

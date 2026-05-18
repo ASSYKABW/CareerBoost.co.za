@@ -3352,3 +3352,51 @@
   margin-left: 8px;
   vertical-align: middle;
 }
+
+/* ---------------------------------------------------------------------
+ * P3: first-load loading panel inside the admin shell.
+ * Replaces the previous "render empty cards while waiting" behavior
+ * with a tasteful brand-matched loader. Only shown when adminRemote
+ * has no data AND fetch is in progress (NOT during refreshes — stale
+ * data is better than blank pages).
+ * --------------------------------------------------------------------- */
+.admin-first-load {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+  min-height: 60vh;
+  padding: 40px 20px;
+  color: #f8fbff;
+}
+.admin-first-load-mark {
+  width: 56px; height: 56px; border-radius: 14px;
+  background: linear-gradient(135deg, #5eead4, #a78bfa);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 24px; color: #05070f;
+  letter-spacing: -0.04em;
+  box-shadow: 0 12px 40px rgba(94, 234, 212, 0.3);
+}
+.admin-first-load-spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #5eead4;
+  animation: admin-first-load-spin 600ms linear infinite;
+  margin-top: 4px;
+}
+@keyframes admin-first-load-spin { to { transform: rotate(360deg); } }
+.admin-first-load h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #f8fbff;
+}
+.admin-first-load p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(248, 251, 255, 0.55);
+  max-width: 320px;
+  line-height: 1.5;
+}

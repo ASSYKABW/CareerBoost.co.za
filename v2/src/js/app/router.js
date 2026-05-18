@@ -68,29 +68,32 @@
     if (!outlet) {
       return;
     }
-    outlet.innerHTML = window.CBV2.renderLoadingSkeleton();
-    setTimeout(function () {
-      try {
-        outlet.innerHTML = renderFn();
-        updateActiveNav(window.CBV2.getState().route);
-        const hook = window.CBV2.afterRender && window.CBV2.afterRender[window.CBV2.getState().route];
-        if (typeof hook === "function") {
-          hook(parsed.params);
-        }
-        if (window.CBV2.usage && typeof window.CBV2.usage.trackRoute === "function") {
-          window.CBV2.usage.trackRoute(window.CBV2.getState().route, parsed.params);
-        }
-      } catch (err) {
-        console.error("[router] render failure for route", window.CBV2.getState().route, err);
-        outlet.innerHTML = renderRouteError(window.CBV2.getState().route, err);
-        const retry = document.getElementById("route-error-retry");
-        if (retry) {
-          retry.addEventListener("click", function () {
-            window.CBV2.renderCurrentRoute();
-          });
-        }
+    // P3: render synchronously. The old path replaced the outlet with a
+    // 4-card skeleton, waited 180ms via setTimeout, then rendered the
+    // real route. That artificial pause meant every navigation flashed
+    // empty cards for ~180ms. Sections that legitimately load async
+    // data should show their own inline loading state — the router
+    // shouldn't impose a generic shimmer on top of that.
+    try {
+      outlet.innerHTML = renderFn();
+      updateActiveNav(window.CBV2.getState().route);
+      const hook = window.CBV2.afterRender && window.CBV2.afterRender[window.CBV2.getState().route];
+      if (typeof hook === "function") {
+        hook(parsed.params);
       }
-    }, 180);
+      if (window.CBV2.usage && typeof window.CBV2.usage.trackRoute === "function") {
+        window.CBV2.usage.trackRoute(window.CBV2.getState().route, parsed.params);
+      }
+    } catch (err) {
+      console.error("[router] render failure for route", window.CBV2.getState().route, err);
+      outlet.innerHTML = renderRouteError(window.CBV2.getState().route, err);
+      const retry = document.getElementById("route-error-retry");
+      if (retry) {
+        retry.addEventListener("click", function () {
+          window.CBV2.renderCurrentRoute();
+        });
+      }
+    }
   };
 
   // Phase C: re-render the dashboard when the tab regains focus after a long
