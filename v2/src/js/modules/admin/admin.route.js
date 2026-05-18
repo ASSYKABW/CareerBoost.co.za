@@ -725,10 +725,15 @@
     const perPage = Number(opts.perPage) > 0 ? Number(opts.perPage) : adminUsersRemote.perPage;
     const sort = typeof opts.sort === "string" && opts.sort ? opts.sort : adminUsersRemote.sort;
     const filter = typeof opts.filter === "string" ? opts.filter : adminUsersRemote.filter;
+    // A2: query is the free-text search (email/name/company). Same TTL
+    // cache key as filter so flipping between segments + search hits the
+    // cache when the params haven't changed.
+    const query = typeof opts.query === "string" ? opts.query : adminUsersRemote.query;
     const sameParams = page === adminUsersRemote.page
       && perPage === adminUsersRemote.perPage
       && sort === adminUsersRemote.sort
-      && filter === adminUsersRemote.filter;
+      && filter === adminUsersRemote.filter
+      && query === adminUsersRemote.query;
     const fresh = adminUsersRemote.loadedAt && Date.now() - adminUsersRemote.loadedAt < 30_000;
     if (!opts.force && sameParams && fresh && adminUsersRemote.data) {
       return adminUsersRemote.data;
@@ -741,10 +746,11 @@
     adminUsersRemote.perPage = perPage;
     adminUsersRemote.sort = sort;
     adminUsersRemote.filter = filter;
+    adminUsersRemote.query = query;
     try {
       const auth = window.CBV2.auth;
       const client = auth && auth.getClient && auth.getClient();
-      const body = { page: page, perPage: perPage, sort: sort, filter: filter };
+      const body = { page: page, perPage: perPage, sort: sort, filter: filter, query: query };
       let result = null;
       if (client && client.functions && typeof client.functions.invoke === "function") {
         const invoked = await client.functions.invoke("admin-users", { body: body });
@@ -1223,7 +1229,12 @@
     const prevBtn = document.getElementById("admin-users-prev");
     const nextBtn = document.getElementById("admin-users-next");
     const sortSelect = document.getElementById("admin-users-sort");
-    const filterInput = document.getElementById("admin-users-filter");
+    // A2: input id renamed from admin-users-filter → admin-users-query
+    // because the new field hits the richer cross-user search (email +
+    // name + company) on the backend's `query` param. The old filter
+    // param still works server-side for any caller that needs it.
+    const queryInput = document.getElementById("admin-users-query");
+    const queryClearBtn = document.getElementById("admin-users-query-clear");
 
     if (prevBtn && !prevBtn.disabled) {
       prevBtn.addEventListener("click", function () {
@@ -1242,17 +1253,17 @@
         fetchAdminUsers({ sort: nextSort, page: 1, force: true });
       });
     }
-    if (filterInput) {
+    if (queryInput) {
       // Debounce 350ms so each keystroke doesn't fire a request.
-      filterInput.addEventListener("input", function () {
+      queryInput.addEventListener("input", function () {
         if (userSupportFilterTimer != null) {
           clearTimeout(userSupportFilterTimer);
         }
         userSupportFilterTimer = setTimeout(function () {
           userSupportFilterTimer = null;
-          const value = String(filterInput.value || "").trim();
+          const value = String(queryInput.value || "").trim();
           userSupportRestoreFocus = true;        // re-focus the input after the next render
-          fetchAdminUsers({ filter: value, page: 1, force: true });
+          fetchAdminUsers({ query: value, page: 1, force: true });
         }, 350);
       });
       // If a filter-fetch just completed, re-focus the input + put the caret
@@ -1260,11 +1271,19 @@
       if (userSupportRestoreFocus) {
         userSupportRestoreFocus = false;
         try {
-          filterInput.focus();
-          const len = filterInput.value.length;
-          filterInput.setSelectionRange(len, len);
+          queryInput.focus();
+          const len = queryInput.value.length;
+          queryInput.setSelectionRange(len, len);
         } catch (e) { /* ignore */ }
       }
+    }
+    // A2: Clear button in the pager status line. Wipes the query state
+    // and refetches the unfiltered first page.
+    if (queryClearBtn) {
+      queryClearBtn.addEventListener("click", function () {
+        userSupportRestoreFocus = false;
+        fetchAdminUsers({ query: "", page: 1, force: true });
+      });
     }
   }
 

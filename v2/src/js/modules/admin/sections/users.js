@@ -100,7 +100,12 @@
     const totalRows   = pageMeta ? Number(pageMeta.total)   : accounts.length;
     const perPage     = pageMeta ? Number(pageMeta.perPage) : accounts.length;
     const sortMode    = pageMeta ? String(pageMeta.sort || adminUsersRemote.sort)     : adminUsersRemote.sort;
-    const filterText  = pageMeta ? String(pageMeta.filter || "") : adminUsersRemote.filter;
+    // A2: the cross-user search field. We read from pageMeta.query (set
+    // by the server-side response) and fall back to the in-flight local
+    // state, so the input stays in sync after a debounced fetch lands.
+    const queryText   = pageMeta && typeof pageMeta.query === "string"
+      ? pageMeta.query
+      : (adminUsersRemote.query || "");
     const hasNext     = pageMeta ? Boolean(pageMeta.hasNext) : false;
     const hasPrev     = pageMeta ? Boolean(pageMeta.hasPrev) : false;
 
@@ -130,12 +135,23 @@
       ? '<p class="admin-copy admin-copy--small"><i class="fa-solid fa-filter"></i> Showing <strong>' + st(activeSegment) + '</strong> segment from page ' + st(currentPage) + '. <button type="button" class="btn-ghost btn-sm" data-admin-segment-clear="1">Clear filter</button></p>'
       : "";
 
+    // A2: search match summary surfaced in the pager status when a query
+    // is active — tells the operator how many rows came back for "stripe"
+    // (or whatever they typed) and offers a one-click Clear.
+    const queryActive = queryText && queryText.length > 0;
+    const queryStatus = queryActive
+      ? ' · <strong>' + st(String(totalRows)) + ' match' + (totalRows === 1 ? "" : "es") + ' for "' + st(queryText) + '"</strong>'
+      : "";
+    const clearQueryBtn = queryActive
+      ? ' <button type="button" class="btn-ghost btn-sm" id="admin-users-query-clear" title="Clear search"><i class="fa-solid fa-xmark"></i> Clear</button>'
+      : "";
+
     const toolbar = paginated
       ? (
         '<div class="admin-users-toolbar" role="toolbar" aria-label="Users pagination">' +
-          '<label class="admin-users-filter">' +
+          '<label class="admin-users-filter admin-users-filter--wide">' +
             '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>' +
-            '<input type="search" id="admin-users-filter" placeholder="Filter by email, role, or stage" value="' + st(filterText) + '" autocomplete="off" />' +
+            '<input type="search" id="admin-users-query" placeholder="Search by email, name, or company applied to" value="' + st(queryText) + '" autocomplete="off" spellcheck="false" />' +
           '</label>' +
           '<label class="admin-users-sort">' +
             '<span class="admin-users-sort-label">Sort</span>' +
@@ -143,7 +159,7 @@
           '</label>' +
           '<div class="admin-users-pager">' +
             '<button type="button" class="btn-ghost btn-sm" id="admin-users-prev"' + (hasPrev ? "" : " disabled") + ' title="Previous page"><i class="fa-solid fa-chevron-left"></i></button>' +
-            '<span class="admin-users-pager-status">Page ' + st(currentPage) + ' of ' + st(totalPages) + ' · ' + st(totalRows) + ' user' + (totalRows === 1 ? "" : "s") + ' · ' + st(perPage) + '/page</span>' +
+            '<span class="admin-users-pager-status">Page ' + st(currentPage) + ' of ' + st(totalPages) + ' · ' + st(totalRows) + ' user' + (totalRows === 1 ? "" : "s") + ' · ' + st(perPage) + '/page' + queryStatus + clearQueryBtn + '</span>' +
             '<button type="button" class="btn-ghost btn-sm" id="admin-users-next"' + (hasNext ? "" : " disabled") + ' title="Next page"><i class="fa-solid fa-chevron-right"></i></button>' +
           '</div>' +
         '</div>'
@@ -173,9 +189,25 @@
                   '<i class="fa-solid ' + (isOpen ? "fa-chevron-up" : "fa-chevron-down") + '"></i>' +
                 '</button>'
               : '';
+            // A2: surface full name on the row + matched-on chips when this
+            // row came from a search. Name lives above the email so the
+            // operator scans "Jane Smith" first, email second. Chips show
+            // WHY this row matched ("company: Stripe, Acme") so the operator
+            // doesn't have to guess.
+            const fullName = String(account.fullName || "").trim();
+            const matchedTags = Array.isArray(account.matchedOn) ? account.matchedOn : [];
+            const matchedHtml = matchedTags.length
+              ? '<div class="admin-users-matched">' + matchedTags.map(function (tag) {
+                  const tone = String(tag).indexOf("company") === 0 ? "blue" : (String(tag) === "name" ? "violet" : "cyan");
+                  return '<span class="chip ' + tone + '">' + st(tag) + '</span>';
+                }).join("") + '</div>'
+              : "";
+            const userCell = fullName
+              ? '<strong>' + st(fullName) + '</strong><small class="admin-users-email">' + st(account.email || "No email") + '</small>' + matchedHtml
+              : st(account.email || "No email") + matchedHtml;
             return (
               '<div class="admin-table-row admin-table-row--user-board' + (isOpen ? " is-expanded" : "") + '">' +
-                '<span>' + st(account.email || "No email") + '</span>' +
+                '<span class="admin-users-cell-user">' + userCell + '</span>' +
                 '<span><b class="admin-health-pill admin-health-pill--' + st(supportTone(account.health)) + '">' + st(account.health || 0) + '%</b></span>' +
                 '<span>' + st(account.stage || "unknown") + '</span>' +
                 '<span>' + st(blockers) + '</span>' +
@@ -185,7 +217,7 @@
               '</div>' +
               (isOpen ? renderTimelineDrawer(h) : "")
             );
-          }).join("") : '<p class="admin-copy">' + (adminUsersRemote.status === "loading" ? "Loading account health queue…" : "No support account rows returned yet. Refresh after deploying the admin-overview function.") + '</p>') +
+          }).join("") : '<p class="admin-copy">' + (adminUsersRemote.status === "loading" ? "Loading account health queue…" : (queryActive ? 'No users match "' + st(queryText) + '".' : "No support account rows returned yet. Refresh after deploying the admin-overview function.")) + '</p>') +
         '</div>' +
         '<p class="admin-copy admin-copy--small">' + st(privacyNote) + '</p>' +
       '</article>' +

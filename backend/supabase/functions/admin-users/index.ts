@@ -26,6 +26,13 @@ interface Body {
   perPage?: number;
   sort?: string;
   filter?: string;
+  /** A2 cross-user search: matches email (substring), profile.full_name
+   *  (substring, case-insensitive), and applications.company (substring,
+   *  case-insensitive). When present, applied IN ADDITION to `filter`
+   *  (intersection, not union) so existing segment chips still narrow
+   *  the search result. Capped at 200 chars to avoid runaway LIKE
+   *  scans. Empty string is treated the same as undefined. */
+  query?: string;
 }
 
 function pct(part: number, whole: number): number {
@@ -89,6 +96,9 @@ Deno.serve(async (req) => {
   const perPage = Math.max(1, Math.min(MAX_PER_PAGE, Number(body.perPage) || DEFAULT_PER_PAGE));
   const sort = (body.sort || "health").toString();
   const filter = (body.filter || "").toString().toLowerCase().trim();
+  // A2: cross-user search. Capped to 200 chars so a wildcard-heavy
+  // input can't trigger a runaway LIKE scan against applications.
+  const query = (body.query || "").toString().toLowerCase().trim().slice(0, 200);
 
   const svc = getServiceClient();
   const warnings: string[] = [];
@@ -136,6 +146,65 @@ Deno.serve(async (req) => {
     }
   } catch (err) {
     warnings.push("mv_admin_per_user_stats: " + ((err as Error).message || "read failed"));
+  }
+
+  // ---------------------------------------------------------------------------
+  // A2: profile.full_name lookup so accounts can display real names in the
+  // table AND so search can match on name. Single bulk query, indexed on
+  // user_id (PK) — cheap even at 5k users.
+  // ---------------------------------------------------------------------------
+  const nameById = new Map<string, string>();
+  try {
+    const { data, error } = await svc.from("profiles").select("user_id, full_name");
+    if (error) {
+      warnings.push("profiles: " + error.message);
+    } else if (Array.isArray(data)) {
+      data.forEach((row) => {
+        const r = row as { user_id?: string; full_name?: string | null };
+        if (r.user_id) nameById.set(String(r.user_id), String(r.full_name || ""));
+      });
+    }
+  } catch (err) {
+    warnings.push("profiles: " + ((err as Error).message || "read failed"));
+  }
+
+  // ---------------------------------------------------------------------------
+  // A2: when a search query is active, pre-compute the set of user_ids
+  // whose applications have a company matching the query. We do this in a
+  // single ILIKE query against applications instead of joining row-by-row
+  // — fast for the common case (< 100k apps) and bounded by the LIKE
+  // pattern. The result is a Set we can O(1)-check in the filter loop.
+  // ---------------------------------------------------------------------------
+  const companyMatchedUserIds = new Set<string>();
+  let companyHitsByUser = new Map<string, string[]>();
+  if (query) {
+    try {
+      // Escape % and _ in the query so user input "100%" doesn't become
+      // a wildcard. Then surround with our own % wildcards for substring.
+      const escapedLike = query.replace(/[%_\\]/g, (m) => "\\" + m);
+      const { data, error } = await svc
+        .from("applications")
+        .select("user_id, company")
+        .ilike("company", "%" + escapedLike + "%")
+        .limit(5000);
+      if (error) {
+        warnings.push("applications search: " + error.message);
+      } else if (Array.isArray(data)) {
+        data.forEach((row) => {
+          const r = row as { user_id?: string; company?: string };
+          if (!r.user_id) return;
+          const uid = String(r.user_id);
+          companyMatchedUserIds.add(uid);
+          if (!companyHitsByUser.has(uid)) companyHitsByUser.set(uid, []);
+          if (r.company) {
+            const list = companyHitsByUser.get(uid)!;
+            if (list.length < 3 && !list.includes(r.company)) list.push(r.company);
+          }
+        });
+      }
+    } catch (err) {
+      warnings.push("applications search: " + ((err as Error).message || "read failed"));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -188,6 +257,9 @@ Deno.serve(async (req) => {
     return {
       id: uid,
       email: user.email || null,
+      // A2: full name (profiles.full_name) — was previously not surfaced
+      // to the admin Users board. Empty string when no profile row yet.
+      fullName: nameById.get(uid) || "",
       createdAt: user.created_at || null,
       lastSignInAt: user.last_sign_in_at || null,
       roles: rolesFromAppMetadata(user.app_metadata),
@@ -212,14 +284,35 @@ Deno.serve(async (req) => {
 
   // ---------------------------------------------------------------------------
   // Filter (email substring or role match) + sort + paginate.
+  //
+  // A2: when a `query` is set, intersect on top of the existing filter
+  // so a search inside an "at_risk" segment chip still narrows correctly.
+  // Each match adds a tag to `matchedOn` so the UI can show WHY a row
+  // surfaced — "email", "name", or "company: Stripe".
   // ---------------------------------------------------------------------------
-  let filtered = accounts;
+  let filtered: typeof accounts = accounts;
   if (filter) {
-    filtered = accounts.filter((acc) => {
+    filtered = filtered.filter((acc) => {
       if (acc.email && String(acc.email).toLowerCase().includes(filter)) return true;
       if (acc.roles.some((role) => role.includes(filter))) return true;
       if (String(acc.stage).toLowerCase().includes(filter)) return true;
       return false;
+    });
+  }
+  if (query) {
+    filtered = filtered.flatMap((acc) => {
+      const tags: string[] = [];
+      const emailHit = !!(acc.email && String(acc.email).toLowerCase().includes(query));
+      const nameHit = !!(acc.fullName && acc.fullName.toLowerCase().includes(query));
+      const companyHit = companyMatchedUserIds.has(acc.id);
+      if (emailHit) tags.push("email");
+      if (nameHit) tags.push("name");
+      if (companyHit) {
+        const hits = companyHitsByUser.get(acc.id) || [];
+        if (hits.length) tags.push("company: " + hits.join(", "));
+        else tags.push("company");
+      }
+      return tags.length ? [Object.assign({}, acc, { matchedOn: tags })] : [];
     });
   }
 
@@ -290,6 +383,7 @@ Deno.serve(async (req) => {
       hasPrev: safePage > 1,
       sort,
       filter,
+      query,
     },
     summary,
     queues,

@@ -32,7 +32,10 @@
     page: 1,
     perPage: 50,
     sort: "health",
-    filter: ""
+    filter: "",
+    // A2: free-text cross-user search. Matches email + profile.full_name
+    // + applications.company server-side. Composes with `filter`.
+    query: ""
   };
 
   // Phase C: cache for the operator management panel.

@@ -172,7 +172,7 @@
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];
        admin.route.js (loaded last) wires the dispatcher + fetchers + bindings. -->
-  <script src="./src/js/modules/admin/admin-helpers.js"></script>
+  <script src="./src/js/modules/admin/admin-helpers.js?v=20260518-adminA2"></script>
   <!-- Phase 8: realtime subscriptions for admin_incidents + audit_log.
        Must load after admin-helpers (state caches) but before
        admin.route.js (which sets up the afterRender hook). -->
@@ -193,7 +193,7 @@
   <script src="./src/js/modules/admin/sections/funnel.js"></script>
   <!-- Phase E3: sections/users.js registers BOTH "users" and the legacy
        "user-support" ID, so user-support.js is no longer loaded. -->
-  <script src="./src/js/modules/admin/sections/users.js?v=20260518-adminA1"></script>
+  <script src="./src/js/modules/admin/sections/users.js?v=20260518-adminA2"></script>
   <script src="./src/js/modules/admin/sections/job-feed.js"></script>
   <script src="./src/js/modules/admin/sections/ai-cost.js"></script>
   <script src="./src/js/modules/admin/sections/extension.js"></script>
@@ -214,7 +214,7 @@
        (built but hidden because V1 only covers Greenhouse — see the section
        itself for re-enable criteria). -->
   <script src="./src/js/modules/admin/sections/apply-assist.js"></script>
-  <script src="./src/js/modules/admin/admin.route.js?v=20260516-credentials"></script>
+  <script src="./src/js/modules/admin/admin.route.js?v=20260518-adminA2"></script>
   <script src="./src/js/app/router.js"></script>
   <script src="./src/js/app/bootstrap.js"></script>
 </body>
