@@ -933,6 +933,81 @@
     state: function () { return Object.assign({}, adminIncidentsRemote); }
   };
 
+  // A3: Self-serve user adjustments. Wraps admin-user-adjust with the
+  // mutation-state pattern used by promote + incident — sets a busy
+  // flag while in flight, surfaces errors via toast + remote state,
+  // and force-refreshes the user timeline on success so the drawer
+  // shows the new counter / plan / note immediately.
+  async function adjustUserAccount(opts) {
+    opts = opts || {};
+    const action = String(opts.action || "").trim();
+    const targetUserId = String(opts.targetUserId || "").trim();
+    const targetEmail = String(opts.targetEmail || "").trim();
+    if (!action || !targetUserId) return;
+
+    adminUserTimelineRemote.mutationAction = action;
+    adminUserTimelineRemote.mutationBusy = true;
+    adminUserTimelineRemote.mutationError = "";
+    window.CBV2.renderCurrentRoute();
+    try {
+      const body = {
+        targetUserId: targetUserId,
+        targetEmail: targetEmail,
+        action: action,
+        payload: opts.payload || {}
+      };
+      const result = await callAdminEndpoint("admin-user-adjust", body);
+      if (window.CBV2.toast) {
+        let msg = "Adjustment applied.";
+        if (action === "grant_quota") {
+          msg = "Granted " + (opts.payload && opts.payload.amount) +
+                " " + (opts.payload && opts.payload.quota) +
+                " to " + (targetEmail || "user") + ".";
+        } else if (action === "reset_quota") {
+          msg = "All quota counters reset for " + (targetEmail || "user") + ".";
+        } else if (action === "change_plan") {
+          msg = "Plan set to " + ((opts.payload && opts.payload.planId) || "?") +
+                " for " + (targetEmail || "user") + ".";
+        } else if (action === "add_note") {
+          msg = "Note saved for " + (targetEmail || "user") + ".";
+        }
+        window.CBV2.toast.success(msg);
+      }
+      // Re-fetch the timeline so admin_actions + usage_counters + subscription
+      // reflect the change immediately in the open drawer.
+      try {
+        const auth = window.CBV2.auth;
+        const client = auth && auth.getClient && auth.getClient();
+        const lookupBody = { userId: targetUserId };
+        let refreshed;
+        if (client && client.functions && typeof client.functions.invoke === "function") {
+          const invoked = await client.functions.invoke("admin-user-timeline", { body: lookupBody });
+          if (!invoked.error) refreshed = invoked.data;
+        }
+        if (refreshed && refreshed.ok) {
+          adminUserTimelineRemote.data = refreshed.timeline || refreshed;
+          adminUserTimelineRemote.status = "ready";
+          adminUserTimelineRemote.loadedAt = Date.now();
+        }
+      } catch (refreshErr) { /* non-blocking; drawer will show stale data until next open */ }
+      return result;
+    } catch (err) {
+      const message = (err && err.message) || "Account adjustment failed.";
+      adminUserTimelineRemote.mutationError = message;
+      if (window.CBV2.toast) window.CBV2.toast.error(message);
+      throw err;
+    } finally {
+      adminUserTimelineRemote.mutationBusy = false;
+      adminUserTimelineRemote.mutationAction = "";
+      window.CBV2.renderCurrentRoute();
+    }
+  }
+
+  window.CBV2.adminUserAdjust = {
+    apply: adjustUserAccount,
+    state: function () { return Object.assign({}, adminUserTimelineRemote); }
+  };
+
   // Phase C.2: paginated audit log fetcher. 30s TTL keyed on
   // (page, perPage, action, targetEmail) so toggling filters doesn't blow
   // away cached pages but a manual refresh always wins.
@@ -1337,6 +1412,186 @@
       closeBtn.addEventListener("click", function () {
         closeAdminUserTimeline();
       });
+    }
+    // A3: Manage account buttons inside the drawer. Each button carries
+    // data-admin-user-adjust=<action> + data-admin-user-id + email; we
+    // open the right modal per action, validate, then dispatch to the
+    // shared adjustUserAccount() wrapper.
+    document.querySelectorAll("[data-admin-user-adjust]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const action = btn.getAttribute("data-admin-user-adjust") || "";
+        const targetUserId = btn.getAttribute("data-admin-user-id") || "";
+        const targetEmail = btn.getAttribute("data-admin-user-email") || "";
+        if (!action || !targetUserId) return;
+        await runUserAdjust(action, targetUserId, targetEmail);
+      });
+    });
+  }
+
+  // A3: dispatcher — opens the right modal per action, builds the
+  // payload, calls adjustUserAccount(). Kept outside bindUserTimelineControls
+  // so it can be reused if we ever add bulk-adjust handlers.
+  async function runUserAdjust(action, targetUserId, targetEmail) {
+    const modal = window.CBV2 && window.CBV2.modal;
+    const who = targetEmail || "this user";
+
+    if (action === "grant_quota") {
+      // Two-step prompt: pick the quota key, then enter the amount. We
+      // could build a richer combined dialog later, but two prompts
+      // keeps the UX consistent with the existing incident/snooze flow.
+      const quotaOptions = ["ai_resumes", "ai_covers", "ai_mocks", "ai_research", "ai_question_banks"];
+      const quotaList = quotaOptions.map(function (q, i) { return (i + 1) + ". " + q; }).join("\n");
+      const quotaPick = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Grant quota — choose quota",
+            body: "Which quota counter should be DECREMENTED for " + who + "?\n\n" + quotaList +
+                  "\n\nType the exact key (e.g. ai_resumes) or the number.",
+            defaultValue: "ai_resumes",
+            placeholder: "ai_resumes",
+            validate: function (v) {
+              const raw = String(v || "").trim().toLowerCase();
+              if (!raw) return "Quota key is required.";
+              const numeric = Number(raw);
+              if (Number.isFinite(numeric) && numeric >= 1 && numeric <= quotaOptions.length) return null;
+              if (quotaOptions.indexOf(raw) === -1) {
+                return "Must be one of: " + quotaOptions.join(", ");
+              }
+              return null;
+            }
+          })
+        : (prompt("Quota key (one of " + quotaOptions.join(", ") + "):", "ai_resumes") || "");
+      if (quotaPick == null || !String(quotaPick).trim()) return;
+      let quota = String(quotaPick).trim().toLowerCase();
+      const numericPick = Number(quota);
+      if (Number.isFinite(numericPick) && numericPick >= 1 && numericPick <= quotaOptions.length) {
+        quota = quotaOptions[numericPick - 1];
+      }
+
+      const amountStr = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Grant quota — amount",
+            body: "How many " + quota + " uses should we add back to " + who + "? (1 - 1000)",
+            defaultValue: "5",
+            placeholder: "5",
+            validate: function (v) {
+              const n = Number(v);
+              if (!Number.isFinite(n) || n < 1 || n > 1000) return "Enter a whole number between 1 and 1000.";
+              return null;
+            }
+          })
+        : (prompt("Amount (1-1000):", "5") || "");
+      if (amountStr == null) return;
+      const amount = Math.max(1, Math.min(1000, Math.floor(Number(amountStr) || 0)));
+
+      const proceed = modal && modal.confirm
+        ? await modal.confirm({
+            title: "Confirm quota grant",
+            body: "Add " + amount + " " + quota + " uses to " + who + "?\nThis decrements their usage counter and writes to the audit log.",
+            confirmLabel: "Grant " + amount + " " + quota,
+            tone: "default"
+          })
+        : confirm("Grant " + amount + " " + quota + " to " + who + "?");
+      if (!proceed) return;
+
+      await window.CBV2.adminUserAdjust.apply({
+        action: "grant_quota",
+        targetUserId: targetUserId,
+        targetEmail: targetEmail,
+        payload: { quota: quota, amount: amount }
+      }).catch(function () { /* error already toasted */ });
+      return;
+    }
+
+    if (action === "reset_quota") {
+      const proceed = modal && modal.confirm
+        ? await modal.confirm({
+            title: "Reset all quota counters",
+            body: "Zero out every AI quota counter for " + who + "?\n\nThis affects: ai_resumes, ai_covers, ai_mocks, ai_research, ai_question_banks. Useful for support escalations where a user reports their quota is exhausted unexpectedly.",
+            confirmLabel: "Reset all counters",
+            tone: "danger"
+          })
+        : confirm("Reset all 5 quota counters for " + who + "?");
+      if (!proceed) return;
+      await window.CBV2.adminUserAdjust.apply({
+        action: "reset_quota",
+        targetUserId: targetUserId,
+        targetEmail: targetEmail,
+        payload: {}
+      }).catch(function () { /* error already toasted */ });
+      return;
+    }
+
+    if (action === "change_plan") {
+      const planOptions = ["free", "plus", "pro", "career"];
+      const planList = planOptions.map(function (p, i) { return (i + 1) + ". " + p; }).join("\n");
+      const planPick = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Change plan",
+            body: "Set the subscription plan for " + who + ".\n\n" + planList +
+                  "\n\nType the plan id (e.g. pro) or the number. Only use this for support escalations — it bypasses Stripe billing.",
+            defaultValue: "plus",
+            placeholder: "plus",
+            validate: function (v) {
+              const raw = String(v || "").trim().toLowerCase();
+              if (!raw) return "Plan id is required.";
+              const n = Number(raw);
+              if (Number.isFinite(n) && n >= 1 && n <= planOptions.length) return null;
+              if (planOptions.indexOf(raw) === -1) {
+                return "Must be one of: " + planOptions.join(", ");
+              }
+              return null;
+            }
+          })
+        : (prompt("Plan id (" + planOptions.join("|") + "):", "plus") || "");
+      if (planPick == null || !String(planPick).trim()) return;
+      let planId = String(planPick).trim().toLowerCase();
+      const numericPlan = Number(planId);
+      if (Number.isFinite(numericPlan) && numericPlan >= 1 && numericPlan <= planOptions.length) {
+        planId = planOptions[numericPlan - 1];
+      }
+
+      const proceed = modal && modal.confirm
+        ? await modal.confirm({
+            title: "Confirm plan change",
+            body: "Set " + who + "'s plan to '" + planId + "'?\n\nThis bypasses Stripe — only use for support escalations or comp plans. Logged to audit trail.",
+            confirmLabel: "Change to " + planId,
+            tone: "danger"
+          })
+        : confirm("Change plan to " + planId + "?");
+      if (!proceed) return;
+      await window.CBV2.adminUserAdjust.apply({
+        action: "change_plan",
+        targetUserId: targetUserId,
+        targetEmail: targetEmail,
+        payload: { planId: planId }
+      }).catch(function () { /* error already toasted */ });
+      return;
+    }
+
+    if (action === "add_note") {
+      const note = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Add admin note",
+            body: "Free-text note about " + who + ". Saved to the audit log for the next operator who opens this drawer. (Max 2000 chars.)",
+            placeholder: "e.g. \"Promised 3 extra cover letters after Stripe declined refund — see ticket #482.\"",
+            multiline: true,
+            required: true,
+            validate: function (v) {
+              const raw = String(v || "").trim();
+              if (!raw) return "Note cannot be empty.";
+              if (raw.length > 2000) return "Note must be 2000 chars or fewer.";
+              return null;
+            }
+          })
+        : (prompt("Admin note (max 2000 chars):", "") || "");
+      if (note == null || !String(note).trim()) return;
+      await window.CBV2.adminUserAdjust.apply({
+        action: "add_note",
+        targetUserId: targetUserId,
+        targetEmail: targetEmail,
+        payload: { note: String(note).trim().slice(0, 2000) }
+      }).catch(function () { /* error already toasted */ });
+      return;
     }
   }
 

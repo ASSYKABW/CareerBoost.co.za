@@ -262,6 +262,14 @@
     const aiSpend = tl.ai_spend || {};
     const aiUsage30d = (tl.ai_usage_30d && typeof tl.ai_usage_30d === "object") ? tl.ai_usage_30d : {};
     const recentAiCalls = safeArray(tl.recent_ai_calls);
+    // A3: new fields from migration 0018's extended admin_user_timeline
+    // RPC. subscription drives the plan chip, usage_counters is the
+    // current-period quota tally (so the operator sees what they're
+    // about to bump), admin_actions feeds the "Recent admin actions"
+    // log at the bottom of the drawer.
+    const subscription = (tl.subscription && typeof tl.subscription === "object") ? tl.subscription : {};
+    const usageCounters = (tl.usage_counters && typeof tl.usage_counters === "object") ? tl.usage_counters : {};
+    const adminActions = safeArray(tl.admin_actions);
 
     // Compact USD formatter — sub-cent values still readable, $X.XX for
     // anything > $1, $0.0123 with 4 decimals below that.
@@ -405,8 +413,153 @@
                 }).join("") + '</ul>'
               : '<p class="admin-copy">No AI calls recorded for this user.</p>') +
           '</section>' +
+          renderManageAccountSection(h, profile, subscription, usageCounters) +
+          renderRecentAdminActions(h, adminActions) +
         '</div>' +
       '</div>'
+    );
+  }
+
+  // A3: Manage account — quota grants, full reset, plan change, free-text
+  // note. Every action passes through admin-user-adjust which writes to
+  // admin_audit_log so there's a paper trail. Self-target safeguards are
+  // enforced server-side; UI just shows the buttons.
+  //
+  // Layout: subscription + counters strip on top (so the operator sees
+  // current state before mutating it), four action buttons below. The
+  // shared mutationBusy flag spins the button currently in flight; other
+  // buttons disable so the operator can't fire two RPCs concurrently.
+  function renderManageAccountSection(h, profile, subscription, usageCounters) {
+    const st = h.st;
+    const op = h.adminUserTimelineRemote;
+    const userId = profile.id || profile.user_id || op.activeUserId || "";
+    const email = profile.email || op.activeUserEmail || "";
+
+    const planId = subscription.plan_id || profile.plan || "free";
+    const planStatus = subscription.status || "—";
+    const periodEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+      : "—";
+    const cancelChip = subscription.cancel_at
+      ? '<span class="chip warning" title="' + st(subscription.cancel_at) + '">cancels ' + st(new Date(subscription.cancel_at).toLocaleDateString([], { month: "short", day: "numeric" })) + '</span>'
+      : '';
+
+    // Quota counters — the current period tally. Higher counters = more
+    // usage this billing month. Five canonical quota keys mirror the RPC.
+    const counterKeys = [
+      { key: "ai_resumes",        label: "Resumes" },
+      { key: "ai_covers",         label: "Cover letters" },
+      { key: "ai_mocks",          label: "Mock interviews" },
+      { key: "ai_research",       label: "Research" },
+      { key: "ai_question_banks", label: "Question banks" }
+    ];
+    const countersHtml = '<div class="admin-user-drawer-counters">' +
+      counterKeys.map(function (k) {
+        const v = Number(usageCounters[k.key] || 0);
+        return '<span><strong>' + st(String(v)) + '</strong><em>' + st(k.label) + '</em></span>';
+      }).join("") +
+    '</div>';
+
+    const mutationBusy = op.mutationBusy;
+    const mutationAction = op.mutationAction || "";
+    const mutationError = op.mutationError || "";
+    const spin = ' <i class="fa-solid fa-circle-notch fa-spin"></i>';
+    const btn = function (action, icon, label, tone) {
+      const isActive = mutationBusy && mutationAction === action;
+      const disabled = mutationBusy ? " disabled" : "";
+      const toneClass = tone ? " btn-" + tone : "";
+      return '<button type="button" class="btn-ghost btn-sm admin-user-adjust-btn' + toneClass + '"' +
+        ' data-admin-user-adjust="' + st(action) + '"' +
+        ' data-admin-user-id="' + st(userId) + '"' +
+        ' data-admin-user-email="' + st(email) + '"' +
+        disabled + '>' +
+        '<i class="fa-solid ' + st(icon) + '"></i> ' + st(label) +
+        (isActive ? spin : '') +
+      '</button>';
+    };
+
+    const errorBanner = mutationError
+      ? '<p class="admin-copy admin-error-banner admin-user-adjust-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + st(mutationError) + '</p>'
+      : '';
+
+    return (
+      '<section class="admin-user-drawer-section admin-user-drawer-section--manage">' +
+        '<h4><i class="fa-solid fa-sliders"></i> Manage account</h4>' +
+        '<div class="admin-user-drawer-sub">' +
+          '<span class="chip blue">Plan: ' + st(planId) + '</span>' +
+          '<span class="chip subtle">status: ' + st(planStatus) + '</span>' +
+          '<span class="chip subtle">renews ' + st(periodEnd) + '</span>' +
+          cancelChip +
+        '</div>' +
+        '<p class="admin-copy admin-copy--small">Current period quota usage:</p>' +
+        countersHtml +
+        '<div class="admin-user-adjust-actions">' +
+          btn("grant_quota",  "fa-plus",            "Grant quota") +
+          btn("reset_quota",  "fa-rotate",          "Reset quota") +
+          btn("change_plan",  "fa-arrow-up-right-from-square", "Change plan") +
+          btn("add_note",     "fa-note-sticky",     "Add note") +
+        '</div>' +
+        errorBanner +
+        '<p class="admin-copy admin-copy--small">All actions are logged to the admin audit trail with your operator email.</p>' +
+      '</section>'
+    );
+  }
+
+  // A3: Recent admin actions — last 10 admin_audit_log rows scoped to
+  // THIS user. Shows who did what when, with the actor email so the
+  // operator can ping the previous admin if there's a question. Payload
+  // gets a compact summary chip per common verb (e.g. "+5 ai_resumes",
+  // "plan→pro").
+  function renderRecentAdminActions(h, actions) {
+    const st = h.st;
+    const formatDateTime = h.formatDateTime;
+    if (!actions || !actions.length) {
+      return (
+        '<section class="admin-user-drawer-section admin-user-drawer-section--admin-log">' +
+          '<h4><i class="fa-solid fa-clipboard-list"></i> Recent admin actions</h4>' +
+          '<p class="admin-copy">No admin actions logged for this user yet.</p>' +
+        '</section>'
+      );
+    }
+    return (
+      '<section class="admin-user-drawer-section admin-user-drawer-section--admin-log">' +
+        '<h4><i class="fa-solid fa-clipboard-list"></i> Recent admin actions</h4>' +
+        '<ul class="admin-user-drawer-admin-log">' +
+          actions.slice(0, 10).map(function (a) {
+            const action = String(a.action || "?");
+            const actor = a.admin_email || a.actor_email || "operator";
+            const status = String(a.result_status || a.status || "ok").toLowerCase();
+            const statusChip = status === "failed"
+              ? '<span class="chip warning">FAILED</span>'
+              : '<span class="chip subtle">ok</span>';
+            const payload = (a.payload && typeof a.payload === "object") ? a.payload : {};
+            let summary = "";
+            if (action === "grant_quota" && payload.quota) {
+              summary = ' <span class="chip blue">+' + st(String(payload.amount || "?")) + ' ' + st(String(payload.quota)) + '</span>';
+            } else if (action === "change_plan" && payload.planId) {
+              summary = ' <span class="chip blue">plan→' + st(String(payload.planId)) + '</span>';
+            } else if (action === "reset_quota") {
+              summary = ' <span class="chip subtle">all counters → 0</span>';
+            } else if (action === "add_note" && payload.note) {
+              summary = '';
+            }
+            const noteRow = (action === "add_note" && payload.note)
+              ? '<small class="admin-user-drawer-note">' + st(String(payload.note).slice(0, 300)) + '</small>'
+              : '';
+            const errRow = (status === "failed" && (a.error_message || a.error))
+              ? '<small class="admin-user-drawer-error">' + st(String(a.error_message || a.error).slice(0, 220)) + '</small>'
+              : '';
+            return '<li>' +
+              '<div>' + statusChip +
+                ' <strong>' + st(action) + '</strong>' + summary +
+                ' · by ' + st(actor) +
+                ' <time>' + st(formatDateTime(a.created_at || a.at)) + '</time>' +
+              '</div>' +
+              noteRow + errRow +
+            '</li>';
+          }).join("") +
+        '</ul>' +
+      '</section>'
     );
   }
 

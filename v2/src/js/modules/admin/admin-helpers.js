@@ -83,7 +83,14 @@
     // Active segment chip ("power" | "new" | "at_risk" | "churned" |
     // "active" | "") — section.js writes this when the operator clicks
     // a segment card to filter the table.
-    activeSegment: ""
+    activeSegment: "",
+    // A3: mutation state for the Manage Account action buttons in the
+    // drawer (grant_quota / reset_quota / change_plan / add_note). The
+    // drawer renders a per-button busy spinner while mutationBusy is
+    // true and the action name matches mutationAction.
+    mutationBusy: false,
+    mutationAction: "",   // "grant_quota" | "reset_quota" | "change_plan" | "add_note"
+    mutationError: ""
   };
 
   // -- Sanitization ---------------------------------------------------------
