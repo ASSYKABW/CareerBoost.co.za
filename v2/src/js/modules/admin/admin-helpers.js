@@ -35,7 +35,25 @@
     filter: "",
     // A2: free-text cross-user search. Matches email + profile.full_name
     // + applications.company server-side. Composes with `filter`.
-    query: ""
+    query: "",
+    // A4: bulk-selection state. selected is a map userId -> {email, name}
+    // (object, not Set, so we keep the email/name available without a
+    // re-lookup). Survives page changes within a session — the operator
+    // can curate a list across multiple pages then bulk-act on all of
+    // them. Cleared when the operator clicks Clear or the section
+    // unmounts.
+    selected: {},
+    // Per-action progress when a bulk run is in flight: { action, done,
+    // total, failed }. Drives the floating progress chip above the
+    // table. Cleared when the run completes (success or fail).
+    bulk: {
+      busy: false,
+      action: "",
+      done: 0,
+      total: 0,
+      failed: 0,
+      lastError: ""
+    }
   };
 
   // Phase C: cache for the operator management panel.

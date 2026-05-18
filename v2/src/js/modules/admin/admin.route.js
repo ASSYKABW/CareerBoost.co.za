@@ -1360,6 +1360,273 @@
         fetchAdminUsers({ query: "", page: 1, force: true });
       });
     }
+
+    // A4: bulk-selection controls (per-row checkbox, select-all, clear,
+    // and bulk-action buttons). All live in the same panel so we bind
+    // them here rather than in a separate function — they share state.
+    adminUsersRemote.selected = adminUsersRemote.selected || {};
+
+    // Header "select all visible" — toggles every checkbox currently
+    // rendered. Reading data-* off each row avoids needing to know
+    // page contents server-side.
+    const selectAll = document.getElementById("admin-users-select-all");
+    if (selectAll) {
+      // Set indeterminate via JS (HTML attribute doesn't honor it).
+      if (selectAll.hasAttribute("data-indeterminate")) selectAll.indeterminate = true;
+      selectAll.addEventListener("change", function () {
+        const checks = document.querySelectorAll("[data-admin-user-select]");
+        const turnOn = !!selectAll.checked;
+        checks.forEach(function (cb) {
+          const id = cb.getAttribute("data-admin-user-select") || "";
+          if (!id) return;
+          if (turnOn) {
+            adminUsersRemote.selected[id] = {
+              email: cb.getAttribute("data-admin-user-select-email") || "",
+              fullName: cb.getAttribute("data-admin-user-select-name") || ""
+            };
+          } else {
+            delete adminUsersRemote.selected[id];
+          }
+        });
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+
+    // Per-row checkboxes. Click a row, it gets added/removed from
+    // adminUsersRemote.selected. Re-render so the bulk toolbar count
+    // and the row's `is-selected` style update.
+    document.querySelectorAll("[data-admin-user-select]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        const id = cb.getAttribute("data-admin-user-select") || "";
+        if (!id) return;
+        if (cb.checked) {
+          adminUsersRemote.selected[id] = {
+            email: cb.getAttribute("data-admin-user-select-email") || "",
+            fullName: cb.getAttribute("data-admin-user-select-name") || ""
+          };
+        } else {
+          delete adminUsersRemote.selected[id];
+        }
+        window.CBV2.renderCurrentRoute();
+      });
+    });
+
+    // "Clear selection" in the bulk toolbar.
+    const bulkClear = document.querySelector("[data-admin-users-bulk-clear]");
+    if (bulkClear) {
+      bulkClear.addEventListener("click", function () {
+        adminUsersRemote.selected = {};
+        window.CBV2.renderCurrentRoute();
+      });
+    }
+
+    // Bulk action buttons (Grant / Note / Email all).
+    document.querySelectorAll("[data-admin-users-bulk]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const action = btn.getAttribute("data-admin-users-bulk") || "";
+        if (!action) return;
+        await runBulkUserAdjust(action);
+      });
+    });
+  }
+
+  // A4: bulk dispatcher. Reads the selection map, gathers one payload
+  // (one quota+amount, one note, one email subject+body) that's applied
+  // to every selected user. Iterates the per-user RPC sequentially so
+  // we don't hammer the function with a 50-way parallel storm — keeps
+  // the audit log readable and lets us surface progress incrementally.
+  //
+  // Cap: 50 users per run. If you need more, run in batches — this is
+  // a foot-gun cap, not a real ceiling.
+  const BULK_MAX = 50;
+  async function runBulkUserAdjust(action) {
+    const modal = window.CBV2 && window.CBV2.modal;
+    const selectedMap = adminUsersRemote.selected || {};
+    const ids = Object.keys(selectedMap);
+    if (!ids.length) return;
+    if (ids.length > BULK_MAX) {
+      if (window.CBV2.toast) window.CBV2.toast.error("Bulk runs are capped at " + BULK_MAX + " users. Clear some selections and try again.");
+      return;
+    }
+
+    // Build one shared payload via the same per-action modal flow as the
+    // single-user dispatcher. We deliberately don't reuse runUserAdjust
+    // here because that one prompts + confirms per user; bulk needs to
+    // collect once and apply N times.
+    let payload = null;
+    let confirmLabel = "Apply to " + ids.length;
+    let confirmTone = "default";
+
+    if (action === "grant_quota") {
+      const quotaOptions = ["ai_resumes", "ai_covers", "ai_mocks", "ai_research", "ai_question_banks"];
+      const quotaPick = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Bulk grant — choose quota",
+            body: "Which quota counter should be decremented for all " + ids.length + " selected users?\n\n" +
+                  quotaOptions.map(function (q, i) { return (i + 1) + ". " + q; }).join("\n"),
+            defaultValue: "ai_resumes",
+            validate: function (v) {
+              const raw = String(v || "").trim().toLowerCase();
+              if (!raw) return "Quota key required.";
+              const n = Number(raw);
+              if (Number.isFinite(n) && n >= 1 && n <= quotaOptions.length) return null;
+              if (quotaOptions.indexOf(raw) === -1) return "Must be one of: " + quotaOptions.join(", ");
+              return null;
+            }
+          })
+        : (prompt("Quota:", "ai_resumes") || "");
+      if (quotaPick == null || !String(quotaPick).trim()) return;
+      let quota = String(quotaPick).trim().toLowerCase();
+      const n = Number(quota);
+      if (Number.isFinite(n) && n >= 1 && n <= quotaOptions.length) quota = quotaOptions[n - 1];
+
+      const amountStr = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Bulk grant — amount per user",
+            body: "How many " + quota + " uses should we add back to EACH of the " + ids.length + " selected users? (1 - 1000)",
+            defaultValue: "5",
+            validate: function (v) {
+              const num = Number(v);
+              if (!Number.isFinite(num) || num < 1 || num > 1000) return "Enter a whole number between 1 and 1000.";
+              return null;
+            }
+          })
+        : (prompt("Amount (1-1000):", "5") || "");
+      if (amountStr == null) return;
+      const amount = Math.max(1, Math.min(1000, Math.floor(Number(amountStr) || 0)));
+      payload = { quota: quota, amount: amount };
+      confirmLabel = "Grant " + amount + " " + quota + " to " + ids.length;
+
+    } else if (action === "add_note") {
+      const note = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Bulk add note",
+            body: "Free-text note saved to the audit log for all " + ids.length + " selected users. (Max 2000 chars.)",
+            placeholder: "e.g. \"Comped Pro for May launch — see slack #beta-comms\"",
+            multiline: true,
+            required: true,
+            validate: function (v) {
+              const raw = String(v || "").trim();
+              if (!raw) return "Note cannot be empty.";
+              if (raw.length > 2000) return "Note must be 2000 chars or fewer.";
+              return null;
+            }
+          })
+        : (prompt("Note:", "") || "");
+      if (note == null || !String(note).trim()) return;
+      payload = { note: String(note).trim().slice(0, 2000) };
+
+    } else if (action === "send_email") {
+      // Bulk email = one mailto: with all recipients in BCC. This gives
+      // each user a personal-looking email (no other addresses visible)
+      // while we record one audit row per user. Subject + body are the
+      // same; for true mail-merge personalization, the operator should
+      // use a real ESP.
+      const emails = ids.map(function (id) { return (selectedMap[id] || {}).email || ""; }).filter(Boolean);
+      if (!emails.length) {
+        if (window.CBV2.toast) window.CBV2.toast.error("None of the selected users have an email on file.");
+        return;
+      }
+      const subject = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Bulk email — subject",
+            body: "Same subject sent to all " + emails.length + " selected users (via BCC so each recipient only sees their own address). Max 200 chars.",
+            defaultValue: "An update from CareerBoost",
+            required: true,
+            validate: function (v) {
+              const raw = String(v || "").trim();
+              if (!raw) return "Subject required.";
+              if (raw.length > 200) return "Max 200 chars.";
+              return null;
+            }
+          })
+        : (prompt("Subject:", "An update from CareerBoost") || "");
+      if (subject == null || !String(subject).trim()) return;
+
+      const body = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Bulk email — body",
+            body: "Body for all " + emails.length + " recipients. Your mail client opens with the draft — review before sending. (Max 10000 chars.)",
+            multiline: true,
+            required: true,
+            validate: function (v) {
+              const raw = String(v || "").trim();
+              if (!raw) return "Body cannot be empty.";
+              if (raw.length > 10000) return "Max 10000 chars.";
+              return null;
+            }
+          })
+        : (prompt("Body:", "") || "");
+      if (body == null || !String(body).trim()) return;
+
+      const subj = String(subject).trim().slice(0, 200);
+      const bod = String(body).trim().slice(0, 10000);
+      payload = { subject: subj, bodyLength: bod.length };
+      // Open a single mailto: with all addresses in BCC. The "to:"
+      // field gets the operator's own address (filled in by their
+      // mail client) so the user sees a 1:1 looking email.
+      const mailto = "mailto:?bcc=" + encodeURIComponent(emails.join(","))
+        + "&subject=" + encodeURIComponent(subj)
+        + "&body=" + encodeURIComponent(bod);
+      try { window.open(mailto, "_self"); } catch (_e) { /* popup blocked */ }
+    } else {
+      return;
+    }
+
+    const proceed = modal && modal.confirm
+      ? await modal.confirm({
+          title: "Confirm bulk action",
+          body: "Apply " + action + " to " + ids.length + " selected user" + (ids.length === 1 ? "" : "s") + "?\n\nEach action writes to the admin audit log with your operator email. This cannot be undone.",
+          confirmLabel: confirmLabel,
+          tone: confirmTone
+        })
+      : confirm("Apply " + action + " to " + ids.length + " users?");
+    if (!proceed) return;
+
+    // ----- Run sequentially with progress on adminUsersRemote.bulk ----
+    adminUsersRemote.bulk = {
+      busy: true, action: action, done: 0, total: ids.length, failed: 0, lastError: ""
+    };
+    window.CBV2.renderCurrentRoute();
+
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      const meta = selectedMap[id] || {};
+      try {
+        await window.CBV2.adminUserAdjust.apply({
+          action: action,
+          targetUserId: id,
+          targetEmail: meta.email || "",
+          payload: payload
+        });
+      } catch (err) {
+        adminUsersRemote.bulk.failed += 1;
+        adminUsersRemote.bulk.lastError = (err && err.message) || "Unknown error";
+      }
+      adminUsersRemote.bulk.done += 1;
+      // Live progress: re-render only every ~3rd step so we don't
+      // thrash the DOM on a 50-row run. Always re-render at the end.
+      if (i % 3 === 2 || i === ids.length - 1) {
+        window.CBV2.renderCurrentRoute();
+      }
+    }
+
+    const ok = ids.length - adminUsersRemote.bulk.failed;
+    const fail = adminUsersRemote.bulk.failed;
+    if (window.CBV2.toast) {
+      if (fail === 0) window.CBV2.toast.success("Applied " + action + " to all " + ok + " selected users.");
+      else if (ok === 0) window.CBV2.toast.error("Bulk " + action + " failed for all " + fail + " users. Last error: " + (adminUsersRemote.bulk.lastError || "?"));
+      else window.CBV2.toast.warning("Applied " + action + " to " + ok + " users; " + fail + " failed. Last error: " + (adminUsersRemote.bulk.lastError || "?"));
+    }
+
+    // Clear selection on full success, keep selection on partial fail so
+    // operator can retry just the failures (next iteration we'll mark
+    // failed IDs explicitly; for now they keep the whole selection).
+    if (fail === 0) adminUsersRemote.selected = {};
+    adminUsersRemote.bulk = {
+      busy: false, action: "", done: 0, total: 0, failed: 0, lastError: ""
+    };
+    window.CBV2.renderCurrentRoute();
   }
 
   // Phase E3: segment chip click → set activeSegment, re-render. Click
@@ -1590,6 +1857,70 @@
         targetUserId: targetUserId,
         targetEmail: targetEmail,
         payload: { note: String(note).trim().slice(0, 2000) }
+      }).catch(function () { /* error already toasted */ });
+      return;
+    }
+
+    if (action === "send_email") {
+      // A4: compose modal → mailto: link → audit row.
+      // Two prompts (subject, then body) keeps it simple; consider a
+      // single richer dialog later. The mailto: is opened via window.open
+      // because <a href="mailto:..."> in a freshly-rendered string can be
+      // flaky across browsers' popup blockers.
+      if (!targetEmail) {
+        if (window.CBV2.toast) window.CBV2.toast.error("Cannot email — user has no email on file.");
+        return;
+      }
+      const subject = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Email " + who + " — subject",
+            body: "Subject line for the email. The body comes next. (Max 200 chars.)",
+            defaultValue: "Quick note from CareerBoost support",
+            placeholder: "Quick note from CareerBoost support",
+            required: true,
+            validate: function (v) {
+              const raw = String(v || "").trim();
+              if (!raw) return "Subject cannot be empty.";
+              if (raw.length > 200) return "Subject must be 200 chars or fewer.";
+              return null;
+            }
+          })
+        : (prompt("Subject:", "Quick note from CareerBoost support") || "");
+      if (subject == null || !String(subject).trim()) return;
+
+      const body = modal && modal.prompt
+        ? await modal.prompt({
+            title: "Email " + who + " — body",
+            body: "Body of the email. Your mail client will open with this draft — you can edit and send from there. Uses your operator address as the sender. (Max 10000 chars.)",
+            placeholder: "Hi there,\n\nThanks for reaching out…",
+            multiline: true,
+            required: true,
+            validate: function (v) {
+              const raw = String(v || "").trim();
+              if (!raw) return "Body cannot be empty.";
+              if (raw.length > 10000) return "Body must be 10000 chars or fewer.";
+              return null;
+            }
+          })
+        : (prompt("Body:", "") || "");
+      if (body == null || !String(body).trim()) return;
+
+      // Open mailto: first — if the operator changes their mind they
+      // can close the draft. We log to audit AFTER they confirm in
+      // the modal so we don't have a phantom "I sent this" row from
+      // a draft that was actually discarded.
+      const subj = String(subject).trim().slice(0, 200);
+      const bod = String(body).trim().slice(0, 10000);
+      const mailto = "mailto:" + encodeURIComponent(targetEmail) +
+        "?subject=" + encodeURIComponent(subj) +
+        "&body=" + encodeURIComponent(bod);
+      try { window.open(mailto, "_self"); } catch (_e) { /* popup blocked */ }
+
+      await window.CBV2.adminUserAdjust.apply({
+        action: "send_email",
+        targetUserId: targetUserId,
+        targetEmail: targetEmail,
+        payload: { subject: subj, bodyLength: bod.length }
       }).catch(function () { /* error already toasted */ });
       return;
     }

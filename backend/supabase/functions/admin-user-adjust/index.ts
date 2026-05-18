@@ -1,11 +1,12 @@
 // POST /functions/v1/admin-user-adjust
 // Body: { targetUserId: uuid, action: "grant_quota" | "reset_quota"
-//                                  | "change_plan" | "add_note",
+//                                  | "change_plan" | "add_note"
+//                                  | "send_email",
 //         payload?: {...action-specific...} }
 //
-// Wraps the admin_user_adjust RPC (migration 0018). Same pattern as
-// admin-promote-user: getAuthedAdmin gates the caller, the RPC is
-// SECURITY DEFINER + service-role-only, every call writes to
+// Wraps the admin_user_adjust RPC (migration 0018, extended in 0019).
+// Same pattern as admin-promote-user: getAuthedAdmin gates the caller,
+// the RPC is SECURITY DEFINER + service-role-only, every call writes to
 // admin_audit_log so the operations trail is centralized.
 //
 // Payload shapes:
@@ -13,12 +14,14 @@
 //   reset_quota:  {}   (no fields needed)
 //   change_plan:  { planId: "free"|"plus"|"pro"|"career" }
 //   add_note:     { note: string (1..2000 chars) }
+//   send_email:   { subject: string (1..200), bodyLength: int (1..10000) }
+//                 The actual email is sent client-side via mailto: — this
+//                 RPC only records the intent. We store subject + body
+//                 length (not body) because the body is in the operator's
+//                 Sent folder and may contain PII shared by the user.
 //
 // Self-target safeguards:
-//   - "change_plan" on yourself is allowed (could be useful for testing)
-//   - "add_note" on yourself is allowed (notes are just text)
-//   - Quota actions on yourself are allowed (you're an admin grading your
-//     own beta usage; if that's wrong, audit log catches it)
+//   - All actions on yourself are allowed; audit log catches misuse.
 
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
@@ -29,6 +32,7 @@ const VALID_ACTIONS = new Set([
   "reset_quota",
   "change_plan",
   "add_note",
+  "send_email",
 ]);
 
 interface Body {
@@ -142,6 +146,21 @@ Deno.serve(async (req) => {
     }
     if (note.length > 2000) {
       return errorResponse("payload.note must be 2000 chars or fewer.", 400);
+    }
+  } else if (action === "send_email") {
+    const subject = String(payload.subject || "").trim();
+    const bodyLength = Number(payload.bodyLength);
+    if (!subject) {
+      return errorResponse("payload.subject cannot be empty.", 400);
+    }
+    if (subject.length > 200) {
+      return errorResponse("payload.subject must be 200 chars or fewer.", 400);
+    }
+    if (!Number.isFinite(bodyLength) || bodyLength < 1 || bodyLength > 10000) {
+      return errorResponse("payload.bodyLength must be an integer 1..10000.", 400);
+    }
+    if (!targetEmail) {
+      return errorResponse("Cannot record send_email — target has no email address.", 400);
     }
   }
 

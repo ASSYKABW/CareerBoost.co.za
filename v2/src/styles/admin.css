@@ -2607,7 +2607,18 @@
 }
 
 .admin-table-row--user-board {
-  grid-template-columns: 1.4fr 0.6fr 0.8fr 1.2fr 1.4fr 0.8fr 60px;
+  /* A4: prepend a narrow checkbox column so the bulk select toolbar
+   * has somewhere to gather selection state. Same template applies to
+   * both header and rows so columns stay aligned. */
+  grid-template-columns: 36px 1.4fr 0.6fr 0.8fr 1.2fr 1.4fr 0.8fr 60px;
+}
+/* When the panel switches into bulk mode (.admin-table--bulk) we add
+ * a subtle highlight to selected rows so the operator can see what's
+ * currently in the basket as they scroll. */
+.admin-table-row--user-board.is-selected {
+  background: rgba(94, 234, 212, 0.07);
+  outline: 1px solid rgba(94, 234, 212, 0.2);
+  outline-offset: -1px;
 }
 .admin-table-row--user-board.is-expanded {
   background: rgba(94, 234, 212, 0.05);
@@ -3159,4 +3170,95 @@
   color: #fde68a;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ---------------------------------------------------------------------
+ * Admin Users board — A4 bulk selection + email actions.
+ *
+ * .admin-bulk-toolbar appears above the table when ≥1 row is selected.
+ * .admin-users-cell-check is the narrow checkbox column.
+ * --------------------------------------------------------------------- */
+
+.admin-users-cell-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.admin-users-cell-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #5eead4;
+}
+
+.admin-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.08), rgba(99, 102, 241, 0.06));
+  border: 1px solid rgba(94, 234, 212, 0.25);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: rgba(232, 238, 252, 0.92);
+}
+.admin-bulk-toolbar--busy {
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.08), rgba(99, 102, 241, 0.06));
+  border-color: rgba(250, 204, 21, 0.3);
+}
+.admin-bulk-count {
+  font-size: 13px;
+}
+.admin-bulk-count strong {
+  color: #5eead4;
+  font-size: 16px;
+  font-weight: 700;
+  margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.admin-bulk-sample {
+  flex: 1 1 200px;
+  min-width: 120px;
+  font-size: 11.5px;
+  color: rgba(248, 251, 255, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-bulk-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.admin-bulk-clear {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+.admin-bulk-progress {
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  position: relative;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.admin-bulk-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--pct, 0%);
+  background: linear-gradient(90deg, #5eead4, #a78bfa);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+@media (max-width: 720px) {
+  .admin-bulk-sample { display: none; }
+  .admin-bulk-actions { margin-left: 0; }
 }

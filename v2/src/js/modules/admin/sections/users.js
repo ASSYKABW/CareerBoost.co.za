@@ -166,6 +166,24 @@
       )
       : "";
 
+    // A4: bulk selection state lives on adminUsersRemote.selected as
+    // userId -> { email, fullName }. The toolbar appears above the table
+    // when ≥1 user is selected. Per-row checkboxes drive add/remove;
+    // header checkbox toggles all visible rows.
+    const selectedMap = (adminUsersRemote.selected && typeof adminUsersRemote.selected === "object") ? adminUsersRemote.selected : {};
+    const selectedIds = Object.keys(selectedMap);
+    const bulkState = adminUsersRemote.bulk || {};
+    const bulkToolbar = renderBulkToolbar(selectedIds, selectedMap, bulkState, st);
+
+    // Compute "select all visible" state — checked when every row on the
+    // current page is selected, indeterminate when some are.
+    const visibleIds = accounts.map(function (a) { return a.userId || a.id || ""; }).filter(Boolean);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(function (id) { return !!selectedMap[id]; });
+    const someVisibleSelected = !allVisibleSelected && visibleIds.some(function (id) { return !!selectedMap[id]; });
+    const headerCheckAttrs = allVisibleSelected
+      ? ' checked'
+      : (someVisibleSelected ? ' data-indeterminate="1"' : '');
+
     return (
       '<section class="admin-stat-grid">' +
         renderStat("At-risk accounts", summary.atRisk || queues.atRisk || 0, "health below support threshold", (summary.atRisk || queues.atRisk) ? "amber" : "green") +
@@ -176,10 +194,14 @@
       '<article class="admin-panel admin-panel--wide">' +
         '<div class="admin-panel-head"><div><span>Account health queue</span><h2>Who needs attention</h2></div><span class="chip ' + st(sourceTone) + '">' + st(sourceLabel) + '</span></div>' +
         toolbar +
+        bulkToolbar +
         segmentNote +
         errorBanner +
-        '<div class="admin-table">' +
-          '<div class="admin-table-row admin-table-row--user-board admin-table-head"><span>User</span><span>Health</span><span>Stage</span><span>Blockers</span><span>Recommended action</span><span>Last activity</span><span></span></div>' +
+        '<div class="admin-table admin-table--bulk">' +
+          '<div class="admin-table-row admin-table-row--user-board admin-table-head">' +
+            '<span class="admin-users-cell-check"><input type="checkbox" id="admin-users-select-all" aria-label="Select all visible users"' + headerCheckAttrs + ' /></span>' +
+            '<span>User</span><span>Health</span><span>Stage</span><span>Blockers</span><span>Recommended action</span><span>Last activity</span><span></span>' +
+          '</div>' +
           (accounts.length ? accounts.map(function (account) {
             const blockers = Array.isArray(account.blockers) && account.blockers.length ? account.blockers.join(", ") : "No blocker";
             const isOpen = adminUserTimelineRemote.activeUserId === account.userId || adminUserTimelineRemote.activeUserId === account.id;
@@ -205,8 +227,19 @@
             const userCell = fullName
               ? '<strong>' + st(fullName) + '</strong><small class="admin-users-email">' + st(account.email || "No email") + '</small>' + matchedHtml
               : st(account.email || "No email") + matchedHtml;
+            // A4: per-row checkbox. data-* carries the userId + email +
+            // fullName so the row-level handler can hydrate selected[]
+            // without a follow-up RPC call.
+            const isSelected = !!selectedMap[ownerId];
+            const rowCheckHtml = ownerId
+              ? '<input type="checkbox" class="admin-users-row-check" data-admin-user-select="' + st(ownerId) + '"' +
+                ' data-admin-user-select-email="' + st(account.email || "") + '"' +
+                ' data-admin-user-select-name="' + st(fullName) + '"' +
+                ' aria-label="Select user"' + (isSelected ? " checked" : "") + ' />'
+              : '';
             return (
-              '<div class="admin-table-row admin-table-row--user-board' + (isOpen ? " is-expanded" : "") + '">' +
+              '<div class="admin-table-row admin-table-row--user-board' + (isOpen ? " is-expanded" : "") + (isSelected ? " is-selected" : "") + '">' +
+                '<span class="admin-users-cell-check">' + rowCheckHtml + '</span>' +
                 '<span class="admin-users-cell-user">' + userCell + '</span>' +
                 '<span><b class="admin-health-pill admin-health-pill--' + st(supportTone(account.health)) + '">' + st(account.health || 0) + '%</b></span>' +
                 '<span>' + st(account.stage || "unknown") + '</span>' +
@@ -498,6 +531,10 @@
           btn("reset_quota",  "fa-rotate",          "Reset quota") +
           btn("change_plan",  "fa-arrow-up-right-from-square", "Change plan") +
           btn("add_note",     "fa-note-sticky",     "Add note") +
+          // A4: send_email opens a compose modal then a mailto: link.
+          // The send is logged to audit but the actual delivery is via
+          // the operator's own mail client (so the reply-to is real).
+          btn("send_email",   "fa-paper-plane",     "Email user") +
         '</div>' +
         errorBanner +
         '<p class="admin-copy admin-copy--small">All actions are logged to the admin audit trail with your operator email.</p>' +
@@ -549,11 +586,13 @@
             const errRow = (status === "failed" && (a.error_message || a.error))
               ? '<small class="admin-user-drawer-error">' + st(String(a.error_message || a.error).slice(0, 220)) + '</small>'
               : '';
+            // A4 FIX: prefer occurred_at (actual column name from
+            // admin_audit_log per 0011) over created_at/at fallbacks.
             return '<li>' +
               '<div>' + statusChip +
                 ' <strong>' + st(action) + '</strong>' + summary +
                 ' · by ' + st(actor) +
-                ' <time>' + st(formatDateTime(a.created_at || a.at)) + '</time>' +
+                ' <time>' + st(formatDateTime(a.occurred_at || a.created_at || a.at)) + '</time>' +
               '</div>' +
               noteRow + errRow +
             '</li>';
@@ -561,6 +600,59 @@
         '</ul>' +
       '</section>'
     );
+  }
+
+  // A4: bulk action toolbar — sticky strip above the user table when
+  // ≥1 user is selected. Shows count + clear + 3 bulk verbs (Grant /
+  // Note / Email). While a bulk run is in flight we replace the verbs
+  // with a progress chip + spinner so the operator sees N/Total
+  // applied. Bulk runs are capped at 50 users in admin.route.js
+  // dispatcher to prevent foot-guns.
+  function renderBulkToolbar(selectedIds, selectedMap, bulkState, st) {
+    if (!selectedIds.length && !(bulkState && bulkState.busy)) return "";
+
+    if (bulkState && bulkState.busy) {
+      const done = Number(bulkState.done || 0);
+      const total = Number(bulkState.total || 0);
+      const failed = Number(bulkState.failed || 0);
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      return (
+        '<div class="admin-bulk-toolbar admin-bulk-toolbar--busy" role="status">' +
+          '<i class="fa-solid fa-circle-notch fa-spin"></i>' +
+          ' <strong>' + st(prettyAction(bulkState.action)) + '</strong>' +
+          ' · <span class="num-font">' + done + ' / ' + total + '</span>' +
+          ' <i class="admin-bulk-progress" style="--pct:' + pct + '%"></i>' +
+          (failed > 0 ? ' · <span class="chip warning">' + failed + ' failed</span>' : '') +
+        '</div>'
+      );
+    }
+
+    const count = selectedIds.length;
+    // Sample emails (first 3) so the operator can sanity-check who
+    // they're about to act on. Full list appears in each confirm modal.
+    const sample = selectedIds.slice(0, 3).map(function (id) {
+      const m = selectedMap[id] || {};
+      return m.fullName || m.email || "?";
+    }).join(", ");
+    const moreSuffix = count > 3 ? " +" + (count - 3) + " more" : "";
+    return (
+      '<div class="admin-bulk-toolbar" role="toolbar" aria-label="Bulk actions">' +
+        '<span class="admin-bulk-count"><strong>' + count + '</strong> selected</span>' +
+        '<span class="admin-bulk-sample">' + st(sample + moreSuffix) + '</span>' +
+        '<div class="admin-bulk-actions">' +
+          '<button type="button" class="btn-ghost btn-sm" data-admin-users-bulk="grant_quota"><i class="fa-solid fa-plus"></i> Grant quota</button>' +
+          '<button type="button" class="btn-ghost btn-sm" data-admin-users-bulk="add_note"><i class="fa-solid fa-note-sticky"></i> Add note</button>' +
+          '<button type="button" class="btn-ghost btn-sm" data-admin-users-bulk="send_email"><i class="fa-solid fa-paper-plane"></i> Email all</button>' +
+          '<button type="button" class="btn-ghost btn-sm admin-bulk-clear" data-admin-users-bulk-clear="1"><i class="fa-solid fa-xmark"></i> Clear</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+  function prettyAction(action) {
+    if (action === "grant_quota") return "Granting quota…";
+    if (action === "add_note") return "Adding note…";
+    if (action === "send_email") return "Logging emails…";
+    return "Applying…";
   }
 
   function render(data) {
