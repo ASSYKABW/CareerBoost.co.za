@@ -7,19 +7,22 @@
 // EXACTLY the expected number are allowed (no over-consumption, no
 // double-spend).
 //
-// Run:
-//   cd backend
-//   # one-time: provision a test user (or reuse if it exists)
-//   deno run --allow-net --allow-env scripts/load-test-quota-race.ts setup
-//   # repeated runs:
-//   deno run --allow-net --allow-env scripts/load-test-quota-race.ts run
-//   # full cleanup at end:
-//   deno run --allow-net --allow-env scripts/load-test-quota-race.ts teardown
+// Run (from backend/):
+//   npm run test:quota-race:setup     # one-time test user provision
+//   npm run test:quota-race            # the race + assertions
+//   npm run test:quota-race:teardown  # delete the test user
 //
-// Required env vars (read from .env or shell):
+// Required env vars — checked in this order:
+//   1. Process env (Powershell `$env:SUPABASE_URL = "..."` or bash export)
+//   2. backend/.env file (auto-loaded if shell env is unset)
+//
 //   SUPABASE_URL                  https://<ref>.supabase.co
 //   SUPABASE_SERVICE_ROLE_KEY     service role key (for user provisioning)
 //   SUPABASE_ANON_KEY             anon key (for the user JWT path)
+//
+// Get the values from Supabase Dashboard → Project Settings → API.
+// Paste them into backend/.env as KEY=value (no quotes needed) and
+// re-run. The script reads .env automatically — no shell export needed.
 //
 // Cost note: each run consumes quota on a real DB. Safe because the
 // test user is isolated. Never run against a real user account.
@@ -30,11 +33,47 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 // Config
 // ---------------------------------------------------------------------------
 
+// Auto-load backend/.env if the keys aren't in process env. Saves the
+// operator from having to remember the PowerShell vs bash export
+// syntax. We parse manually (no dep) — comments, blank lines, quoted
+// values all handled. If you ALSO have them in shell env, those win.
+async function loadDotenv(): Promise<Record<string, string>> {
+  const path = new URL("../.env", import.meta.url);
+  try {
+    const text = await Deno.readTextFile(path);
+    const out: Record<string, string> = {};
+    text.split("\n").forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) return;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      // Strip wrapping quotes if present.
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      out[key] = val;
+    });
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const dotenv = await loadDotenv();
+
 function reqEnv(name: string): string {
-  const v = Deno.env.get(name);
-  if (!v) {
-    console.error(`Missing env var: ${name}. Need SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY + SUPABASE_ANON_KEY.`);
-    console.error("Easiest: source the values from backend/.env then re-run.");
+  const v = Deno.env.get(name) || dotenv[name];
+  if (!v || v.startsWith("<") /* placeholder like "<from dashboard>" */) {
+    console.error(`✗ Missing or placeholder value for ${name}.`);
+    console.error("");
+    console.error("Need these three in backend/.env (or in your shell env):");
+    console.error("  SUPABASE_URL=https://kddffkhwpbngiupfmcse.supabase.co");
+    console.error("  SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...   (Project Settings → API → service_role secret)");
+    console.error("  SUPABASE_ANON_KEY=eyJhbGc...           (Project Settings → API → anon public)");
+    console.error("");
+    console.error("Get them at: https://supabase.com/dashboard/project/kddffkhwpbngiupfmcse/settings/api");
     Deno.exit(1);
   }
   return v;

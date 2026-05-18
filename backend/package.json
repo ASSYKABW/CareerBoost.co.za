@@ -36,9 +36,9 @@
     "fn:deploy:delete-account": "supabase functions deploy delete-account --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin-user-adjust": "supabase functions deploy admin-user-adjust --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:billing": "npm run fn:deploy:stripe-checkout && npm run fn:deploy:stripe-webhook && npm run fn:deploy:stripe-portal && npm run fn:deploy:get-entitlements",
-    "test:quota-race": "deno run --allow-net --allow-env scripts/load-test-quota-race.ts run",
-    "test:quota-race:setup": "deno run --allow-net --allow-env scripts/load-test-quota-race.ts setup",
-    "test:quota-race:teardown": "deno run --allow-net --allow-env scripts/load-test-quota-race.ts teardown",
+    "test:quota-race": "deno run --allow-net --allow-env --allow-read scripts/load-test-quota-race.ts run",
+    "test:quota-race:setup": "deno run --allow-net --allow-env --allow-read scripts/load-test-quota-race.ts setup",
+    "test:quota-race:teardown": "deno run --allow-net --allow-env --allow-read scripts/load-test-quota-race.ts teardown",
     "fn:deploy": "npm run fn:deploy:ai && npm run fn:deploy:jobs && npm run fn:deploy:import && npm run fn:deploy:external && npm run fn:deploy:company-intel && npm run fn:deploy:admin && npm run fn:deploy:admin-users && npm run fn:deploy:admin-list-operators && npm run fn:deploy:admin-promote-user && npm run fn:deploy:admin-incident-update && npm run fn:deploy:admin-list-audit && npm run fn:deploy:admin-credentials && npm run fn:deploy:embeddings && npm run fn:deploy:rerank && npm run fn:deploy:signup-attribution && npm run fn:deploy:admin-user-timeline && npm run fn:deploy:client-telemetry && npm run fn:deploy:delete-account && npm run fn:deploy:billing",
     "secrets:push": "supabase secrets set --env-file ./.env",
     "link": "echo \"Run: supabase link --project-ref <YOUR_PROJECT_REF>\""
