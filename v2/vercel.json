@@ -21,6 +21,19 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
+    },
+    {
+      "//": "Force fresh HTML on every request. Without this Vercel's edge can serve a cached index.html for 2+ hours even after a successful deploy — caught this happening when the OTP/splash code shipped to git but old HTML stayed on the edge. s-maxage=0 disables the shared (edge) cache; max-age=0 + must-revalidate forces browsers to revalidate; no-cache covers HTTP/1.0 proxies.",
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, s-maxage=0, must-revalidate, no-cache" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, s-maxage=0, must-revalidate, no-cache" }
+      ]
     }
   ],
   "rewrites": [
