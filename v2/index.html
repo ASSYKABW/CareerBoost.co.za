@@ -61,20 +61,16 @@
     }
     body.cb-booted #cb-boot-splash { opacity: 0; pointer-events: none; }
     #cb-boot-splash .cb-boot-mark {
-      width: 64px; height: 64px; border-radius: 16px;
-      background: linear-gradient(135deg, #5eead4, #a78bfa);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; font-size: 28px; color: #05070f;
-      letter-spacing: -0.04em;
-      box-shadow: 0 12px 40px rgba(94, 234, 212, 0.35);
+      width: 80px; height: 80px;
+      display: block;
+      filter: drop-shadow(0 12px 40px rgba(34, 227, 255, 0.35));
     }
     #cb-boot-splash .cb-boot-name {
       font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+      color: #f8fbff;
     }
     #cb-boot-splash .cb-boot-name span {
-      background: linear-gradient(135deg, #5eead4, #a78bfa);
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent; color: transparent;
+      color: #38bdf8;
     }
     #cb-boot-splash .cb-boot-spinner {
       width: 24px; height: 24px; border-radius: 50%;
@@ -94,7 +90,28 @@
     body:not(.cb-booted) #cb-boot-splash.is-slow .cb-boot-stuck { display: block; }
   </style>
   <div id="cb-boot-splash" role="status" aria-label="Loading CareerBoost">
-    <div class="cb-boot-mark" aria-hidden="true">CB</div>
+    <!-- Inline copy of v2/src/assets/logo-mark.svg so it renders the
+         instant the page parses — no extra network request. If you
+         update the SVG asset, update this copy too (it's a 25-line
+         inline svg, easy to keep in sync). -->
+    <svg class="cb-boot-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="CareerBoost">
+      <defs>
+        <linearGradient id="cbBootMarkBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0d1326"/>
+          <stop offset="100%" stop-color="#0a0f1d"/>
+        </linearGradient>
+        <linearGradient id="cbBootMarkFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(34, 227, 255, 0.14)"/>
+          <stop offset="100%" stop-color="rgba(34, 227, 255, 0.04)"/>
+        </linearGradient>
+      </defs>
+      <rect width="200" height="200" rx="22" ry="22" fill="url(#cbBootMarkBg)" stroke="#1a2240" stroke-width="1"/>
+      <g transform="translate(100, 100)">
+        <rect x="-62" y="-62" width="124" height="124" rx="7" ry="7" transform="rotate(45)" fill="url(#cbBootMarkFill)" stroke="#22e3ff" stroke-width="4"/>
+        <rect x="-46" y="-46" width="92" height="92" rx="4" ry="4" transform="rotate(45)" fill="none" stroke="#22e3ff" stroke-width="1" stroke-opacity="0.5"/>
+        <text x="0" y="14" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif" font-weight="700" font-size="44" fill="#f8fbff" letter-spacing="0.04em">CB</text>
+      </g>
+    </svg>
     <div class="cb-boot-name">Career<span>Boost</span></div>
     <div class="cb-boot-spinner" aria-hidden="true"></div>
     <p class="cb-boot-hint">Loading your workspace…</p>

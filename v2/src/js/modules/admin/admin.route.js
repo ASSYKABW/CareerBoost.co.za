@@ -637,12 +637,30 @@
   }
 
   // P3: brand-matched loading panel shown on the very first admin load
-  // before the metrics fetch completes. Uses the same CB mark + spinner
-  // pattern as the boot splash so the transition feels continuous.
+  // before the metrics fetch completes. Uses the real CareerBoost mark
+  // (inline SVG, matches v2/src/assets/logo-mark.svg) so the transition
+  // from boot splash → admin loading → real content feels continuous.
   function renderFirstLoadPanel() {
     return (
       '<section class="admin-first-load">' +
-        '<div class="admin-first-load-mark" aria-hidden="true">CB</div>' +
+        '<svg class="admin-first-load-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" aria-hidden="true">' +
+          '<defs>' +
+            '<linearGradient id="cbAdminMarkBg" x1="0" y1="0" x2="1" y2="1">' +
+              '<stop offset="0%" stop-color="#0d1326"/>' +
+              '<stop offset="100%" stop-color="#0a0f1d"/>' +
+            '</linearGradient>' +
+            '<linearGradient id="cbAdminMarkFill" x1="0" y1="0" x2="0" y2="1">' +
+              '<stop offset="0%" stop-color="rgba(34, 227, 255, 0.14)"/>' +
+              '<stop offset="100%" stop-color="rgba(34, 227, 255, 0.04)"/>' +
+            '</linearGradient>' +
+          '</defs>' +
+          '<rect width="200" height="200" rx="22" ry="22" fill="url(#cbAdminMarkBg)" stroke="#1a2240" stroke-width="1"/>' +
+          '<g transform="translate(100, 100)">' +
+            '<rect x="-62" y="-62" width="124" height="124" rx="7" ry="7" transform="rotate(45)" fill="url(#cbAdminMarkFill)" stroke="#22e3ff" stroke-width="4"/>' +
+            '<rect x="-46" y="-46" width="92" height="92" rx="4" ry="4" transform="rotate(45)" fill="none" stroke="#22e3ff" stroke-width="1" stroke-opacity="0.5"/>' +
+            '<text x="0" y="14" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Inter, Roboto, sans-serif" font-weight="700" font-size="44" fill="#f8fbff" letter-spacing="0.04em">CB</text>' +
+          '</g>' +
+        '</svg>' +
         '<div class="admin-first-load-spinner" aria-hidden="true"></div>' +
         '<h2>Loading admin console</h2>' +
         '<p>Fetching the latest metrics from Supabase. This usually takes 1-2 seconds.</p>' +

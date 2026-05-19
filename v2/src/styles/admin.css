@@ -3372,12 +3372,9 @@
   color: #f8fbff;
 }
 .admin-first-load-mark {
-  width: 56px; height: 56px; border-radius: 14px;
-  background: linear-gradient(135deg, #5eead4, #a78bfa);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 24px; color: #05070f;
-  letter-spacing: -0.04em;
-  box-shadow: 0 12px 40px rgba(94, 234, 212, 0.3);
+  width: 72px; height: 72px;
+  display: block;
+  filter: drop-shadow(0 12px 40px rgba(34, 227, 255, 0.3));
 }
 .admin-first-load-spinner {
   width: 22px; height: 22px; border-radius: 50%;
