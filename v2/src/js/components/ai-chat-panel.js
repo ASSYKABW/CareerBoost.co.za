@@ -13,11 +13,17 @@
   if (window.CBV2.aiChatPanel && window.CBV2.aiChatPanel._installed) return;
 
   // Routes where the FAB stays hidden.
+  // Anything that startsWith one of these prefixes is hidden, so
+  // "#/admin" also covers "#/admin?section=users" etc. We also add
+  // "#/auth/verify" and "#/auth/reset" (the new OTP/reset routes)
+  // since chat-assist makes no sense during account confirmation.
   const HIDDEN_ROUTES = [
-    "#/auth",
-    "#/auth/confirmed",
+    "#/auth",            // covers /auth, /auth/confirmed, /auth/verify, /auth/reset
     "#/welcome",
-    "#/onboarding"
+    "#/onboarding",
+    "#/privacy",         // legal pages
+    "#/terms",
+    "#/admin"            // entire admin console — operators don't need user-facing chat
   ];
 
   const QUOTA_KEY_PREFIX = "cb_chat_assist_count_";
