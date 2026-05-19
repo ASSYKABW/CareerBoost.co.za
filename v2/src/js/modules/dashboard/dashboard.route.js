@@ -1187,13 +1187,29 @@
     const searches = window.CBV2.store.getSavedSearches();
     if (!searches.length) return;
 
+    // CRITICAL FIX: re-entry guard. scanDigest is called from
+    // afterRender.dashboard, and scanDigest itself triggers
+    // renderCurrentRoute() (to show the "scanning..." busy state). That
+    // re-render fires afterRender.dashboard again, which calls
+    // scanDigest again — infinite loop, stack overflow, browser hang,
+    // floods Adzuna API until ERR_INSUFFICIENT_RESOURCES.
+    //
+    // Previously masked by the router's old 180ms setTimeout that made
+    // each cycle async, but that mask was removed in commit a930d4a.
+    // Now we guard explicitly: if a scan is in progress, exit early.
+    if (state.digest.busy) return;
+
     const freshMs = 30 * 60 * 1000;
     if (!force && state.digest.generatedAt && Date.now() - state.digest.generatedAt < freshMs && state.digest.results.length) {
       return;
     }
 
     state.digest.busy = true;
-    window.CBV2.renderCurrentRoute();
+    // Also dropped the renderCurrentRoute() that USED to be here. It
+    // was the "show scanning state" repaint, but it's what kicked off
+    // the recursion in the first place. The final renderCurrentRoute()
+    // call below (after the loop) paints the completed state. Users
+    // miss a momentary "scanning..." flash but gain a working app.
 
     const results = [];
     for (let i = 0; i < searches.length; i += 1) {

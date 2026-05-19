@@ -63,7 +63,21 @@
     );
   }
 
+  // Re-entry guard. afterRender hooks sometimes call renderCurrentRoute
+  // again to repaint after state changes. Without a guard, an afterRender
+  // that triggers a render that triggers afterRender again creates
+  // infinite recursion → stack overflow → browser hangs hard (as
+  // happened with dashboard.scanDigest after the 180ms setTimeout was
+  // removed). The guard turns reentrant calls into a console warning
+  // so the loop is broken AND the developer sees the bug source.
+  let _isRendering = false;
+
   window.CBV2.renderCurrentRoute = function () {
+    if (_isRendering) {
+      console.warn("[router] renderCurrentRoute called while already rendering — skipping to prevent recursion. Caller should defer with setTimeout(..., 0) or update DOM directly.");
+      return;
+    }
+    _isRendering = true;
     const parsed = parseHash();
     const nextRoute = parsed.route;
     const routes = window.CBV2.routes || {};
@@ -72,6 +86,7 @@
 
     const outlet = document.getElementById("route-view");
     if (!outlet) {
+      _isRendering = false;
       return;
     }
     // P3: render synchronously. The old path replaced the outlet with a
@@ -99,6 +114,10 @@
           window.CBV2.renderCurrentRoute();
         });
       }
+    } finally {
+      // Always release the render lock — even on render exceptions —
+      // so the next navigation isn't permanently blocked.
+      _isRendering = false;
     }
   };
 
