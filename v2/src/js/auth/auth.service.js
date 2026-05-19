@@ -153,15 +153,20 @@
   async function verifyEmailOtp(email, token) {
     const client = ensureClient();
     if (!client) throw new Error("Backend not configured.");
-    const cleaned = String(token || "").replace(/\D/g, "").slice(0, 6);
-    if (cleaned.length !== 6) throw new Error("Enter the 6-digit code from your email.");
+    // Supabase OTP length is configurable in the dashboard (6-10
+    // digits, default 6). Accept any length in that range so the
+    // helper works regardless of dashboard setting.
+    const cleaned = String(token || "").replace(/\D/g, "").slice(0, 10);
+    if (cleaned.length < 6 || cleaned.length > 10) {
+      throw new Error("Enter the code from your email (6-10 digits).");
+    }
     const { data, error } = await client.auth.verifyOtp({
       email: String(email || "").trim().toLowerCase(),
       token: cleaned,
       type: "signup"
     });
     if (error) throw error;
-    trackUsage("verify_email_otp", { method: "otp" });
+    trackUsage("verify_email_otp", { method: "otp", length: cleaned.length });
     return data;
   }
 

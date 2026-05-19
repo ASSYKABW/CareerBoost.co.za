@@ -105,7 +105,16 @@
 
   function currentRouteName() {
     const raw = window.location.hash.replace(/^#\//, "").trim();
-    return (raw.split("?")[0] || "dashboard");
+    // Supabase confirmation/recovery links append a second hash fragment
+    // (#access_token=...&type=recovery) AFTER our route slug, producing
+    // a URL like "#/auth/reset#access_token=...". The Supabase SDK
+    // eventually cleans this up, but there's a window during initial
+    // page load where our route resolution runs first. Without stripping
+    // the trailing #fragment here, currentRouteName() returns the
+    // dirty string and falls through to the dashboard redirect — that's
+    // why "click the reset link → end up on dashboard" was happening.
+    const beforeFragment = raw.split("#")[0];
+    return (beforeFragment.split("?")[0] || "dashboard");
   }
 
   async function needsOnboarding() {

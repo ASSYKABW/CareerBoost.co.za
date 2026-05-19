@@ -171,6 +171,16 @@ Click "Save changes" again.
 
 ## Security knobs worth knowing
 
+### OTP length (6-10 digits, default 6 — but YOURS may be set to 8)
+- Dashboard → **Authentication → Sign In / Providers → Email** → scroll to "Email OTP Length"
+- Frontend handles 6, 7, 8, 9, or 10 digits automatically (auto-submit
+  triggers on any length ≥ 6).
+- **Recommend 6** — that's the universal standard for OTP codes;
+  users will recognize it from every other service. 8 is overkill for
+  a 1-hour code that's also rate-limited.
+- If you keep it at 8, no code changes needed — the frontend already
+  renders 8 boxes by default.
+
 ### OTP expiry (default: 1 hour)
 - Dashboard → Settings → Auth → "Email OTP expiration"
 - Recommend tightening to **15 minutes** for tighter risk.

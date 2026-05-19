@@ -4,7 +4,13 @@
   function parseHash() {
     const raw = window.location.hash.replace(/^#\//, "").trim();
     if (!raw) return { route: "dashboard", params: {} };
-    const parts = raw.split("?");
+    // Strip trailing Supabase auth fragments (#access_token=...) appended
+    // after our route slug — see bootstrap.js currentRouteName() for
+    // full rationale. Without this, an /auth/reset link with the SDK
+    // token still in the hash produces a route="auth/reset#access_token..."
+    // that doesn't match any registered route.
+    const beforeFragment = raw.split("#")[0];
+    const parts = beforeFragment.split("?");
     const route = parts[0] || "dashboard";
     const params = {};
     if (parts[1]) {

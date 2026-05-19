@@ -45,6 +45,14 @@
   const LOCK_MS = 60 * 1000;
   const RESEND_COOLDOWN_MS = 60 * 1000;
   const STORAGE_KEY = "cb_signup_pending_email";
+  // Number of OTP boxes to render. Supabase OTP length is dashboard-
+  // configurable (default 6, range 6-10). We default to 8 because that's
+  // what our project sends right now — if the operator drops it back to 6
+  // in the dashboard, this UI still works: paste/typing 6 fills boxes
+  // 1-6 and submits, the trailing boxes stay empty.
+  const OTP_BOX_COUNT = 8;
+  const OTP_MIN_LEN = 6;
+  const OTP_MAX_LEN = 10;
 
   function st(value) {
     return (window.CBV2.sanitizeText || String)(value);
@@ -139,7 +147,7 @@
               '</button>' +
               resendBtn +
             '</div>' +
-            '<p class="auth-verify-hint">Code expires after 1 hour. Codes are 6 digits, like <code>123456</code>.</p>' +
+            '<p class="auth-verify-hint">Code expires after 1 hour. Paste the code from your email into any box — we\'ll fill the rest.</p>' +
           '</form>' +
           '<p class="auth-legal">Didn\'t get an email? Check your spam folder or use the resend button above. Codes from previous emails stop working once a new one is sent.</p>' +
         "</div>" +
@@ -147,13 +155,13 @@
     );
   }
 
-  // Six discrete input boxes so the code looks like a real OTP input.
-  // We bind one input listener per box that auto-advances + handles
-  // paste (a 6-digit paste in any box fills them all).
+  // OTP boxes. Renders OTP_BOX_COUNT input fields so the user can paste/
+  // type any length 6-10 (Supabase's allowed range). Auto-advance + paste
+  // handling is wired in bindHandlers.
   function renderCodeInput(code, disabled) {
-    const cleaned = String(code || "").replace(/\D/g, "").slice(0, 6);
+    const cleaned = String(code || "").replace(/\D/g, "").slice(0, OTP_MAX_LEN);
     let html = '<div class="auth-otp-row">';
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < OTP_BOX_COUNT; i += 1) {
       const ch = cleaned[i] || "";
       html += '<input type="text" inputmode="numeric" pattern="\\d*" maxlength="1" ' +
               'class="auth-otp-box" data-otp-index="' + i + '" ' +
@@ -187,7 +195,7 @@
     const boxes = document.querySelectorAll(".auth-otp-box");
     let out = "";
     boxes.forEach(function (b) { out += String(b.value || "").replace(/\D/g, ""); });
-    return out.slice(0, 6);
+    return out.slice(0, OTP_MAX_LEN);
   }
 
   async function submit(ev) {
@@ -208,8 +216,8 @@
     }
 
     state.code = readCodeFromBoxes();
-    if (state.code.length !== 6) {
-      state.error = "Enter all 6 digits of the code.";
+    if (state.code.length < OTP_MIN_LEN) {
+      state.error = "Enter the full code from your email (" + OTP_MIN_LEN + "+ digits).";
       rerender();
       return;
     }
@@ -333,8 +341,13 @@
         if (v && idx < boxes.length - 1) {
           boxes[idx + 1].focus();
         }
-        // Auto-submit when all 6 boxes are filled.
-        if (idx === boxes.length - 1 && readCodeFromBoxes().length === 6) {
+        // Auto-submit when ALL visible boxes are filled. Since boxes
+        // matches OTP_BOX_COUNT (currently 8), filling all of them
+        // means we have an 8-digit code, which is what Supabase sends
+        // by default in this project. For 6-digit codes (if changed
+        // in the dashboard later), the user clicks "Verify email"
+        // manually since boxes 7-8 stay empty.
+        if (idx === boxes.length - 1 && readCodeFromBoxes().length >= boxes.length) {
           submit();
         }
       });
@@ -346,11 +359,13 @@
       box.addEventListener("paste", function (e) {
         e.preventDefault();
         const text = (e.clipboardData || window.clipboardData).getData("text") || "";
-        const cleaned = String(text).replace(/\D/g, "").slice(0, 6);
+        const cleaned = String(text).replace(/\D/g, "").slice(0, OTP_MAX_LEN);
         for (let i = 0; i < boxes.length; i += 1) {
           boxes[i].value = cleaned[i] || "";
         }
-        if (cleaned.length === 6) submit();
+        // Auto-submit on full-length paste (>= min length). Anything
+        // less, just focus the next empty box.
+        if (cleaned.length >= OTP_MIN_LEN) submit();
         else if (cleaned.length > 0) boxes[Math.min(cleaned.length, boxes.length - 1)].focus();
       });
     });
