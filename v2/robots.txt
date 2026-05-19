@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# Disallow source maps and build artifacts (none currently exposed, but
+# future-proofing in case the build pipeline ever emits .map files).
+Disallow: /src/*.map$
+
+# Disallow the bare auth flow URLs from crawler indexing — they're
+# transient post-confirmation landing pages, not content.
+Disallow: /#/auth/confirmed
+Disallow: /#/auth/verify
+Disallow: /#/auth/reset
+
+Sitemap: https://www.careerboost.co.za/sitemap.xml

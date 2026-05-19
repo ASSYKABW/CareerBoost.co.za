@@ -167,7 +167,20 @@
       await window.CBV2.remoteStore.activate(client, user);
       if (window.CBV2.profile) { try { await window.CBV2.profile.load(); } catch (e) { /* ignore */ } }
     } catch (err) {
+      // Day 1.9: surface backend failures to the user instead of silently
+      // landing them on a dashboard with stale/empty data. Most common
+      // cause: Supabase project paused, edge function down, or network
+      // dropped mid-signin. The toast tells them what happened + offers
+      // a retry; the existing local store still backs the UI so the app
+      // is at least browsable.
       console.warn("[bootstrap] remote store activation failed:", err);
+      if (window.CBV2.toast && typeof window.CBV2.toast.error === "function") {
+        const msg = (err && err.message) || "Couldn't reach the server.";
+        window.CBV2.toast.error(
+          "Sync failed: " + msg + ". Your data may be out of date — refresh the page to retry.",
+          { duration: 12000 }
+        );
+      }
     }
     mode = "authed";
 
@@ -204,7 +217,23 @@
       try {
         const client = window.CBV2.auth.getClient();
         const user = window.CBV2.auth.getUser();
-        await window.CBV2.remoteStore.activate(client, user);
+        try {
+          await window.CBV2.remoteStore.activate(client, user);
+        } catch (activateErr) {
+          // Day 1.9: same toast pattern as the initial-load failure
+          // above. Token refresh can fail mid-session if Supabase blips —
+          // surface it to the user so they know data is potentially stale
+          // and can choose to reload.
+          console.warn("[bootstrap] remote activation (post-signin) failed:", activateErr);
+          if (window.CBV2.toast && typeof window.CBV2.toast.error === "function") {
+            const msg = (activateErr && activateErr.message) || "Couldn't reach the server.";
+            window.CBV2.toast.error(
+              "Sync failed: " + msg + ". Your data may be out of date — refresh the page to retry.",
+              { duration: 12000 }
+            );
+          }
+          throw activateErr; // bubble up so the outer catch logs it
+        }
         if (window.CBV2.profile) { try { await window.CBV2.profile.load(); } catch (e) { /* ignore */ } }
         mode = "authed";
 

@@ -85,7 +85,9 @@
         { label: "FAQ",            href: "#faq" },
         { label: "Help center",    href: "#faq" },
         { label: "What's new",     href: "#features" },
-        { label: "Status",         href: "#" },
+        // Day 1.10: "Status" link removed until we have a real status
+        // page (planned for Phase 2 — Better Stack free tier). Linking
+        // to "#" is a broken-trust signal — better to omit until live.
       ]
     },
     {
