@@ -37,16 +37,18 @@
     }
     const keep = sortedProviders.filter(function (p) {
       if (p.id === "backend") return true;
-      // Dropped client-side Adzuna when the cloud aggregator is primary.
-      // Adzuna's API does NOT serve `Access-Control-Allow-Origin` for
-      // browser callers, so this provider would always CORS-fail in
-      // production. The `backend` provider (jobs-search edge function)
-      // already proxies Adzuna server-side using the global ADZUNA_*
-      // env vars — we get the same coverage without the CORS errors
-      // flooding the console. Users who plugged in personal Adzuna
-      // keys via Settings still drive search routing decisions, but
-      // the actual fetch goes through the cloud aggregator.
-      if (p.id === "adzuna") return false;
+      // Client-side Adzuna provider — uses the user's personal Adzuna
+      // keys (set via Settings → API Keys) to do multi-region search
+      // directly from the browser. Yes, it generates CORS console
+      // warnings on the calls that fail, BUT calls do succeed in many
+      // cases AND personal keys give users access to coverage the
+      // server-side proxy (global ADZUNA_* env vars) doesn't include
+      // in their plan. Removing this provider dropped search result
+      // counts noticeably for power users.
+      //
+      // (Prior to May 2026 this was temporarily disabled — see commit
+      // 640edd2 — but reverted after operator confirmed real impact.)
+      if (p.id === "adzuna") return true;
       if (p.id === "external-search") return isExternalSearchMergeEnabled();
       return false;
     });
