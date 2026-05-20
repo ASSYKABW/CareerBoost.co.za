@@ -2245,9 +2245,21 @@
         const before = store.getSavedJobs().length;
         store.bookmarkJob(enriched);
         const after = store.getSavedJobs().length;
+
+        // UX: also create a Pipeline entry (stage=saved). Pre-fix, Save
+        // only bookmarked — users had to separately click "Add to
+        // pipeline" to see it on the kanban. Saving without pipeline
+        // tracking made the bookmark feel "lost" because nothing
+        // downstream surfaced it. Now: one click = bookmark + tracked
+        // pipeline entry. Dedupes by URL so re-bookmarks don't pile up.
+        const pipelineCreated = createPipelineEntryFromSavedJob(job);
+
         if (window.CBV2.toast) {
-          if (after > before) window.CBV2.toast.success("Saved to your bookmarks.");
-          else if (typeof window.CBV2.toast.info === "function") {
+          if (after > before && pipelineCreated) {
+            window.CBV2.toast.success("Saved and added to your pipeline.");
+          } else if (after > before) {
+            window.CBV2.toast.success("Saved to your bookmarks.");
+          } else if (typeof window.CBV2.toast.info === "function") {
             window.CBV2.toast.info("Already in your bookmarks.");
           } else {
             window.CBV2.toast.success("Already in your bookmarks.");
@@ -2259,6 +2271,68 @@
         if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Could not save.");
       }
     });
+  }
+
+  // Helper: turn a search-result job into a pipeline application row
+  // with stage=saved. Returns true if a NEW application was created,
+  // false if one with the same URL or company+role already exists
+  // (dedupe to prevent click-spam from filling the pipeline with
+  // duplicates). Safe to call on any object that has at minimum a
+  // company + title — missing optional fields are filled with sensible
+  // defaults.
+  function createPipelineEntryFromSavedJob(job) {
+    if (!job) return false;
+    const store = window.CBV2 && window.CBV2.store;
+    if (!store || typeof store.upsertApplication !== "function") return false;
+    const company = String(job.company || "").trim();
+    const role = String(job.title || job.role || "").trim();
+    if (!company || !role) return false; // can't track an untitled job
+
+    const jobUrl = String(job.url || job.applyUrl || job.sourceUrl || "").trim();
+
+    // Dedupe: if the user already has an application for this URL
+    // (most reliable signal) OR the same company+role pair (fallback
+    // when URL is missing), don't create a duplicate.
+    const existing = (typeof store.getApplications === "function" ? store.getApplications() : []) || [];
+    const urlKeyFn = (window.CBV2.urlKey && typeof window.CBV2.urlKey === "function") ? window.CBV2.urlKey : null;
+    const targetUrlKey = jobUrl && urlKeyFn ? urlKeyFn(jobUrl) : jobUrl;
+    const dupe = existing.some(function (app) {
+      if (!app) return false;
+      const appUrl = String(app.jobUrl || "").trim();
+      const appKey = appUrl && urlKeyFn ? urlKeyFn(appUrl) : appUrl;
+      if (targetUrlKey && appKey && appKey === targetUrlKey) return true;
+      // Fallback dedupe — same company AND same role, case-insensitive.
+      return (
+        String(app.company || "").trim().toLowerCase() === company.toLowerCase()
+        && String(app.role || "").trim().toLowerCase() === role.toLowerCase()
+      );
+    });
+    if (dupe) return false;
+
+    const idFn = (window.CBV2 && typeof window.CBV2.createId === "function")
+      ? window.CBV2.createId
+      : function () { return "app_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8); };
+
+    const newApp = {
+      id: idFn("app"),
+      company: company,
+      role: role,
+      stage: "saved",
+      priority: "medium",
+      appliedAt: "",
+      jobUrl: jobUrl,
+      nextAction: "",
+      notes: jobUrl ? ("Source: " + jobUrl) : ""
+    };
+    try {
+      store.upsertApplication(newApp);
+      return true;
+    } catch (e) {
+      // Bookmark already succeeded — just swallow the pipeline error
+      // so the save flow still feels successful from the user POV.
+      console.warn("[save→pipeline] upsertApplication failed:", e);
+      return false;
+    }
   }
 
   function bindBigBoardPanel() {
