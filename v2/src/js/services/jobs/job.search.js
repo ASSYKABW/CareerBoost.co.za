@@ -648,30 +648,42 @@
       });
     }
     if (sort === "relevance") {
+      // Phase 1.8: use the comprehensive rankScore (fit + relevance +
+      // location proximity + recency + sourceConfidence) as primary
+      // signal. BM25 keyword density is a tiebreaker for jobs whose
+      // overall rank is the same. Previously this sort ONLY used BM25
+      // which ignored location proximity entirely — so a perfect Cape
+      // Town SE job could rank below a Brazilian remote SE job that
+      // mentioned "engineer" five times in its description.
       var tokens = relevanceTokensFromParams(params);
-      if (!tokens.length) {
-        sort = "newest";
-      } else {
-        // Phase 5: pass the full job list so jobTextRelevanceScore can build a
-        // BM25 corpus once and amortize across the sort comparator.
-        return jobs.slice().sort(function (a, b) {
-          var ra = jobTextRelevanceScore(a, tokens, jobs);
-          var rb = jobTextRelevanceScore(b, tokens, jobs);
-          if (rb !== ra) return rb - ra;
-          var xa = a && typeof a.rankScore === "number" ? a.rankScore : 0;
-          var xb = b && typeof b.rankScore === "number" ? b.rankScore : 0;
-          if (xb !== xa) return xb - xa;
-          return (Date.parse(b.postedAt || "") || 0) - (Date.parse(a.postedAt || "") || 0);
-        });
-      }
+      return jobs.slice().sort(function (a, b) {
+        var ra = a && typeof a.rankScore === "number" ? a.rankScore : 0;
+        var rb = b && typeof b.rankScore === "number" ? b.rankScore : 0;
+        if (rb !== ra) return rb - ra;
+        // Tiebreaker 1: BM25 keyword density (when tokens exist).
+        if (tokens.length) {
+          var bma = jobTextRelevanceScore(a, tokens, jobs);
+          var bmb = jobTextRelevanceScore(b, tokens, jobs);
+          if (bmb !== bma) return bmb - bma;
+        }
+        // Tiebreaker 2: recency.
+        return (Date.parse(b.postedAt || "") || 0) - (Date.parse(a.postedAt || "") || 0);
+      });
     }
     if (sort === "oldest") {
       return jobs.slice().sort(function (a, b) {
         return (a.postedAt || "").localeCompare(b.postedAt || "");
       });
     }
+    // "newest" — sort by date, but use rankScore as tiebreaker when
+    // jobs are posted on the same day. Otherwise the user's location
+    // intent gets totally ignored for date-sorted views.
     return jobs.slice().sort(function (a, b) {
-      return (b.postedAt || "").localeCompare(a.postedAt || "");
+      var dateCmp = (b.postedAt || "").localeCompare(a.postedAt || "");
+      if (dateCmp !== 0) return dateCmp;
+      var ra = a && typeof a.rankScore === "number" ? a.rankScore : 0;
+      var rb = b && typeof b.rankScore === "number" ? b.rankScore : 0;
+      return rb - ra;
     });
   }
 
@@ -810,17 +822,97 @@
     return 20;
   }
 
+  // Phase 1.8: location proximity scoring. When the user typed a city,
+  // we want city-matched jobs at the top, then region-matched, then
+  // remote, then the rest. Previously remote jobs from Jobicy could
+  // outrank a perfect Cape Town match because the only signals were
+  // title relevance + recency + intent score.
+  //
+  // Returns 0-100:
+  //   100 = job location includes the user's typed city/text exactly
+  //    70 = job location matches the searchRegion (e.g. "africa")
+  //    55 = remote job (assumed location-independent — user can take it
+  //         from any city; still ranks above truly distant on-site)
+  //    20 = job has a location but it doesn't match user's intent
+  //    50 = no location filter set (neutral, doesn't push rank either way)
+  function locationProximityScore(job, params) {
+    const wanted = String((params && params.location) || "").trim();
+    if (!wanted) return 50; // user didn't type a location — neutral
+
+    const norm = window.CBNorm || {};
+    const normalize = typeof norm.normalize === "function"
+      ? norm.normalize
+      : function (s) { return String(s || "").toLowerCase().trim(); };
+
+    const wantedNorm = normalize(wanted);
+    const remoteWanted = /(^|\s)(remote|anywhere|work from home|wfh)($|\s)/.test(wantedNorm);
+    const locNorm = normalize(job.location || "");
+    const text = normalize([
+      job.location, (job.tags || []).join(" "),
+      String(job.descriptionText || "").slice(0, 400)
+    ].join(" "));
+
+    // User explicitly wants remote: remote jobs are best.
+    if (remoteWanted) {
+      if (job.remote || /remote|anywhere|wfh/i.test(job.location || "")) return 100;
+      return 30;
+    }
+
+    // Direct city match in job.location (Adzuna-style structured field).
+    if (locNorm && locNorm.indexOf(wantedNorm) >= 0) return 100;
+
+    // City-shortcut country match (e.g. user typed "south africa" and
+    // job is in Cape Town/Johannesburg).
+    if (/south africa|\bsa\b|\bza\b/.test(wantedNorm) &&
+        /\b(za|south africa|gauteng|pretoria|centurion|johannesburg|cape town|durban)\b/.test(text)) return 95;
+    if (/united kingdom|\buk\b/.test(wantedNorm) &&
+        /\b(uk|united kingdom|england|london|manchester|edinburgh|bristol|leeds)\b/.test(text)) return 95;
+    if (/united states|\busa\b|\bus\b/.test(wantedNorm) &&
+        /\b(us|usa|united states|new york|california|texas|seattle|boston|chicago)\b/.test(text)) return 95;
+
+    // Token match in description (e.g. job description mentions Cape Town).
+    if (text.indexOf(wantedNorm) >= 0) return 80;
+
+    // Region match (searchRegion === "africa" and job text has region terms).
+    const region = String((params && params.searchRegion) || "").toLowerCase();
+    if (region && region !== "global") {
+      const REGIONS = (window.CBJobs && window.CBJobs.REGION_TERMS) || {};
+      const terms = REGIONS[region] || [];
+      if (terms.some(function (t) { return text.indexOf(t) >= 0; })) return 70;
+    }
+
+    // Remote job, no city match: still relevant (user could take it).
+    if (job.remote) return 55;
+
+    // Truly elsewhere — give it a tiny score so it ranks at the bottom
+    // but isn't filtered out entirely.
+    return 20;
+  }
+
   function scoreJob(job, params) {
     const tokens = relevanceTokensFromParams(params);
     const relevance = boundedScore(jobTextRelevanceScore(job, tokens) * 4);
     const fit = boundedScore(job && job.roleIntent && typeof job.roleIntent.score === "number" ? job.roleIntent.score : 50);
     const recency = recencyScore(job);
     const sourceConfidence = sourceConfidenceScore(job);
-    const total = boundedScore(fit * 0.4 + relevance * 0.3 + recency * 0.2 + sourceConfidence * 0.1);
+    const locationProximity = locationProximityScore(job, params);
+    // Rebalanced weights: locationProximity gets meaningful weight (0.30)
+    // because when a user types a city they really want city-matched
+    // jobs near the top. Fit + relevance still drive the majority.
+    // Old: fit 0.4 + relevance 0.3 + recency 0.2 + sourceConfidence 0.1
+    // New: fit 0.30 + relevance 0.25 + locationProximity 0.30 + recency 0.10 + sourceConfidence 0.05
+    const total = boundedScore(
+      fit * 0.30 +
+      relevance * 0.25 +
+      locationProximity * 0.30 +
+      recency * 0.10 +
+      sourceConfidence * 0.05
+    );
     job.rankScore = total;
     job.rankBreakdown = {
       fit: fit,
       relevance: relevance,
+      locationProximity: locationProximity,
       recency: recency,
       sourceConfidence: sourceConfidence
     };

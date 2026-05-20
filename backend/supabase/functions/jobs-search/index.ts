@@ -92,13 +92,41 @@ const MAX_PER_SOURCE = 50;
 const DESCRIPTION_LIMIT = 24_000;
 const ENRICH_PER_SOURCE = 18;
 
+// Phase 1.7: trimmed Adzuna country fan-out. Free-tier limit is 25
+// calls/min — fanning out to 10 countries in parallel exhausts the
+// bucket on the first search of the minute, then ALL Adzuna calls
+// 429 for the rest of the minute (which is why "global" searches
+// were returning 0 Adzuna results consistently).
+//
+// New defaults are tuned for an SA-based product (ZA always anchors
+// the search), with 2-3 high-volume regions in global mode instead
+// of 10. Other regions get the same trimming.
 const ADZUNA_COUNTRIES: Record<string, string[]> = {
-  global: ["za", "gb", "us", "au", "ca", "de", "nl", "fr", "sg", "in"],
-  africa: ["za"],
-  europe: ["gb", "de", "fr", "nl", "es", "it"],
-  north_america: ["us", "ca"],
-  asia_pacific: ["au", "sg", "in"],
+  global: ["za", "gb", "us"],         // was 10 → 3. Covers ~80% of English-speaking job volume.
+  africa: ["za"],                      // unchanged
+  europe: ["gb", "de", "nl"],          // was 6 → 3. UK + DE + NL covers most English-speaking EU listings.
+  north_america: ["us", "ca"],         // unchanged
+  asia_pacific: ["au", "sg"],          // was 3 → 2. AU + SG covers most English-speaking APAC.
 };
+
+// Phase 1.7: detect country from user's typed location. If they typed
+// "Cape Town" we shouldn't fan-out to US + UK — just hit ZA. Returns
+// null if the location doesn't match a recognized country pattern.
+function inferAdzunaCountryFromLocation(loc: string): string | null {
+  if (!loc) return null;
+  const text = loc.toLowerCase();
+  if (/south africa|\bza\b|cape town|johannesburg|durban|pretoria|centurion|gauteng|stellenbosch/.test(text)) return "za";
+  if (/united kingdom|\buk\b|london|manchester|edinburgh|bristol|leeds|england|scotland/.test(text)) return "gb";
+  if (/united states|\busa\b|\bus\b|new york|california|texas|seattle|boston|chicago|los angeles|san francisco/.test(text)) return "us";
+  if (/canada|toronto|vancouver|montreal/.test(text)) return "ca";
+  if (/australia|sydney|melbourne|brisbane|perth/.test(text)) return "au";
+  if (/germany|berlin|munich|hamburg|frankfurt/.test(text)) return "de";
+  if (/netherlands|amsterdam|rotterdam|utrecht/.test(text)) return "nl";
+  if (/france|paris|lyon|marseille/.test(text)) return "fr";
+  if (/singapore/.test(text)) return "sg";
+  if (/india|bangalore|mumbai|delhi|hyderabad|pune/.test(text)) return "in";
+  return null;
+}
 
 const JOB_TYPE_TERMS: Record<string, string[]> = {
   full_time: ["full time", "full-time", "permanent"],
@@ -854,8 +882,25 @@ async function runJobicy(body: Body): Promise<CanonicalJobOut[]> {
   }));
 }
 
-function adzunaCountries(region: string): string[] {
-  return (ADZUNA_COUNTRIES[region] || ADZUNA_COUNTRIES.global).slice(0, 8);
+function adzunaCountries(region: string, location?: string): string[] {
+  // Phase 1.7: prefer location-inferred country when user typed a city.
+  // Otherwise fall back to region map. Reduces fan-out dramatically
+  // (often 1 country instead of 3-10) which fixes the per-minute
+  // rate-limit exhaustion and also returns more relevant jobs.
+  const inferred = location ? inferAdzunaCountryFromLocation(location) : null;
+  if (inferred) {
+    // Use the inferred country, plus the user's region peers as
+    // fallback in case the inferred country has thin coverage.
+    // Cap at 3 max calls to stay well below the 25/min limit.
+    const regionPeers = ADZUNA_COUNTRIES[region] || ADZUNA_COUNTRIES.global;
+    const out = [inferred];
+    for (const peer of regionPeers) {
+      if (out.length >= 3) break;
+      if (peer !== inferred) out.push(peer);
+    }
+    return out;
+  }
+  return (ADZUNA_COUNTRIES[region] || ADZUNA_COUNTRIES.global).slice(0, 3);
 }
 
 const ADZUNA_CACHE_TTL_SECONDS = 15 * 60; // 15 min
@@ -865,7 +910,10 @@ async function runAdzunaUncached(body: Body): Promise<CanonicalJobOut[]> {
   const appKey = safeString(Deno.env.get("ADZUNA_APP_KEY"));
   if (!appId || !appKey) throw new Error("ADZUNA_APP_ID or ADZUNA_APP_KEY is not configured.");
   const filters: Filters = body.filters || {};
-  const countries = adzunaCountries(safeString(filters.searchRegion || "global"));
+  const countries = adzunaCountries(
+    safeString(filters.searchRegion || "global"),
+    safeString(filters.location || "")
+  );
   const q = safeString(body.query || queryTerms(body).join(" "));
   const pages = countries.map(async (country) => {
     const url = new URL(`https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(country)}/search/1`);
