@@ -344,6 +344,14 @@
     const remoteWanted = /(^|\s)(remote|anywhere|work from home|wfh)($|\s)/.test(wantedNorm);
     if (remoteWanted) return !!job.remote || /remote|anywhere|work from home|wfh/i.test(job.location || "");
 
+    // Companion to the backend matchesLocation fix (jobs-search/index.ts
+    // commit f7bed36). A remote job is location-independent for the
+    // candidate — they can do remote work from any city. Without this
+    // guard, the client-side filter was nuking every remote job that
+    // didn't happen to mention the user's typed city in its text,
+    // including ~100% of Remotive/Arbeitnow/Jobicy results.
+    if (job.remote && strictness !== "strict") return true;
+
     const locText = normalizedText([
       job.location,
       (job.tags || []).join(" "),
@@ -373,6 +381,12 @@
     if (!region || region === "global") return true;
     const terms = REGION_TERMS[region] || [];
     if (!terms.length) return true;
+    // Same logic as matchesLocationConstraint: remote jobs are region-
+    // independent for the candidate's purposes. A Cape Town candidate
+    // searching "Africa" region should still see a remote job at a US
+    // company because they could take that job. Without this guard the
+    // client-side region filter killed almost every remote result.
+    if (job.remote) return true;
     const text = normalizedText([
       job.location,
       (job.tags || []).join(" "),
