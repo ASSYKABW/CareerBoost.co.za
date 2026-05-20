@@ -539,7 +539,24 @@ function matchesLocation(job: CanonicalJobOut, filters: Filters): boolean {
   const wanted = safeString(filters.location).toLowerCase();
   const strictness = filters.locationStrictness || "strict";
   if (!wanted) return true;
-  if (job.remote && /remote|anywhere|work from home|wfh/.test(wanted)) return true;
+  // Remote jobs are location-independent — a candidate in any city can
+  // do remote work, so a remote job should match ANY typed location
+  // unless the user is in strict mode AND explicitly mentioned remote.
+  //
+  // Old behavior (pre-May 2026): remote jobs were killed unless the
+  // location field itself said "remote". That meant a search for
+  // "Cape Town" returned 0 results from Remotive/Arbeitnow/Jobicy
+  // even though those APIs return ~100% remote jobs that any Cape
+  // Town candidate could take. Operator confirmed search felt broken.
+  if (job.remote) {
+    if (strictness === "strict") {
+      // Strict mode: only include remote jobs if the user explicitly
+      // typed remote/anywhere — they're saying "I want a city-specific
+      // role" otherwise.
+      return /remote|anywhere|work from home|wfh/.test(wanted);
+    }
+    return true; // balanced or broad — remote always considered a match
+  }
   const loc = safeString(job.location).toLowerCase();
   if (loc.includes(wanted)) return true;
   const text = searchText(job);
@@ -558,6 +575,11 @@ function matchesRegion(job: CanonicalJobOut, filters: Filters): boolean {
   if (!region || region === "global") return true;
   const terms = REGION_TERMS[region] || [];
   if (!terms.length) return true;
+  // Same reasoning as matchesLocation: remote jobs are region-
+  // independent for the candidate's purposes. A Cape Town candidate
+  // searching "Africa" region should still see remote jobs even if
+  // the job's posting text doesn't mention Africa terms.
+  if (job.remote) return true;
   const text = searchText(job);
   return terms.some((term) => text.includes(term));
 }
