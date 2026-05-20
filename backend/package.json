@@ -18,6 +18,7 @@
     "fn:deploy:external": "supabase functions deploy external-search --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:company-intel": "supabase functions deploy company-intel-search --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:companies": "supabase functions deploy companies-search --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy:admin-tracked-companies": "supabase functions deploy admin-tracked-companies --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin": "supabase functions deploy admin-overview --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin-users": "supabase functions deploy admin-users --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin-list-operators": "supabase functions deploy admin-list-operators --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",

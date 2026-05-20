@@ -3397,3 +3397,89 @@
   max-width: 320px;
   line-height: 1.5;
 }
+
+/* ---------------------------------------------------------------------
+ * Phase 2.5: Tracked Companies admin section
+ * --------------------------------------------------------------------- */
+.admin-tc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+.admin-tc-filters { display: flex; gap: 6px; }
+.admin-tc-filters .btn-ghost em {
+  font-style: normal;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+}
+.admin-tc-filters .btn-ghost.is-active {
+  background: rgba(94, 234, 212, 0.12);
+  border-color: rgba(94, 234, 212, 0.4);
+  color: #5eead4;
+}
+.admin-tc-toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+
+.admin-tc-table {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.admin-tc-row {
+  display: grid;
+  grid-template-columns: 2fr 1.4fr 1fr 1.4fr 1fr 1.2fr;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  align-items: center;
+}
+.admin-tc-row:first-child { border-top: 0; }
+.admin-tc-row:not(.admin-tc-head):hover { background: rgba(255, 255, 255, 0.02); }
+.admin-tc-row.is-inactive { opacity: 0.55; }
+.admin-tc-head {
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(248, 251, 255, 0.55);
+}
+.admin-tc-cell { min-width: 0; word-wrap: break-word; }
+.admin-tc-cell--name { display: flex; flex-direction: column; gap: 2px; }
+.admin-tc-cell--name strong { color: #f8fbff; font-size: 14px; }
+.admin-tc-cell--name small { color: rgba(248, 251, 255, 0.5); font-size: 11px; }
+.admin-tc-cell--name em.admin-tc-notes {
+  font-style: normal;
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.45);
+  margin-top: 4px;
+}
+.admin-tc-token {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: rgba(248, 251, 255, 0.7);
+}
+.admin-tc-cell--meta { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.admin-tc-cell--meta small { font-size: 11px; color: rgba(248, 251, 255, 0.45); }
+.admin-tc-cell--actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.admin-tc-danger:hover { background: rgba(244, 63, 94, 0.12); color: #fda4af; }
+
+.chip.success { background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.3); color: #86efac; }
+.chip.warning { background: rgba(244, 63, 94, 0.12); border-color: rgba(244, 63, 94, 0.3); color: #fda4af; }
+
+@media (max-width: 900px) {
+  .admin-tc-row { grid-template-columns: 1fr; gap: 6px; }
+  .admin-tc-head { display: none; }
+  .admin-tc-cell { padding: 2px 0; }
+  .admin-tc-cell--actions { justify-content: flex-start; }
+}

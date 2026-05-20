@@ -79,7 +79,9 @@
         { id: "users", icon: "fa-users", label: "Users & outcomes" },
         { id: "health", icon: "fa-heart-pulse", label: "Health" },
         { id: "operations", icon: "fa-shield-halved", label: "Operations" },
-        { id: "credentials", icon: "fa-key", label: "API credentials" }
+        { id: "credentials", icon: "fa-key", label: "API credentials" },
+        // Phase 2.5: per-company ATS feed management (Greenhouse, Lever).
+        { id: "tracked-companies", icon: "fa-building", label: "Tracked companies" }
       ]
     },
     {
@@ -1369,6 +1371,13 @@
       case "users":     return fetchAdminUsers({ force: true });
       case "audit":     return fetchAdminAudit({ force: true });
       case "operators": return fetchAdminOperators(true);
+      case "tracked-companies": {
+        // Phase 2.5: the tracked-companies section owns its own fetcher
+        // because it has CRUD operations beyond a simple read.
+        const tcSection = window.CBV2.adminSections && window.CBV2.adminSections["tracked-companies"];
+        if (tcSection && typeof tcSection.refresh === "function") return tcSection.refresh();
+        return null;
+      }
       case "metrics":   return fetchAdminMetrics(true);
       case "timeline": {
         const id = adminUserTimelineRemote.activeUserId;
