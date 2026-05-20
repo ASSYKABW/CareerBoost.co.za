@@ -535,4 +535,54 @@
       return runExternalSearch(params || {});
     }
   });
+
+  // Phase 2: companies-search provider — direct-from-company ATS feeds
+  // (Greenhouse, Lever). Highest-quality job source because the data
+  // comes straight from the employer with no aggregator delay or
+  // truncation. Backed by the tracked_companies table managed by admin.
+  function runCompaniesSearch(params) {
+    if (!isBackendSearchAllowed()) {
+      return Promise.resolve({
+        ok: false,
+        skipped: true,
+        jobs: [],
+        error: "Companies search requires a signed-in backend session."
+      });
+    }
+    const auth = window.CBV2.auth;
+    const payload = buildBackendSearchPayload(params || {});
+    const client = auth && typeof auth.getClient === "function" ? auth.getClient() : null;
+    if (client && client.functions && typeof client.functions.invoke === "function") {
+      return client.functions.invoke("companies-search", { body: payload })
+        .then(function (res) {
+          const data = res && res.data;
+          const err = res && res.error;
+          if (err) throw err;
+          if (!data || !data.ok) {
+            return { ok: false, jobs: [], error: (data && data.error) || "companies-search failed" };
+          }
+          const jobs = Array.isArray(data.jobs) ? data.jobs.map(normalizeExternalJob) : [];
+          return {
+            ok: true,
+            jobs: jobs,
+            upstreamSources: Array.isArray(data.sources) ? data.sources : [],
+            meta: data.meta || {}
+          };
+        })
+        .catch(function (err) {
+          return { ok: false, jobs: [], error: (err && err.message) || "companies-search invoke failed" };
+        });
+    }
+    return Promise.resolve({ ok: false, jobs: [], error: "Supabase client unavailable." });
+  }
+
+  window.CBJobs.providers.push({
+    id: "companies-search",
+    label: "Direct from Companies",
+    sourceType: "api",
+    priority: 2, // higher priority than aggregators — these are first-party listings
+    search: function (params) {
+      return runCompaniesSearch(params || {});
+    }
+  });
 })();

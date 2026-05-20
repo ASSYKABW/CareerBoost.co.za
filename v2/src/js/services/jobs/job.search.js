@@ -37,6 +37,9 @@
     }
     const keep = sortedProviders.filter(function (p) {
       if (p.id === "backend") return true;
+      // Phase 2: direct-from-company aggregator. Highest-quality source
+      // (first-party listings, no API rate limits, no aggregator delay).
+      if (p.id === "companies-search") return true;
       // Client-side Adzuna provider — uses the user's personal Adzuna
       // keys (set via Settings → API Keys) to do multi-region search
       // directly from the browser. Yes, it generates CORS console
