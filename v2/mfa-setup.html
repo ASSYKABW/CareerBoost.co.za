@@ -178,7 +178,9 @@
     <!-- Session card -->
     <div class="card" id="session-card">
       <h2>Step 1 — Sign in</h2>
+      <p class="note" style="margin-top: 0;">This page uses its <strong>own</strong> session (separate from your main CareerBoost tab) so you always get a fresh access token for the enrollment step. You'll need to type your password here even if you're already signed into the main app — that's expected. Your main session is untouched.</p>
       <div id="session-state">Checking session…</div>
+      <div id="session-detail" class="muted" style="margin-top: 6px; font-size: 12px;"></div>
       <div id="signin-form" class="hidden" style="margin-top: 12px;">
         <div style="display: grid; gap: 8px;">
           <input type="email" id="signin-email" placeholder="operator@example.com" autocomplete="username">
@@ -246,11 +248,16 @@
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script>
-    // Use the same storage key the main app uses, so an already-logged-in
-    // browser tab is picked up without re-typing the password.
+    // Use a SEPARATE storage key from the main app. The previous version
+    // tried to reuse cbv2_auth_v1 to skip the sign-in step, but a stale
+    // session in localStorage caused mfa.enroll() to fail with
+    // "Auth session missing!" (getSession() returned truthy but the
+    // access token was expired). Isolated key + fresh sign-in =
+    // guaranteed fresh access token. The factor itself is user-scoped,
+    // so enrolling here attaches it to the account globally.
     const SUPABASE_URL = "https://kddffkhwpbngiupfmcse.supabase.co";
     const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGZma2h3cGJuZ2l1cGZtY3NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2MjE4MDAsImV4cCI6MjA5MjE5NzgwMH0.glvjjwKq3JeOy8HF71JfwzW0m45DvwK8tSbnqxu-JY8";
-    const STORAGE_KEY = "cbv2_auth_v1";
+    const STORAGE_KEY = "cbv2_mfa_setup_v1";
 
     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
       auth: {
@@ -260,6 +267,7 @@
         storageKey: STORAGE_KEY,
       },
     });
+
 
     const $ = (id) => document.getElementById(id);
 
@@ -287,6 +295,7 @@
 
     function renderSession() {
       const stateEl = $("session-state");
+      const detailEl = $("session-detail");
       const form = $("signin-form");
       const signoutBtn = $("signout-btn");
       const factorsCard = $("factors-card");
@@ -294,6 +303,7 @@
 
       if (!currentSession) {
         stateEl.innerHTML = '<span class="pill bad">Not signed in</span>';
+        detailEl.textContent = "";
         form.classList.remove("hidden");
         signoutBtn.classList.add("hidden");
         factorsCard.classList.add("hidden");
@@ -301,20 +311,57 @@
         return;
       }
       const u = currentSession.user || {};
-      const aal = currentSession?.user?.factors?.length ? "aal2-eligible" : "aal1";
+      const exp = currentSession.expires_at ? new Date(currentSession.expires_at * 1000) : null;
+      const expiresIn = exp ? Math.round((exp.getTime() - Date.now()) / 1000) : null;
+      const expired = expiresIn !== null && expiresIn <= 0;
       stateEl.innerHTML =
-        '<div><span class="pill good">Signed in</span> <span class="muted">as</span> <strong>' + escapeHtml(u.email || u.id) + '</strong></div>' +
-        '<div class="muted" style="margin-top: 4px;">User id: <code>' + escapeHtml(u.id || "") + '</code></div>';
+        '<div><span class="pill ' + (expired ? "bad" : "good") + '">' + (expired ? "Session expired" : "Signed in") + '</span> <span class="muted">as</span> <strong>' + escapeHtml(u.email || u.id) + '</strong></div>';
+      const aalLabel = currentSession.user?.aal || currentSession.aal || "?";
+      detailEl.innerHTML =
+        "User id: <code>" + escapeHtml(u.id || "") + "</code>" +
+        " &middot; expires " + (exp ? escapeHtml(exp.toLocaleTimeString()) + " (" + (expiresIn > 0 ? "in " + expiresIn + "s" : Math.abs(expiresIn) + "s ago") + ")" : "?") +
+        " &middot; aal: " + escapeHtml(String(aalLabel));
       form.classList.add("hidden");
       signoutBtn.classList.remove("hidden");
       factorsCard.classList.remove("hidden");
       enrollCard.classList.remove("hidden");
     }
 
+    // Belt-and-braces: refresh the session before any MFA call. If the
+    // access token went stale between page load and click, this nudges
+    // the SDK to grab a new one. Returns true if we still have a session
+    // after the refresh attempt.
+    async function ensureFreshSession() {
+      try {
+        const { data, error } = await client.auth.refreshSession();
+        if (error) {
+          console.warn("[mfa-setup] refreshSession warning:", error.message);
+        }
+        if (data?.session) {
+          currentSession = data.session;
+          renderSession();
+        }
+      } catch (e) {
+        console.warn("[mfa-setup] refreshSession threw:", e);
+      }
+      // Re-check
+      const { data: sd } = await client.auth.getSession();
+      currentSession = sd?.session || null;
+      renderSession();
+      return !!currentSession;
+    }
+
     async function loadFactors() {
       const listEl = $("factors-list");
       listEl.innerHTML = "Loading…";
       try {
+        // Same defence as enroll — if the cached session is stale we get
+        // "Auth session missing!" here too and the card hangs.
+        const ok = await ensureFreshSession();
+        if (!ok) {
+          listEl.innerHTML = '<div class="alert warn">Session expired. Sign in again above.</div>';
+          return;
+        }
         const { data, error } = await client.auth.mfa.listFactors();
         if (error) throw error;
         const totp = (data?.totp || data?.all?.filter(f => f.factor_type === "totp") || []);
@@ -382,6 +429,11 @@
       alertEl("enroll-alert", null, "");
       $("enroll-btn").disabled = true;
       try {
+        // Make sure the access token is fresh before calling MFA enroll —
+        // the SDK fails with "Auth session missing!" if the token is
+        // stale, even if getSession() reported the session as valid.
+        const ok = await ensureFreshSession();
+        if (!ok) throw new Error("Session expired. Please sign in again above.");
         const { data, error } = await client.auth.mfa.enroll({
           factorType: "totp",
           friendlyName,
