@@ -3747,3 +3747,341 @@
   .admin-tc-cell { padding: 2px 0; }
   .admin-tc-cell--actions { justify-content: flex-start; }
 }
+
+/* ============================================================================
+   Day 4.2 (pass 3) — comprehensive admin mobile design system.
+
+   Sits at the END of admin.css on purpose. The file accumulated 6+
+   media queries over many phases (640/720/860/900/1024/1180px), each
+   with its own opinion about a subset of components. Patching mobile
+   within those siloed blocks meant a fragmented look. This block
+   wins by source order and re-establishes a single coherent design
+   language for phones.
+
+   Approach:
+     1. Declare a small set of design tokens at the top so the rest
+        of the rules read like "use the right token", not "set 4 random
+        numbers".
+     2. Apply typography + spacing rhythm to every shared component
+        class (admin-panel, admin-panel-head, admin-stat, etc.) so
+        every screen inherits the same look without per-section
+        overrides.
+     3. Force single-column layouts across all admin-grid* / table
+        variants — desktop tables make no sense on a 375px viewport.
+     4. Hide info that's noise on mobile: "Signed in as ...", role
+        chip, version footer.
+     5. Add safe-area-inset padding for notch + home-indicator phones.
+   ============================================================================ */
+
+@media (max-width: 860px) {
+  /* === Design tokens ====================================================== */
+  .admin-shell {
+    --m-pad-shell: 14px;
+    --m-pad-card: 14px;
+    --m-radius: 12px;
+    --m-gap-stack: 12px;
+    --m-gap-inside: 8px;
+
+    --m-hero: 24px;
+    --m-h1: 18px;
+    --m-h2: 16px;
+    --m-h3: 14px;
+    --m-body: 13.5px;
+    --m-meta: 12px;
+    --m-tiny: 11px;
+
+    --m-border: 1px solid rgba(148, 163, 184, 0.14);
+    --m-surface: linear-gradient(180deg, rgba(25, 31, 42, 0.94), rgba(16, 21, 30, 0.94));
+  }
+
+  /* === Shell padding rhythm ============================================== */
+  .admin-content {
+    padding: var(--m-pad-shell);
+    gap: var(--m-gap-stack);
+  }
+
+  /* === Atomic card unit — every panel/card shares the same rhythm ======= */
+  .admin-panel,
+  .admin-action-card,
+  .admin-quick-card,
+  .admin-export-card,
+  .admin-cohort-card,
+  .admin-segment-card,
+  .admin-priority-card,
+  .admin-readiness-card,
+  .admin-stat,
+  .admin-kpi-card {
+    padding: var(--m-pad-card);
+    border-radius: var(--m-radius);
+    margin: 0;
+  }
+
+  /* Panel header — always vertical on mobile so titles never compete
+     with chips for row width. */
+  .admin-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--m-gap-inside);
+    margin-bottom: 10px;
+  }
+  .admin-panel-head > div {
+    width: 100%;
+    min-width: 0;
+  }
+  .admin-panel-head h2,
+  .admin-panel h2 {
+    font-size: var(--m-h2);
+    line-height: 1.3;
+    margin: 0;
+  }
+  .admin-panel-head h3,
+  .admin-panel h3 {
+    font-size: var(--m-h3);
+    line-height: 1.35;
+    margin: 0;
+  }
+  .admin-panel-head > span,
+  .admin-panel-head > div > span {
+    font-size: var(--m-tiny);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #768399;
+  }
+  .admin-panel p { font-size: var(--m-body); line-height: 1.5; }
+
+  /* === Hero sections ==================================================== */
+  .admin-econ-hero,
+  .admin-usage-hero,
+  .admin-north-star {
+    grid-template-columns: 1fr !important;
+    padding: 18px var(--m-pad-card);
+    border-radius: var(--m-radius);
+    gap: var(--m-gap-stack);
+    margin: 0;
+  }
+  .admin-north-star-copy h2 {
+    font-size: var(--m-hero);
+    line-height: 1.2;
+    margin: 4px 0 6px;
+  }
+  .admin-north-star-copy p {
+    font-size: var(--m-body);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .admin-north-star-value strong { font-size: 36px; line-height: 1; }
+  .admin-north-star-value span,
+  .admin-north-star-value small,
+  .admin-north-star-value div { font-size: var(--m-meta); }
+  .admin-north-star-progress { margin-top: 6px; }
+
+  /* === Status banner ==================================================== */
+  .admin-status-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--m-pad-card);
+    gap: 10px;
+    min-height: 0;
+    border-radius: var(--m-radius);
+  }
+  .admin-status-banner strong { font-size: var(--m-h3); }
+  .admin-status-banner span {
+    font-size: var(--m-meta);
+    overflow-wrap: anywhere;
+  }
+  .admin-status-counts { flex-wrap: wrap; gap: 6px; }
+
+  /* === Grids — sweep to single column =================================== */
+  /* The bracket attribute selector catches admin-grid, admin-grid--main,
+     admin-grid--two, admin-grid--usage, admin-grid--command, etc., in
+     one rule. !important needed to override several desktop-tier
+     opinions earlier in the file. */
+  [class*="admin-grid"],
+  .admin-stat-grid,
+  .admin-kpi-strip,
+  .admin-quick-grid,
+  .admin-action-list,
+  .admin-action-list--grid,
+  .admin-export-grid,
+  .admin-readiness-grid,
+  .admin-cohort-grid,
+  .admin-support-queue,
+  .admin-kv-grid,
+  .admin-kv-grid--compact,
+  .admin-session-quality-grid,
+  .admin-funnel,
+  .admin-alert-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--m-gap-stack);
+  }
+
+  /* === Stat tiles ======================================================== */
+  .admin-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .admin-stat h3 {
+    font-size: var(--m-h3);
+    color: #aab4c4;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .admin-stat .value {
+    font-size: 22px;
+    letter-spacing: -0.015em;
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .admin-stat .delta,
+  .admin-stat .meta { font-size: var(--m-meta); }
+
+  /* === KPI cards (admin-specific, separate from dashboard KPI) ========== */
+  .admin-kpi-card .label { font-size: var(--m-meta); }
+  .admin-kpi-card .value { font-size: 22px; letter-spacing: -0.015em; }
+
+  /* === Tables — collapse to 2-col grid; wide variants go full stack ===== */
+  /* Without label hints in markup we can't render cell-by-cell labels,
+     so the best compromise is a tight 2-col grid for short rows (most
+     have 3-4 cells; second-row wraps cleanly) and full stack for the
+     wide variants that have 5-6 cells of varied data. */
+  .admin-table-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px 12px;
+    padding: 10px var(--m-pad-card);
+    font-size: var(--m-body);
+  }
+  .admin-table-row--three,
+  .admin-table-row--four {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .admin-table-row--five,
+  .admin-table-row--six,
+  .admin-table-row--module,
+  .admin-table-row--retention,
+  .admin-table-row--support {
+    grid-template-columns: 1fr !important;
+  }
+  /* Table headers — same column structure as rows for visual alignment. */
+  .admin-table > :first-child.admin-table-row,
+  .admin-table-head {
+    display: none; /* column headers don't translate to a stacked layout */
+  }
+  .admin-table { display: block; }
+
+  /* === Lists (incident, activity, health) =============================== */
+  .admin-incident-row,
+  .admin-activity-item,
+  .admin-health-row {
+    padding: 10px var(--m-pad-card);
+    font-size: var(--m-body);
+    border-radius: var(--m-radius);
+  }
+  .admin-incident-row { display: flex; flex-direction: column; gap: 6px; }
+
+  /* === Action cards / CTA tiles ========================================= */
+  .admin-action-card h3 { font-size: var(--m-h3); margin: 0; }
+  .admin-action-card p { font-size: var(--m-meta); line-height: 1.5; margin: 4px 0 0; }
+  .admin-quick-card { display: flex; flex-direction: column; gap: 6px; }
+
+  /* === Copy ============================================================= */
+  .admin-copy { font-size: var(--m-body); line-height: 1.5; }
+  .admin-copy--small { font-size: var(--m-meta); }
+
+  /* === Toolbars / filters — stack vertically with full-width inputs ===== */
+  .admin-users-toolbar,
+  .admin-tc-toolbar,
+  .admin-bulk-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--m-gap-inside);
+    padding: 10px var(--m-pad-card);
+  }
+  .admin-users-filter,
+  .admin-users-sort,
+  .admin-users-pager { width: 100%; }
+  .admin-users-pager { justify-content: space-between; }
+
+  /* === Errors + warnings ================================================ */
+  .admin-error-banner {
+    padding: 10px 12px;
+    font-size: var(--m-body);
+    border-radius: var(--m-radius);
+  }
+
+  /* === Drawer (user timeline expanded view) ============================= */
+  .admin-user-drawer {
+    padding: var(--m-pad-card);
+    border-radius: 0;
+  }
+  .admin-user-drawer-section {
+    padding: var(--m-pad-card) 0;
+  }
+
+  /* === Charts — make sure svg's scale to container ====================== */
+  .admin-line-chart svg,
+  .admin-chart-bars svg,
+  .admin-chart-grid svg,
+  .admin-funnel-chart svg,
+  .admin-retention-heatmap svg {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+  }
+
+  /* === Topbar — final tuning + drop noise =============================== */
+  /* "Signed in as ..." adds a row to the sticky header for info the
+     operator clearly already knows (they just signed in). Hide on
+     mobile to reclaim ~20px of sticky height per render. */
+  .admin-operator { display: none; }
+
+  /* Sidebar footer — version chip + "Candidate app" link are useful
+     but the version chip is just noise on phones. */
+  .admin-version { display: none; }
+
+  /* === Safe area for notch + home indicator ============================ */
+  .admin-content {
+    padding-bottom: calc(var(--m-pad-shell) + env(safe-area-inset-bottom));
+  }
+  .admin-topbar {
+    padding-top: calc(12px + env(safe-area-inset-top));
+  }
+
+  /* === Long text protection across the board =========================== */
+  .admin-shell h1,
+  .admin-shell h2,
+  .admin-shell h3,
+  .admin-shell p,
+  .admin-shell li,
+  .admin-shell span,
+  .admin-shell strong,
+  .admin-shell a {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  /* …except chips which should remain atomic — their nowrap rule lives
+     in layout.css and is non-negotiable. */
+  .admin-shell .chip { overflow-wrap: normal; word-break: keep-all; }
+}
+
+/* === Extra-narrow phones (<=420px) — tighten one more notch ============= */
+@media (max-width: 420px) {
+  .admin-shell {
+    --m-pad-shell: 12px;
+    --m-pad-card: 12px;
+    --m-gap-stack: 10px;
+    --m-hero: 22px;
+    --m-h2: 15px;
+    --m-body: 13px;
+  }
+  .admin-north-star-value strong { font-size: 32px; }
+  /* The 2-col table grid still feels tight at 320-360px — drop to
+     stacked at this size. */
+  .admin-table-row,
+  .admin-table-row--three,
+  .admin-table-row--four {
+    grid-template-columns: 1fr !important;
+    gap: 4px;
+  }
+}
+
