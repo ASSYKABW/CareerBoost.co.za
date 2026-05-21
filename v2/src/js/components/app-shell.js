@@ -387,30 +387,44 @@
     window.CBV2.__userChipSubscribed = true;
   }
 
-  // Day 4.5 — subscribe to entitlements changes too so the quota meter
+  // Day 4.5 — subscribe to entitlements changes so the quota meter
   // inside the user menu updates live whenever a quota is consumed or
   // the plan changes. entitlements.recordConsumption + load both
   // notify subscribers; this hook turns those notifications into a
-  // user-chip repaint so the next dropdown open shows fresh numbers
-  // (and an already-open dropdown updates in place).
-  if (window.CBV2.entitlements && !window.CBV2.__userChipEntSubscribed) {
-    if (typeof window.CBV2.entitlements.onChange === "function") {
-      window.CBV2.entitlements.onChange(function () {
+  // user-chip repaint.
+  //
+  // IMPORTANT: app-shell.js loads BEFORE entitlements.js in
+  // index.html — so window.CBV2.entitlements is undefined when this
+  // IIFE first runs. The previous version's `if (entitlements && ...)`
+  // check fell through silently. Replaced with a polling pattern that
+  // waits up to ~6s for entitlements to register, then both subscribes
+  // AND fires an initial refreshUserChip so any "Loading usage…"
+  // placeholder gets replaced by the real meter.
+  (function wireEntitlementsSubscription(attempts) {
+    attempts = attempts || 0;
+    if (window.CBV2.__userChipEntSubscribed) return;
+    const ent = window.CBV2 && window.CBV2.entitlements;
+    if (ent && typeof ent.onChange === "function") {
+      ent.onChange(function () {
         if (document.querySelector("[data-user-chip]")) refreshUserChip();
       });
       window.CBV2.__userChipEntSubscribed = true;
-    } else {
-      // entitlements.js might still be initializing; retry once.
-      setTimeout(function () {
-        if (window.CBV2.entitlements && typeof window.CBV2.entitlements.onChange === "function" && !window.CBV2.__userChipEntSubscribed) {
-          window.CBV2.entitlements.onChange(function () {
-            if (document.querySelector("[data-user-chip]")) refreshUserChip();
-          });
-          window.CBV2.__userChipEntSubscribed = true;
-        }
-      }, 600);
+      // Race-safe initial refresh: if entitlements already had data
+      // when we subscribed (i.e. load() resolved before we got here),
+      // we missed the notify(). Repaint now so the menu reflects it.
+      if (typeof ent.get === "function" && ent.get()) {
+        if (document.querySelector("[data-user-chip]")) refreshUserChip();
+      } else if (typeof ent.load === "function") {
+        // No data yet — kick off a load. The subscription above will
+        // catch the resulting notify().
+        ent.load(false).catch(function () { /* ignore */ });
+      }
+      return;
     }
-  }
+    if (attempts < 30) {
+      setTimeout(function () { wireEntitlementsSubscription(attempts + 1); }, 200);
+    }
+  })();
 
   window.CBV2.bindUserMenu = function () {
     const wrap = document.querySelector("[data-user-chip]");
