@@ -336,6 +336,27 @@
     if (out) {
       out.addEventListener("click", async function () {
         setOpen(false);
+        // Day 4.3 — confirm before signing out. One-tap mistakes cost a
+        // re-login (typing password again on mobile is genuinely
+        // annoying) and any unsaved draft state in the resume / cover
+        // editors stays on this device but won't be visible after a
+        // re-auth if the device differs.
+        //
+        // Uses the shared modal-service (cbv2.modal.confirm). If the
+        // service hasn't loaded yet for some reason — load order quirk
+        // or asset failure — we fall through to the original immediate
+        // sign-out so the action still works.
+        const modal = window.CBV2 && window.CBV2.modal;
+        if (modal && typeof modal.confirm === "function") {
+          const ok = await modal.confirm({
+            title: "Sign out?",
+            body: "You'll need to sign in again next time you visit. Any unsaved drafts in the resume or cover-letter editor stay saved on this device.",
+            confirmLabel: "Sign out",
+            cancelLabel: "Stay signed in",
+            tone: "danger"
+          });
+          if (!ok) return;
+        }
         try { await window.CBV2.auth.signOut(); } catch (e) { /* ignore */ }
         window.location.hash = "#/welcome";
       });
