@@ -55,6 +55,24 @@ function decodeJwtExpMs(token: string): number {
   }
 }
 
+// Day 3.2 — Read the `aal` (authenticator assurance level) claim from
+// the JWT payload. Supabase sets this to "aal1" after a password sign-
+// in and "aal2" after a successful mfa.verify call. Returns "" if the
+// token is malformed or the claim is missing (callers should treat
+// empty as aal1 — the most pessimistic interpretation).
+function decodeJwtAal(token: string): string {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return "";
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+    const json = JSON.parse(atob(padded)) as { aal?: string };
+    return typeof json.aal === "string" ? json.aal.toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+
 function cacheKeyFor(token: string): string {
   // Use the signature segment as the key — it's unique per token and
   // (unlike sha256) requires no async work.
@@ -150,6 +168,16 @@ function allowedAdminRoles(): string[] {
     .filter(Boolean);
 }
 
+// Day 3.2 — feature flag for aal2 enforcement. On by default. Set
+// ADMIN_REQUIRE_AAL2=false (or 0/off/no) in edge function env to
+// temporarily disable, e.g. emergency rollback if the client gate
+// breaks. The flag is read on every call so no redeploy needed to
+// flip it — just `supabase secrets set ADMIN_REQUIRE_AAL2=false`.
+function requireAal2(): boolean {
+  const flag = (Deno.env.get("ADMIN_REQUIRE_AAL2") || "true").trim().toLowerCase();
+  return flag !== "false" && flag !== "0" && flag !== "off" && flag !== "no";
+}
+
 export async function getAuthedAdmin(req: Request): Promise<AuthedAdmin> {
   const user = await getAuthedUser(req);
   const svc = getServiceClient();
@@ -167,5 +195,29 @@ export async function getAuthedAdmin(req: Request): Promise<AuthedAdmin> {
   if (!isAdmin) {
     throw new Error("Admin role required.");
   }
+
+  // Day 3.2 — enforce aal2 for admin operations. The role check above
+  // is necessary but not sufficient: an attacker with a stolen password
+  // (no second factor) reaches /admin RPCs without this. We decode the
+  // bearer token's `aal` claim and reject anything that isn't aal2.
+  //
+  // The error message points to BOTH paths (challenge if you have a
+  // factor, enroll if you don't) so an operator hitting this cold
+  // knows what to do without reading docs. The client-side gate on
+  // /admin normally catches aal1 before any RPC fires, so seeing this
+  // error in practice usually means UI bypass or a stale token.
+  if (requireAal2()) {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const aal = decodeJwtAal(token);
+    if (aal !== "aal2") {
+      throw new Error(
+        "Two-factor verification required for admin operations. " +
+        "Visit /admin and enter your 6-digit code; if you have not " +
+        "enrolled a TOTP factor yet, do so at /mfa-setup.html first."
+      );
+    }
+  }
+
   return { id: user.id, email: user.email, roles, allowedRoles: allowed };
 }
