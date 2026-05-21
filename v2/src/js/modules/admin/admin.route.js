@@ -168,16 +168,53 @@
     const roles = roleListFromUser(user);
     const allowedRoles = adminRoles();
     const byRole = roles.some(function (role) { return allowedRoles.indexOf(role) >= 0; });
-    if (byRole) {
-      return {
-        ok: true,
-        mode: "role",
-        label: "Supabase role verified",
-        user: user,
-        profile: profile
-      };
+    if (!byRole) {
+      return { ok: false, reason: "forbidden", label: "Supabase admin role required", user: user, profile: profile };
     }
-    return { ok: false, reason: "forbidden", label: "Supabase admin role required", user: user, profile: profile };
+
+    // Day 3.2 — MFA elevation gate. The role check is necessary but no
+    // longer sufficient: operators with a verified TOTP factor must
+    // present a 6-digit code to elevate their session from aal1 to
+    // aal2 before the admin console renders. The server-side gate
+    // (getAuthedAdmin) enforces the same requirement so this isn't a
+    // pure UI guard.
+    const mfa = window.CBV2.adminMfa;
+    if (mfa && typeof mfa.getSnapshot === "function") {
+      const snap = mfa.getSnapshot();
+      if (!snap.loaded) {
+        // Snapshot not loaded yet — show a loading placeholder and the
+        // afterRender hook will kick off the refresh.
+        return { ok: false, reason: "mfa-loading", label: "Checking MFA", user: user, profile: profile };
+      }
+      // Edge case: snapshot loaded but errored out. Fall through and
+      // let them in (with a console warning) rather than locking them
+      // out of admin entirely on a transient SDK glitch. The server-
+      // side gate will still enforce aal2 once 3.2 ships.
+      if (snap.error) {
+        console.warn("[admin.route] MFA snapshot error, allowing through:", snap.error);
+      } else {
+        const hasFactor = snap.verifiedFactors && snap.verifiedFactors.length > 0;
+        const currentAal = String(snap.currentLevel || "aal1").toLowerCase();
+        if (!hasFactor) {
+          // Operator hasn't enrolled. Nudge them to /mfa-setup.html.
+          // (Server-side enforcement will reject their admin RPCs
+          // until they enroll + elevate, so this isn't optional.)
+          return { ok: false, reason: "mfa-enroll", label: "MFA enrollment required", user: user, profile: profile };
+        }
+        if (currentAal !== "aal2") {
+          // Has a factor, hasn't challenged this session yet. Show form.
+          return { ok: false, reason: "mfa-challenge", label: "MFA challenge required", user: user, profile: profile };
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      mode: "role",
+      label: "Supabase role verified",
+      user: user,
+      profile: profile
+    };
   }
 
   window.CBV2.adminAccess = {
@@ -439,6 +476,14 @@
   // -- Access-denied / nav / toolbar shells ---------------------------------
 
   function renderAccessDenied(access) {
+    // Day 3.2 — MFA-related access states delegate to the adminMfa
+    // module which owns the challenge form + enroll nudge UI.
+    if (access) {
+      const mfa = window.CBV2.adminMfa;
+      if (access.reason === "mfa-loading" && mfa) return mfa.renderLoadingScreen();
+      if (access.reason === "mfa-challenge" && mfa) return mfa.renderChallengeScreen();
+      if (access.reason === "mfa-enroll" && mfa) return mfa.renderEnrollNudge();
+    }
     const signedOut = access && access.reason === "signed-out";
     return (
       '<section class="admin-auth-screen">' +
@@ -1276,6 +1321,27 @@
 
   window.CBV2.routes.admin = renderView;
   window.CBV2.afterRender.admin = function () {
+    // Day 3.2 — kick the MFA snapshot if it hasn't loaded yet so the
+    // loading placeholder resolves to either the challenge form, the
+    // enroll nudge, or the actual admin console. Also bind the form
+    // submit handler whenever the form is in the DOM (idempotent).
+    const mfa = window.CBV2.adminMfa;
+    if (mfa) {
+      const snap = mfa.getSnapshot();
+      if (!snap.loaded && !snap.loading) {
+        mfa.refreshSnapshot().then(function () {
+          // Re-render once the snapshot lands so the placeholder is
+          // replaced by either the challenge form or the real admin UI.
+          if (typeof window.CBV2.renderCurrentRoute === "function") {
+            window.CBV2.renderCurrentRoute();
+          }
+        });
+      }
+      if (typeof mfa.bindChallengeForm === "function") {
+        mfa.bindChallengeForm();
+      }
+    }
+
     const refresh = document.getElementById("admin-refresh");
     const exportBtn = document.getElementById("admin-export");
     if (refresh) {

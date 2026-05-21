@@ -1991,6 +1991,53 @@
   flex-wrap: wrap;
 }
 
+/* Day 3.2 — MFA elevation challenge form. Reuses admin-auth-card frame
+   and only adds the 6-digit input + error pill styling. */
+.admin-mfa-card { max-width: 480px; }
+
+.admin-mfa-form { margin-top: 18px; }
+
+.admin-mfa-form input[type=text] {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 0 4px;
+  padding: 14px 16px;
+  background: rgba(8, 11, 18, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  color: #f8fbff;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 28px;
+  letter-spacing: 0.4em;
+  text-align: center;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.admin-mfa-form input[type=text]:focus {
+  border-color: rgba(34, 227, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 227, 255, 0.18);
+}
+
+.admin-mfa-form input[type=text]::placeholder {
+  color: rgba(170, 180, 196, 0.35);
+  letter-spacing: 0.4em;
+}
+
+.admin-mfa-error {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: rgba(226, 91, 91, 0.1);
+  border: 1px solid rgba(226, 91, 91, 0.3);
+  color: #ffb6b6;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.admin-mfa-error i { margin-right: 6px; }
+
 @media (max-width: 1180px) {
   .admin-stat-grid,
   .admin-grid--main,
