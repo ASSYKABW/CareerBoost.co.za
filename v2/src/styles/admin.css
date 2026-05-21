@@ -160,10 +160,17 @@
   align-items: center;
   padding: 18px 26px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(11, 15, 22, 0.9);
+  /* Day 4.2 — the previous rgba(.,.9) was translucent enough for
+     audit-log column headers underneath to bleed through when the
+     user scrolled. Solid base + glassy backdrop-filter for browsers
+     that support it. */
+  background: #0c1118;
+  background: linear-gradient(180deg, rgba(12, 17, 24, 0.96), rgba(10, 14, 20, 0.96));
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 50;
 }
 
 .admin-topbar h1 {
@@ -206,7 +213,10 @@
 
 .admin-stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Day 4.2 — auto-fit so the grid collapses to fewer columns when the
+     parent is narrow (e.g. nested inside a 2-col page layout). Cards
+     never fall below 220px wide. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
 }
 
@@ -502,7 +512,12 @@
 
 .admin-alert-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Day 4.2 — was hardcoded 4-col, which destroyed legibility when this
+     grid sat inside a half-width parent (Operations page's 2-col layout
+     squeezed each card to ~130px → 1 word per line). auto-fit means
+     the cards reflow to 2 or 1 column as space requires. 260px min
+     keeps the icon + title + 2-line body readable. */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
 }
 
@@ -764,7 +779,7 @@
 
 .admin-funnel {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -1418,7 +1433,7 @@
 
 .admin-retention-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1661,7 +1676,7 @@
 }
 
 .admin-kv-grid--compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .admin-kv-grid span {
@@ -1789,7 +1804,7 @@
 
 .admin-readiness-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -1918,7 +1933,7 @@
 
 .admin-cohort-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
