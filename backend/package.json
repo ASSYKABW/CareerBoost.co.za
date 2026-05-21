@@ -36,6 +36,7 @@
     "fn:deploy:stripe-portal": "supabase functions deploy stripe-portal --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:get-entitlements": "supabase functions deploy get-entitlements --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:delete-account": "supabase functions deploy delete-account --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy:restore-account": "supabase functions deploy restore-account --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin-user-adjust": "supabase functions deploy admin-user-adjust --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:billing": "npm run fn:deploy:stripe-checkout && npm run fn:deploy:stripe-webhook && npm run fn:deploy:stripe-portal && npm run fn:deploy:get-entitlements",
     "test:quota-race": "deno run --allow-net --allow-env --allow-read scripts/load-test-quota-race.ts run",

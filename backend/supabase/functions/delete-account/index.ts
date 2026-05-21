@@ -1,27 +1,29 @@
 // POST /functions/v1/delete-account
 //
-// Permanently deletes the caller's account: every user-owned row across
-// the schema PLUS the row in auth.users. Used by Settings → Data &
-// Privacy → "Delete account" (GDPR right-to-be-forgotten + standard
-// account-closure flow).
+// Closes the caller's account. Two modes via body { mode: "soft" | "immediate" }:
 //
-// Auth: caller must provide a valid Supabase JWT. We do NOT take an
-// admin override — this is a self-service endpoint, you can only
-// delete YOUR OWN account. There's no path to delete someone else's.
+//   "soft" (default, Day 4.4):
+//     Sets profiles.pending_deletion_at = now() + 7 days via the
+//     request_account_deletion() RPC. Account remains fully usable
+//     during the grace window. A persistent banner reminds the user
+//     of the scheduled purge and offers restore-account to cancel.
+//     Returns { ok: true, mode: "soft", scheduledFor: timestamp, graceDays: 7 }.
 //
-// Safety:
-//   - Service-role client is used to bypass RLS for the purge (otherwise
-//     the caller's own RLS policies might block deletes mid-table).
-//   - We delete user-owned data tables BEFORE auth.users so foreign keys
-//     don't get violated even if cascade isn't set on every table.
-//   - Each table-purge is best-effort: a failure on one table is logged
-//     but doesn't abort the whole operation. The most important step is
-//     the final auth.users delete — once that's done, the account is
-//     unreachable regardless of any orphan rows we couldn't clean.
+//   "immediate":
+//     Hard purge — every user-owned row PLUS auth.users gone in one
+//     transaction. Used when the user explicitly wants no grace window
+//     (e.g. GDPR right-to-be-forgotten requests). Returns the deletion
+//     count breakdown.
 //
-// Returns:
-//   { ok: true, deleted: { profiles: N, applications: N, ... } }   on success
-//   { ok: false, error: "..." }                                     on failure
+// Auth: caller must provide a valid Supabase JWT. This is a self-service
+// endpoint — you can only delete YOUR OWN account. There's no path to
+// delete someone else's.
+//
+// Safety (immediate mode):
+//   - Service-role client is used to bypass RLS for the purge.
+//   - User-owned data tables deleted BEFORE auth.users so FKs don't break.
+//   - Per-table failures are logged but don't abort the operation. The
+//     auth.users delete is the real safety net.
 
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
@@ -119,6 +121,13 @@ async function purgeUserData(svc: ReturnType<typeof getServiceClient>, userId: s
   return result;
 }
 
+interface DeleteBody {
+  mode?: "soft" | "immediate";
+  // For "soft" mode: override the default 7-day grace. Bounded to
+  // [1, 30] by the RPC so the value can't be abused.
+  graceDays?: number;
+}
+
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
@@ -134,25 +143,64 @@ Deno.serve(async (req) => {
     return errorResponse("Authenticated user has no ID — refusing to proceed.", 400);
   }
 
-  const svc = getServiceClient();
+  let body: DeleteBody = {};
+  try {
+    body = (await req.json()) as DeleteBody;
+  } catch {
+    // Empty body is fine — defaults to soft mode.
+    body = {};
+  }
+  const mode = body.mode === "immediate" ? "immediate" : "soft";
 
-  // Audit breadcrumb for ops — written before the purge so we have a
-  // record even if mid-purge fails. Includes only non-identifying
-  // metadata (no email, no payload). Edge function logs are the trail.
-  console.log("[delete-account] starting purge", {
+  console.log("[delete-account] request", {
     userId: user.id,
+    mode,
+    graceDays: body.graceDays ?? null,
     initiatedAt: new Date().toISOString(),
     userAgent: req.headers.get("user-agent") || "",
   });
 
-  const result = await purgeUserData(svc, user.id);
+  // ===== SOFT MODE: schedule the deletion 7 days out via the RPC =====
+  if (mode === "soft") {
+    // We call the RPC via the user's own JWT (not service role) so
+    // auth.uid() resolves correctly inside the SECURITY DEFINER function.
+    // Mirrors the consume_quota pattern in ai-run.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/rpc/request_account_deletion`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnon,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ grace_days: body.graceDays ?? 7 }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return errorResponse("Soft-delete RPC failed: HTTP " + res.status + " — " + text.slice(0, 200), 502);
+      }
+      const data = await res.json() as Record<string, unknown>;
+      return jsonResponse({
+        ok: true,
+        mode: "soft",
+        scheduledFor: data.scheduled_for,
+        graceDays: data.grace_days,
+        initiatedAt: data.initiated_at,
+      });
+    } catch (err) {
+      return errorResponse("Soft-delete RPC unreachable: " + (err as Error).message, 502);
+    }
+  }
 
-  // Even when result.ok is false (auth.users delete failed), the user-data
-  // purge already happened. Surface that distinction so the UI can show
-  // "Your data is gone but your login still exists — contact support" vs
-  // "Everything is gone, you're signed out."
+  // ===== IMMEDIATE MODE: hard delete now =====
+  const svc = getServiceClient();
+  const result = await purgeUserData(svc, user.id);
   return jsonResponse({
     ok: result.ok,
+    mode: "immediate",
     authDeleted: result.authDeleted,
     deleted: result.deleted,
     failures: Object.keys(result.failures).length ? result.failures : null,

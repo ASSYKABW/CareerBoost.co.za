@@ -14467,3 +14467,110 @@ body.has-sync-banner {
   .cb-sync-banner-btn { font-size: 11px; padding: 5px 10px; }
   body.has-sync-banner { padding-top: 70px; }
 }
+
+/* ===========================================================================
+   Day 4.4 — Pending-deletion banner. Sits just below the sync banner
+   (z-index 9998 vs 9999). Same slide-in pattern; rose/danger tone so
+   it stands apart from the amber sync warning.
+   =========================================================================== */
+
+.cb-deletion-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998;
+  transform: translateY(-100%);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+/* When BOTH banners are visible, the deletion banner stacks below the
+   sync banner. The sync banner is the more urgent runtime signal so it
+   wins the top slot. */
+body.has-sync-banner .cb-deletion-banner.is-visible {
+  transform: translateY(42px);
+}
+
+.cb-deletion-banner.is-visible {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.cb-deletion-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  background: linear-gradient(180deg, rgba(220, 38, 70, 0.95), rgba(190, 18, 60, 0.95));
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cb-deletion-banner-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.cb-deletion-banner-msg {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+.cb-deletion-banner-msg strong { font-weight: 700; }
+.cb-deletion-banner-sub {
+  display: inline-block;
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.cb-deletion-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.cb-deletion-banner-btn:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.28);
+}
+.cb-deletion-banner-btn[disabled] {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/* Body padding when banner is visible. Same offset whether the sync
+   banner is also shown — we don't stack body padding. The deletion
+   banner's translateY(42px) when the sync banner is up handles the
+   visual stacking. */
+body.has-deletion-banner {
+  padding-top: 48px;
+  transition: padding-top 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+body.has-sync-banner.has-deletion-banner {
+  padding-top: 90px;
+}
+
+@media (max-width: 600px) {
+  .cb-deletion-banner-inner {
+    flex-wrap: wrap;
+    padding: 9px 12px;
+    gap: 8px;
+    font-size: 12.5px;
+  }
+  .cb-deletion-banner-msg { flex-basis: 100%; order: -1; }
+  .cb-deletion-banner-sub { display: block; margin-top: 2px; font-size: 11.5px; }
+  .cb-deletion-banner-btn { font-size: 12px; padding: 6px 12px; }
+  body.has-deletion-banner { padding-top: 96px; }
+  body.has-sync-banner.has-deletion-banner { padding-top: 146px; }
+}

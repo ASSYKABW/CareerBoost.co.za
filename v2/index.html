@@ -95,7 +95,7 @@
   <link rel="stylesheet" href="./src/styles/layout.css?v=20260521-day4-mobile" />
   <link rel="stylesheet" href="./src/styles/modules.css" />
   <link rel="stylesheet" href="./src/styles/auth.css" />
-  <link rel="stylesheet" href="./src/styles/phase1.css?v=20260521-day4-mobile" />
+  <link rel="stylesheet" href="./src/styles/phase1.css?v=20260521-day4-soft-delete" />
   <link rel="stylesheet" href="./src/styles/design-system.css" />
   <link rel="stylesheet" href="./src/styles/phase5-cleanup.css" />
   <link rel="stylesheet" href="./src/styles/admin.css?v=20260521-day4-grids" />
@@ -280,6 +280,10 @@
        then entitlement-gate (uses both). -->
   <script src="./src/js/services/entitlements/entitlements.js?v=20260521-day4-quota"></script>
   <script src="./src/js/components/upgrade-modal.js?v=20260521-day4-quota"></script>
+  <!-- Day 4.4: persistent banner for accounts in the 7-day soft-
+       delete grace window. Subscribes to entitlements so it appears
+       within seconds of the user scheduling a deletion. -->
+  <script src="./src/js/components/deletion-banner.js?v=20260521-day4-soft-delete"></script>
   <script src="./src/js/services/entitlements/entitlement-gate.js"></script>
   <script src="./src/js/components/app-drawer.js?v=20260516-aa2c2"></script>
   <!-- V1 in-app AI guidance panel. ai-chat-knowledge defines FEATURES +
@@ -364,7 +368,7 @@
        as first step of splitting the 3387-line file. Loaded before
        settings.route.js which calls window.CBV2.settingsIntel.render(). -->
   <script src="./src/js/modules/settings/settings.intel.js?v=20260518-p2"></script>
-  <script src="./src/js/modules/settings/settings.route.js?v=20260518-p2"></script>
+  <script src="./src/js/modules/settings/settings.route.js?v=20260521-day4-soft-delete"></script>
   <!-- Phase D: admin console split into helpers + per-section files. Load order:
        admin-helpers.js exposes window.CBV2.adminHelpers (state caches + shared renderers);
        sections/*.js each register on window.CBV2.adminSections[<id>];

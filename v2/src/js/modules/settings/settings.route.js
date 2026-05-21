@@ -2496,53 +2496,68 @@
           if (window.CBV2.toast) window.CBV2.toast.error("Can't read your account email. Please sign in again.");
           return;
         }
-        // Two-stage confirm: explicit prose + then type-to-confirm with
-        // the user's own email so accidental clicks can't slip through.
+        // Day 4.4 — three-stage confirm + soft-delete window:
+        //   1. Explain the grace period in plain prose
+        //   2. Require typing "DELETE" exactly (atomic, language-neutral)
+        //   3. Call delete-account in soft mode (default) → server sets
+        //      pending_deletion_at = now + 7 days. Account stays usable
+        //      during the window; a banner reminds the user to cancel
+        //      if they change their mind.
+        // For users who genuinely want immediate purge (GDPR, etc.) we
+        // could add a "Delete immediately" checkbox in stage 1, but for
+        // now the soft path is the only UI affordance.
         const modal = window.CBV2 && window.CBV2.modal;
         let proceed = false;
         if (modal && typeof modal.confirm === "function") {
           proceed = await modal.confirm({
-            title: "Permanently delete this account?",
+            title: "Schedule account deletion?",
             body:
-              "This removes your profile, pipeline, applications, resumes, cover letters, " +
+              "Your account will be scheduled for deletion in 7 days. During the grace " +
+              "window you can keep using CareerBoost normally — and a banner will offer " +
+              "a one-click Restore button. After 7 days every trace of your data is " +
+              "removed: profile, pipeline, applications, resumes, cover letters, " +
               "interview history, AI usage records, and your sign-in itself. " +
-              "Your data leaves our database within seconds. This cannot be undone.",
-            confirmLabel: "I understand, continue",
+              "Restoring after 7 days is impossible.",
+            confirmLabel: "Continue",
             tone: "danger"
           });
         } else {
-          proceed = window.confirm("Permanently delete your account? This cannot be undone.");
+          proceed = window.confirm(
+            "Schedule account deletion in 7 days? You can cancel anytime during the grace window."
+          );
         }
         if (!proceed) return;
 
         let typed;
         if (modal && typeof modal.prompt === "function") {
           typed = await modal.prompt({
-            title: "Type your email to confirm",
-            body: "Type " + email + " exactly to permanently delete this account.",
-            placeholder: email,
+            title: "Type DELETE to confirm",
+            body: 'Type the word <strong>DELETE</strong> (uppercase) to schedule deletion of <strong>' +
+              email + '</strong>.',
+            placeholder: "DELETE",
             required: true
           });
         } else {
-          typed = window.prompt("Type your email (" + email + ") to confirm permanent deletion:");
+          typed = window.prompt('Type DELETE (uppercase) to confirm scheduling deletion:');
         }
         if (typed === null) return;
-        if (String(typed || "").trim().toLowerCase() !== String(email).trim().toLowerCase()) {
-          if (window.CBV2.toast) window.CBV2.toast.error("Email didn't match. Account NOT deleted.");
+        if (String(typed || "").trim() !== "DELETE") {
+          if (window.CBV2.toast) window.CBV2.toast.error('Confirmation didn\'t match — type DELETE exactly. Account NOT scheduled for deletion.');
           return;
         }
 
-        // Disable the button to prevent double-fire while the network call
-        // is in flight; the rerender after redirect will tear it down.
+        // Disable while in flight. We do NOT sign the user out on success
+        // — they need to be able to keep using the account during the
+        // grace window (and see the restore banner).
         deleteAccountBtn.disabled = true;
-        deleteAccountBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting…';
+        deleteAccountBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scheduling…';
 
         try {
           const auth = window.CBV2.auth;
           const client = auth && typeof auth.getClient === "function" ? auth.getClient() : null;
           let response;
           if (client && client.functions && typeof client.functions.invoke === "function") {
-            const invoked = await client.functions.invoke("delete-account", { body: {} });
+            const invoked = await client.functions.invoke("delete-account", { body: { mode: "soft" } });
             if (invoked.error) throw invoked.error;
             response = invoked.data || {};
           } else {
@@ -2555,27 +2570,40 @@
                 Authorization: "Bearer " + token,
                 apikey: window.CBV2.config.getSupabaseAnon()
               },
-              body: "{}"
+              body: JSON.stringify({ mode: "soft" })
             });
             response = await resp.json();
-            if (!resp.ok || (response && response.ok === false && !response.authDeleted)) {
+            if (!resp.ok || (response && response.ok === false)) {
               throw new Error((response && response.error) || ("HTTP " + resp.status));
             }
           }
 
-          // Best-effort signout (the auth row is gone server-side; this
-          // just clears local session state) then redirect to the
-          // landing page with a one-time confirmation flag.
-          try { await window.CBV2.auth.signOut(); } catch (e) { /* ignore */ }
-          if (window.CBV2.toast) window.CBV2.toast.success("Account deleted.");
-          window.location.hash = "#/welcome";
-          // Hard reload so any in-memory user state across modules is wiped.
-          setTimeout(function () { window.location.reload(); }, 400);
+          // Reload entitlements so the new pending_deletion_at lands in
+          // the cached profile and the global banner picks it up.
+          const ent = window.CBV2 && window.CBV2.entitlements;
+          if (ent && typeof ent.load === "function") {
+            try { await ent.load(true); } catch (_e) { /* banner will refresh on next route */ }
+          }
+
+          const scheduled = response && response.scheduledFor
+            ? new Date(response.scheduledFor)
+            : null;
+          const dateLabel = scheduled
+            ? scheduled.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+            : "in 7 days";
+          if (window.CBV2.toast) {
+            window.CBV2.toast.success("Account scheduled for deletion on " + dateLabel + ". Use the banner at the top of any page to cancel.");
+          }
+          // Reset the button + re-render the section so the user sees
+          // the new state (the danger-zone copy could update to say
+          // "deletion pending — cancel via banner").
+          deleteAccountBtn.disabled = false;
+          deleteAccountBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Delete my account permanently';
         } catch (err) {
           deleteAccountBtn.disabled = false;
           deleteAccountBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Delete my account permanently';
           const msg = (err && err.message) || "Account deletion failed.";
-          if (window.CBV2.toast) window.CBV2.toast.error("Couldn't delete account: " + msg);
+          if (window.CBV2.toast) window.CBV2.toast.error("Couldn't schedule deletion: " + msg);
         }
       });
     }
