@@ -327,42 +327,60 @@
       enrollCard.classList.remove("hidden");
     }
 
-    // Belt-and-braces: refresh the session before any MFA call. If the
-    // access token went stale between page load and click, this nudges
-    // the SDK to grab a new one. Returns true if we still have a session
-    // after the refresh attempt.
+    // Refresh the session ONLY if the access token is close to expiring.
+    // Calling refreshSession() unconditionally fires a TOKEN_REFRESHED
+    // event, which our onAuthStateChange handler would catch — if that
+    // handler in turn called loadFactors() (which called us again), we
+    // get a feedback loop that deadlocks the SDK's internal auth lock.
+    //
+    // Returns true if we have a usable session afterward.
+    const REFRESH_IF_LESS_THAN_S = 60;
     async function ensureFreshSession() {
+      const { data: sd } = await client.auth.getSession();
+      currentSession = sd?.session || null;
+      if (!currentSession) return false;
+      const exp = currentSession.expires_at || 0;
+      const secondsLeft = exp ? exp - Math.floor(Date.now() / 1000) : 0;
+      if (secondsLeft > REFRESH_IF_LESS_THAN_S) {
+        return true; // already fresh, no need to refresh
+      }
       try {
         const { data, error } = await client.auth.refreshSession();
-        if (error) {
-          console.warn("[mfa-setup] refreshSession warning:", error.message);
-        }
-        if (data?.session) {
-          currentSession = data.session;
-          renderSession();
-        }
+        if (error) console.warn("[mfa-setup] refreshSession warning:", error.message);
+        if (data?.session) currentSession = data.session;
       } catch (e) {
         console.warn("[mfa-setup] refreshSession threw:", e);
       }
-      // Re-check
-      const { data: sd } = await client.auth.getSession();
-      currentSession = sd?.session || null;
       renderSession();
       return !!currentSession;
+    }
+
+    // Promise.race timeout so a hung network call surfaces as a clean
+    // error in the UI instead of stuck "Loading…" forever.
+    function withTimeout(promise, ms, label) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error((label || "Call") + " timed out after " + ms + "ms")), ms)),
+      ]);
     }
 
     async function loadFactors() {
       const listEl = $("factors-list");
       listEl.innerHTML = "Loading…";
       try {
-        // Same defence as enroll — if the cached session is stale we get
-        // "Auth session missing!" here too and the card hangs.
-        const ok = await ensureFreshSession();
-        if (!ok) {
-          listEl.innerHTML = '<div class="alert warn">Session expired. Sign in again above.</div>';
+        if (!currentSession) {
+          listEl.innerHTML = '<span class="muted">Sign in above first.</span>';
           return;
         }
-        const { data, error } = await client.auth.mfa.listFactors();
+        // No pre-refresh here — listFactors is read-only and the SDK
+        // can wedge on its internal lock if we refresh from inside an
+        // auth-event callback. ensureFreshSession() only runs on user
+        // actions (enroll/verify) where a stale token actually matters.
+        const { data, error } = await withTimeout(
+          client.auth.mfa.listFactors(),
+          10000,
+          "listFactors"
+        );
         if (error) throw error;
         const totp = (data?.totp || data?.all?.filter(f => f.factor_type === "totp") || []);
         if (!totp.length) {
@@ -399,7 +417,9 @@
       }
     }
 
-    // Sign in
+    // Sign in — onAuthStateChange handles the post-signin refresh +
+    // loadFactors, so we don't double-load by calling refreshSession()
+    // here ourselves.
     $("signin-btn").addEventListener("click", async () => {
       const email = $("signin-email").value.trim();
       const password = $("signin-password").value;
@@ -407,9 +427,8 @@
       alertEl("signin-alert", null, "");
       $("signin-btn").disabled = true;
       try {
-        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        const { error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        await refreshSession();
       } catch (err) {
         alertEl("signin-alert", "bad", "Sign-in failed: " + (err.message || err));
       } finally {
@@ -417,10 +436,9 @@
       }
     });
 
-    // Sign out
+    // Sign out — onAuthStateChange handles the UI update.
     $("signout-btn").addEventListener("click", async () => {
       await client.auth.signOut();
-      await refreshSession();
     });
 
     // Enroll
@@ -483,7 +501,7 @@
         pendingFactorId = null;
         $("enroll-show").classList.add("hidden");
         $("enroll-done").classList.remove("hidden");
-        await refreshSession();
+        await loadFactors();
       } catch (err) {
         alertEl("verify-alert", "bad", "Verification failed: " + (err.message || err));
       } finally {
@@ -491,9 +509,25 @@
       }
     });
 
-    // Boot
+    // Boot — call refreshSession ONCE on initial load.
     refreshSession();
-    client.auth.onAuthStateChange(() => refreshSession());
+
+    // onAuthStateChange fires for SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT,
+    // and others. If we call refreshSession() here we trigger
+    // loadFactors → (previously) ensureFreshSession → SDK refresh →
+    // TOKEN_REFRESHED → loop. Instead, just update the visible session
+    // state, and only call loadFactors on the specific events that
+    // genuinely changed the user identity.
+    let lastUserId = null;
+    client.auth.onAuthStateChange(async (event, session) => {
+      currentSession = session || null;
+      renderSession();
+      const newUserId = session?.user?.id || null;
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || newUserId !== lastUserId) {
+        lastUserId = newUserId;
+        if (currentSession) await loadFactors();
+      }
+    });
   </script>
 </body>
 </html>
