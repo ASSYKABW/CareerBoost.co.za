@@ -95,7 +95,7 @@
   <link rel="stylesheet" href="./src/styles/layout.css" />
   <link rel="stylesheet" href="./src/styles/modules.css" />
   <link rel="stylesheet" href="./src/styles/auth.css" />
-  <link rel="stylesheet" href="./src/styles/phase1.css" />
+  <link rel="stylesheet" href="./src/styles/phase1.css?v=20260521-day4-sync" />
   <link rel="stylesheet" href="./src/styles/design-system.css" />
   <link rel="stylesheet" href="./src/styles/phase5-cleanup.css" />
   <link rel="stylesheet" href="./src/styles/admin.css?v=20260521-day3-mfa" />
@@ -231,7 +231,11 @@
        capture any error from the rest of the bootstrap. It installs
        window.onerror + unhandledrejection handlers immediately. -->
   <script src="./src/js/services/observability/observability.js"></script>
-  <script src="./src/js/auth/auth.service.js?v=20260519-day1"></script>
+  <!-- Day 4.1: sync monitor (offline banner). MUST load before
+       auth.service.js because the Supabase client patch there calls
+       window.CBV2.syncMonitor.recordFailure / recordSuccess. -->
+  <script src="./src/js/services/sync-monitor/sync-monitor.js?v=20260521-day4-sync"></script>
+  <script src="./src/js/auth/auth.service.js?v=20260521-day4-sync"></script>
   <!-- Phase E2: acquisition attribution. Captures UTM + referrer on
        every page load (first-touch wins), then POSTs to the signup-
        attribution Edge Function once the user is authenticated. -->

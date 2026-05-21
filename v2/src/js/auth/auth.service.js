@@ -33,6 +33,47 @@
         }
       }
     );
+
+    // Day 4.1 — wrap client.functions.invoke so every Edge Function
+    // call auto-reports to the sync monitor. Network errors + 5xx
+    // count as failures; 4xx (auth/quota/bad-request) do NOT — those
+    // are logic errors, not sync problems, and surfacing a "having
+    // trouble syncing" banner for a quota_exhausted would be wrong.
+    try {
+      if (state.client && state.client.functions && typeof state.client.functions.invoke === "function") {
+        const originalInvoke = state.client.functions.invoke.bind(state.client.functions);
+        state.client.functions.invoke = async function patchedInvoke(name, options) {
+          try {
+            const result = await originalInvoke(name, options);
+            const mon = window.CBV2 && window.CBV2.syncMonitor;
+            if (mon) {
+              if (result && result.error) {
+                const status = result.error.context && typeof result.error.context.status === "number"
+                  ? result.error.context.status
+                  : 0;
+                // Only count network/5xx as a sync failure. 4xx is the
+                // server speaking back correctly — not "trouble syncing".
+                if (status === 0 || status >= 500) {
+                  mon.recordFailure(name + " → HTTP " + (status || "network"));
+                } else {
+                  mon.recordSuccess();
+                }
+              } else {
+                mon.recordSuccess();
+              }
+            }
+            return result;
+          } catch (err) {
+            const mon = window.CBV2 && window.CBV2.syncMonitor;
+            if (mon) mon.recordFailure(name + " threw: " + ((err && err.message) || "unknown"));
+            throw err;
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("[auth] sync-monitor patch failed (non-fatal):", e);
+    }
+
     return state.client;
   }
 

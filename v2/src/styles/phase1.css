@@ -14320,3 +14320,92 @@ input[type="color"]#export-accent::-webkit-color-swatch { border-radius: 6px; bo
   .legal-body { font-size: 14px; }
   .legal-body h2 { font-size: 16px; margin-top: 22px; }
 }
+
+/* ===========================================================================
+   Day 4.1 — Offline / sync banner. Top-of-viewport strip that appears
+   after 3 consecutive Supabase failures. Hidden by default; toggled
+   via .is-visible from sync-monitor.js.
+   =========================================================================== */
+
+.cb-sync-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  transform: translateY(-100%);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.cb-sync-banner.is-visible {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.cb-sync-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(216, 168, 58, 0.96), rgba(199, 145, 36, 0.96));
+  color: #1a1408;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.cb-sync-banner-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.cb-sync-banner-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.cb-sync-banner-btn,
+.cb-sync-banner-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.18);
+  color: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+  font-family: inherit;
+}
+
+.cb-sync-banner-btn:hover,
+.cb-sync-banner-close:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.cb-sync-banner-close {
+  padding: 6px 9px;
+}
+
+/* When the banner is visible, nudge the rest of the page down so the
+   topmost UI (admin nav, dashboard headers, etc.) isn't covered. */
+body.has-sync-banner {
+  padding-top: 42px;
+  transition: padding-top 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (max-width: 540px) {
+  .cb-sync-banner-inner {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .cb-sync-banner-msg { flex-basis: 100%; order: -1; }
+  .cb-sync-banner-btn { font-size: 11px; padding: 5px 10px; }
+  body.has-sync-banner { padding-top: 70px; }
+}
