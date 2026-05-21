@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>CareerBoost — MFA Setup</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2e;
+      --panel-2: #182441;
+      --line: #25324f;
+      --text: #e7ecf5;
+      --muted: #93a0bb;
+      --accent: #4f8cff;
+      --accent-2: #6ea0ff;
+      --good: #2fb673;
+      --bad: #e25b5b;
+      --warn: #d8a83a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(180deg, #070b15 0%, #0b1220 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    .wrap {
+      width: 100%;
+      max-width: 560px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+    }
+    .sub {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+    }
+    .pill.good { color: var(--good); border-color: rgba(47,182,115,0.3); }
+    .pill.bad { color: var(--bad); border-color: rgba(226,91,91,0.3); }
+    .pill.warn { color: var(--warn); border-color: rgba(216,168,58,0.3); }
+    button, .btn {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: var(--accent-2); }
+    button:disabled { background: #2c395a; cursor: not-allowed; opacity: 0.6; }
+    button.ghost {
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--text);
+    }
+    button.ghost:hover { background: var(--panel-2); }
+    button.danger { background: var(--bad); }
+    button.danger:hover { background: #ec7878; }
+    input[type=text], input[type=email], input[type=password] {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      width: 100%;
+      font-family: inherit;
+    }
+    input[type=text].code {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 22px;
+      letter-spacing: 0.3em;
+      text-align: center;
+      max-width: 220px;
+    }
+    .qr-wrap {
+      background: #fff;
+      padding: 16px;
+      border-radius: 12px;
+      display: inline-block;
+      margin: 12px 0;
+    }
+    .qr-wrap img, .qr-wrap svg { display: block; max-width: 220px; height: auto; }
+    .secret {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      word-break: break-all;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .factor-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .factor-row:last-child { border-bottom: 0; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .note { font-size: 13px; line-height: 1.5; color: var(--muted); margin-top: 8px; }
+    .alert {
+      background: rgba(226,91,91,0.1);
+      border: 1px solid rgba(226,91,91,0.3);
+      color: #ffb6b6;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .alert.success {
+      background: rgba(47,182,115,0.1);
+      border-color: rgba(47,182,115,0.3);
+      color: #95edc0;
+    }
+    .alert.warn {
+      background: rgba(216,168,58,0.1);
+      border-color: rgba(216,168,58,0.3);
+      color: #f3d987;
+    }
+    .hidden { display: none !important; }
+    code.kbd {
+      background: var(--panel-2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+    }
+    ol, ul { padding-left: 20px; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>MFA Setup</h1>
+    <p class="sub">One-time TOTP enrollment for operator accounts. After this completes, the admin gate can require <code class="kbd">aal2</code>.</p>
+
+    <!-- Session card -->
+    <div class="card" id="session-card">
+      <h2>Step 1 — Sign in</h2>
+      <div id="session-state">Checking session…</div>
+      <div id="signin-form" class="hidden" style="margin-top: 12px;">
+        <div style="display: grid; gap: 8px;">
+          <input type="email" id="signin-email" placeholder="operator@example.com" autocomplete="username">
+          <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password">
+          <div class="row">
+            <button id="signin-btn">Sign in</button>
+            <span class="muted">Use the operator account you want to lock down.</span>
+          </div>
+        </div>
+        <div id="signin-alert"></div>
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        <button id="signout-btn" class="ghost hidden">Sign out</button>
+      </div>
+    </div>
+
+    <!-- Existing factors -->
+    <div class="card hidden" id="factors-card">
+      <h2>Step 2 — Existing factors</h2>
+      <div id="factors-list">Loading…</div>
+      <p class="note">If you already have a working TOTP factor, you're done — go back to your normal app. If you've lost the device for one of these, delete it and enroll a new one below.</p>
+    </div>
+
+    <!-- Enroll -->
+    <div class="card hidden" id="enroll-card">
+      <h2>Step 3 — Enroll a new TOTP factor</h2>
+
+      <div id="enroll-start">
+        <p class="muted">You'll need an authenticator app on your phone or laptop: <strong>1Password</strong>, <strong>Authy</strong>, <strong>Google Authenticator</strong>, or <strong>Microsoft Authenticator</strong> all work.</p>
+        <div class="row">
+          <input type="text" id="factor-name" placeholder='Label e.g. "iPhone Authy"' style="max-width: 240px;">
+          <button id="enroll-btn">Start enrollment</button>
+        </div>
+        <div id="enroll-alert"></div>
+      </div>
+
+      <div id="enroll-show" class="hidden">
+        <p class="muted">Scan this QR with your authenticator app:</p>
+        <div class="qr-wrap" id="qr-target"></div>
+        <p class="muted">Can't scan? Enter this secret manually:</p>
+        <div class="secret" id="secret-target"></div>
+
+        <p class="muted" style="margin-top: 16px;">Then type the 6-digit code your app shows:</p>
+        <div class="row">
+          <input type="text" id="verify-code" class="code" inputmode="numeric" maxlength="6" placeholder="000000">
+          <button id="verify-btn">Verify & enable</button>
+          <button id="cancel-enroll-btn" class="ghost">Cancel</button>
+        </div>
+        <div id="verify-alert"></div>
+      </div>
+
+      <div id="enroll-done" class="hidden">
+        <div class="alert success">
+          <strong>Success.</strong> TOTP factor is now active on this account. From your next sign-in you'll be prompted for a code.
+        </div>
+        <p class="note">Now go back to your admin app and verify it still works. Once everything looks good, you can tell Claude "MFA done" and we'll lock the admin gate to require <code class="kbd">aal2</code>.</p>
+      </div>
+    </div>
+
+    <p class="muted" style="text-align: center; margin-top: 24px; font-size: 12px;">
+      This page is for one-time MFA enrollment. Delete <code class="kbd">v2/mfa-setup.html</code> after rollout if you don't want to keep it.
+    </p>
+  </div>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script>
+    // Use the same storage key the main app uses, so an already-logged-in
+    // browser tab is picked up without re-typing the password.
+    const SUPABASE_URL = "https://kddffkhwpbngiupfmcse.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGZma2h3cGJuZ2l1cGZtY3NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2MjE4MDAsImV4cCI6MjA5MjE5NzgwMH0.glvjjwKq3JeOy8HF71JfwzW0m45DvwK8tSbnqxu-JY8";
+    const STORAGE_KEY = "cbv2_auth_v1";
+
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storageKey: STORAGE_KEY,
+      },
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    function alertEl(target, kind, text) {
+      const el = $(target);
+      if (!text) { el.innerHTML = ""; return; }
+      const cls = kind === "ok" ? "alert success" : kind === "warn" ? "alert warn" : "alert";
+      el.innerHTML = '<div class="' + cls + '">' + escapeHtml(text) + '</div>';
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    }
+
+    let currentSession = null;
+    let pendingFactorId = null;
+
+    async function refreshSession() {
+      const { data, error } = await client.auth.getSession();
+      currentSession = data?.session || null;
+      renderSession();
+      if (currentSession) {
+        await loadFactors();
+      }
+    }
+
+    function renderSession() {
+      const stateEl = $("session-state");
+      const form = $("signin-form");
+      const signoutBtn = $("signout-btn");
+      const factorsCard = $("factors-card");
+      const enrollCard = $("enroll-card");
+
+      if (!currentSession) {
+        stateEl.innerHTML = '<span class="pill bad">Not signed in</span>';
+        form.classList.remove("hidden");
+        signoutBtn.classList.add("hidden");
+        factorsCard.classList.add("hidden");
+        enrollCard.classList.add("hidden");
+        return;
+      }
+      const u = currentSession.user || {};
+      const aal = currentSession?.user?.factors?.length ? "aal2-eligible" : "aal1";
+      stateEl.innerHTML =
+        '<div><span class="pill good">Signed in</span> <span class="muted">as</span> <strong>' + escapeHtml(u.email || u.id) + '</strong></div>' +
+        '<div class="muted" style="margin-top: 4px;">User id: <code>' + escapeHtml(u.id || "") + '</code></div>';
+      form.classList.add("hidden");
+      signoutBtn.classList.remove("hidden");
+      factorsCard.classList.remove("hidden");
+      enrollCard.classList.remove("hidden");
+    }
+
+    async function loadFactors() {
+      const listEl = $("factors-list");
+      listEl.innerHTML = "Loading…";
+      try {
+        const { data, error } = await client.auth.mfa.listFactors();
+        if (error) throw error;
+        const totp = (data?.totp || data?.all?.filter(f => f.factor_type === "totp") || []);
+        if (!totp.length) {
+          listEl.innerHTML = '<span class="muted">No TOTP factors enrolled yet. Use Step 3 below.</span>';
+          return;
+        }
+        listEl.innerHTML = totp.map((f) => {
+          const verified = f.status === "verified";
+          return (
+            '<div class="factor-row">' +
+              '<div>' +
+                '<div><strong>' + escapeHtml(f.friendly_name || "(unnamed)") + '</strong> ' +
+                  '<span class="pill ' + (verified ? "good" : "warn") + '">' + escapeHtml(f.status || "?") + '</span>' +
+                '</div>' +
+                '<div class="muted">Created ' + escapeHtml(new Date(f.created_at).toLocaleString()) + '</div>' +
+              '</div>' +
+              '<button class="ghost danger" data-id="' + escapeHtml(f.id) + '">Delete</button>' +
+            '</div>'
+          );
+        }).join("");
+        // Wire delete buttons
+        listEl.querySelectorAll("button[data-id]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            if (!confirm("Delete this factor? You'll need to re-enroll to use MFA on this account.")) return;
+            btn.disabled = true;
+            const id = btn.getAttribute("data-id");
+            const { error } = await client.auth.mfa.unenroll({ factorId: id });
+            if (error) { alert("Delete failed: " + error.message); btn.disabled = false; return; }
+            await loadFactors();
+          });
+        });
+      } catch (err) {
+        listEl.innerHTML = '<div class="alert">Failed to load factors: ' + escapeHtml(err.message || err) + '</div>';
+      }
+    }
+
+    // Sign in
+    $("signin-btn").addEventListener("click", async () => {
+      const email = $("signin-email").value.trim();
+      const password = $("signin-password").value;
+      if (!email || !password) { alertEl("signin-alert", "warn", "Email and password are required."); return; }
+      alertEl("signin-alert", null, "");
+      $("signin-btn").disabled = true;
+      try {
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await refreshSession();
+      } catch (err) {
+        alertEl("signin-alert", "bad", "Sign-in failed: " + (err.message || err));
+      } finally {
+        $("signin-btn").disabled = false;
+      }
+    });
+
+    // Sign out
+    $("signout-btn").addEventListener("click", async () => {
+      await client.auth.signOut();
+      await refreshSession();
+    });
+
+    // Enroll
+    $("enroll-btn").addEventListener("click", async () => {
+      const friendlyName = $("factor-name").value.trim() || ("Authenticator " + new Date().toISOString().slice(0,10));
+      alertEl("enroll-alert", null, "");
+      $("enroll-btn").disabled = true;
+      try {
+        const { data, error } = await client.auth.mfa.enroll({
+          factorType: "totp",
+          friendlyName,
+        });
+        if (error) throw error;
+        pendingFactorId = data?.id;
+        const qr = data?.totp?.qr_code || "";
+        const secret = data?.totp?.secret || "";
+        if (!pendingFactorId || !qr) throw new Error("Enroll did not return a QR / factor id.");
+        // qr_code from Supabase is an SVG data URL
+        $("qr-target").innerHTML = '<img alt="TOTP QR" src="' + escapeHtml(qr) + '">';
+        $("secret-target").textContent = secret;
+        $("enroll-start").classList.add("hidden");
+        $("enroll-show").classList.remove("hidden");
+        $("enroll-done").classList.add("hidden");
+      } catch (err) {
+        alertEl("enroll-alert", "bad", "Enroll failed: " + (err.message || err));
+      } finally {
+        $("enroll-btn").disabled = false;
+      }
+    });
+
+    // Cancel enrollment
+    $("cancel-enroll-btn").addEventListener("click", async () => {
+      if (pendingFactorId) {
+        try { await client.auth.mfa.unenroll({ factorId: pendingFactorId }); } catch (_e) {}
+      }
+      pendingFactorId = null;
+      $("enroll-start").classList.remove("hidden");
+      $("enroll-show").classList.add("hidden");
+      await loadFactors();
+    });
+
+    // Verify
+    $("verify-btn").addEventListener("click", async () => {
+      const code = $("verify-code").value.trim().replace(/\s+/g, "");
+      if (!/^\d{6}$/.test(code)) { alertEl("verify-alert", "warn", "Enter the 6-digit code from your authenticator."); return; }
+      if (!pendingFactorId) { alertEl("verify-alert", "bad", "No pending factor. Start enrollment again."); return; }
+      alertEl("verify-alert", null, "");
+      $("verify-btn").disabled = true;
+      try {
+        const ch = await client.auth.mfa.challenge({ factorId: pendingFactorId });
+        if (ch.error) throw ch.error;
+        const challengeId = ch.data?.id;
+        const ver = await client.auth.mfa.verify({ factorId: pendingFactorId, challengeId, code });
+        if (ver.error) throw ver.error;
+        pendingFactorId = null;
+        $("enroll-show").classList.add("hidden");
+        $("enroll-done").classList.remove("hidden");
+        await refreshSession();
+      } catch (err) {
+        alertEl("verify-alert", "bad", "Verification failed: " + (err.message || err));
+      } finally {
+        $("verify-btn").disabled = false;
+      }
+    });
+
+    // Boot
+    refreshSession();
+    client.auth.onAuthStateChange(() => refreshSession());
+  </script>
+</body>
+</html>
