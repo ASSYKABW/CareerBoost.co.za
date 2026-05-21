@@ -2591,6 +2591,64 @@
   .kpi-sparkline { width: 100%; height: 26px; }
 }
 
+/* Day 4.2 — small-phone polish. The dashboard already stacks to 1-col
+   at 680px, but the internal card metrics (28px mono value, 32px page
+   title, 16-18px padding) still feel cramped on devices like an
+   iPhone SE (375px) or older Androids. Tighten everything that would
+   otherwise overflow or visually collide.
+
+   Scope is narrow on purpose — only the dashboard KPI strip + page
+   title. Layout components with their own breakpoints (admin shell,
+   resume editor, etc.) handle themselves. */
+@media (max-width: 480px) {
+  /* KPI card — pull padding in and shrink the big value font so a
+     4-digit count + subtitle + delta chip fit on one row width. */
+  .kpi-card {
+    padding: 14px;
+  }
+  .kpi-card .value {
+    font-size: 22px;
+    letter-spacing: -0.015em;
+  }
+  .kpi-card .kpi-head {
+    margin-bottom: 10px;
+  }
+  .kpi-icon {
+    width: 26px;
+    height: 26px;
+    font-size: 11px;
+  }
+  /* kpi-foot already has flex-wrap, but tighten so delta chip drops
+     below the subtitle cleanly instead of pinching together. */
+  .kpi-foot {
+    gap: 6px;
+    padding-top: 8px;
+    margin-top: 10px;
+    font-size: 11.5px;
+  }
+  .kpi-delta {
+    font-size: 10.5px;
+    padding: 2px 7px;
+  }
+  .kpi-sparkline {
+    height: 22px;
+  }
+  /* Page hero — the 32px title set at <680px is still too big for
+     360-375px viewports. Drop one more step + reduce hero gap. */
+  .page-title {
+    font-size: 26px;
+    letter-spacing: -0.015em;
+  }
+  .hero-panel {
+    gap: 12px;
+  }
+  /* Pipeline grid still tries 2-col at <680px. Force 1-col at <480px
+     so the stage counters don't get squashed below readable width. */
+  .pipeline-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ------ Smaller panel variant (right-rail cards) ------------------------ */
 .panel-sm {
   min-height: 220px;
