@@ -40,11 +40,11 @@
     status: "active",
     has_active_subscription: false,
     limits: {
-      monthly: { ai_resumes: 1, ai_covers: 2, ai_mocks: 1, ai_research: 1, ai_question_banks: 1 },
+      monthly: { ai_resumes: 1, ai_covers: 2, ai_mocks: 1, ai_research: 1, ai_question_banks: 1, ai_bullets: 10 },
       caps:    { saved_jobs: 5 },
       features:{ voice_mode: false, priority_ai: false, personal_analytics: false }
     },
-    usage: { ai_resumes: 0, ai_covers: 0, ai_mocks: 0, ai_research: 0, ai_question_banks: 0 }
+    usage: { ai_resumes: 0, ai_covers: 0, ai_mocks: 0, ai_research: 0, ai_question_banks: 0, ai_bullets: 0 }
   };
 
   const state = {
@@ -212,6 +212,7 @@
       ai_research: "plus",
       ai_question_banks: "plus",
       ai_mocks: "plus",
+      ai_bullets: "plus",
       saved_jobs: "plus",
     };
     const key = spec.feature || spec.quota;

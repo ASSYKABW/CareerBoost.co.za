@@ -82,6 +82,7 @@
         q === "ai_mocks" ? "AI mock interviews" :
         q === "ai_research" ? "AI company research" :
         q === "ai_question_banks" ? "AI question banks" :
+        q === "ai_bullets" ? "AI bullet rewrites" :
         "this feature"
       );
       return {

@@ -44,6 +44,94 @@ import {
   readResponseCache,
   writeResponseCache,
 } from "../_shared/response-cache.ts";
+// Day 4.0 — server-side quota enforcement. Each metered skill maps
+// to a quota_key in the consume_quota RPC. Skills missing from this
+// map are NOT metered (e.g. classifiers and helpers like query-parse,
+// job-match-score, jd-analyze, resume-parse, interview-score,
+// followup-email, application-insight, tailor-plan, skill-action-plan,
+// chat-assist, interview-session-debrief). If you add a new metered
+// skill, add it here AND to consume_quota's allowed_keys array in the
+// migration.
+const SKILL_TO_QUOTA: Partial<Record<Skill, string>> = {
+  "resume-tailor":         "ai_resumes",
+  "cover-letter-generate": "ai_covers",
+  "interview-coach":       "ai_question_banks",
+  "interview-intel-pack":  "ai_research",
+  "interview-session-step":"ai_mocks",        // charged on opening turn only
+  "bullet-strengthen":     "ai_bullets",
+};
+
+interface QuotaResult {
+  allowed: boolean;
+  used?: number;
+  limit?: number | null;
+  remaining?: number | null;
+  planId?: string;
+  reason?: string;
+  error?: string;
+}
+
+// Call consume_quota via service-role (the RPC is SECURITY DEFINER so
+// auth.uid() returns the user from the impersonated JWT). We use the
+// user's own JWT — not the service role — so consume_quota sees the
+// correct caller. Atomic row lock inside the RPC handles parallel
+// races; we just need to honour the {allowed:false} response.
+//
+// Fail-CLOSED on infrastructure errors. A consume_quota RPC outage
+// blocks AI calls until we restore — better than leaking spend. The
+// admin Health board will alert on the resulting 503s.
+async function consumeQuotaForUser(
+  req: Request,
+  quotaKey: string,
+): Promise<QuotaResult> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return { allowed: false, error: "missing token" };
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_quota`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseAnon,
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ quota_key: quotaKey, amount: 1 }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn("[ai-run] consume_quota HTTP " + res.status + ": " + text.slice(0, 200));
+      return { allowed: false, error: "RPC failed: HTTP " + res.status };
+    }
+    const data = await res.json() as Record<string, unknown>;
+    return {
+      allowed: !!data.allowed,
+      used: typeof data.used === "number" ? data.used : undefined,
+      limit: data.limit === null ? null : (typeof data.limit === "number" ? data.limit : undefined),
+      remaining: data.remaining === null ? null : (typeof data.remaining === "number" ? data.remaining : undefined),
+      planId: typeof data.plan_id === "string" ? data.plan_id : undefined,
+      reason: typeof data.reason === "string" ? data.reason : undefined,
+    };
+  } catch (err) {
+    console.warn("[ai-run] consume_quota threw:", (err as Error).message);
+    return { allowed: false, error: "RPC unreachable" };
+  }
+}
+
+// Helper: should this call charge against quota? Always yes for
+// metered skills, EXCEPT interview-session-step which only charges
+// on the opening turn (the rest of the conversation is "free" — one
+// mock = one ai_mocks slot regardless of turn count).
+function shouldChargeQuota(skill: Skill, input: unknown): boolean {
+  const key = SKILL_TO_QUOTA[skill];
+  if (!key) return false;
+  if (skill === "interview-session-step") {
+    const obj = (input && typeof input === "object") ? input as Record<string, unknown> : {};
+    return obj.openingInit === true;
+  }
+  return true;
+}
 
 interface RunBody {
   requestId?: string;
@@ -483,6 +571,37 @@ Deno.serve(async (req) => {
         400,
       );
     }
+    // Day 4.0: quota gate. interview-session-step only charges on the
+    // opening turn so a multi-turn conversation = 1 ai_mocks slot total.
+    if (shouldChargeQuota(skill, input)) {
+      const quotaKey = SKILL_TO_QUOTA[skill]!;
+      const decision = await consumeQuotaForUser(req, quotaKey);
+      if (!decision.allowed) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            requestId,
+            error: decision.error
+              ? "Quota check failed: " + decision.error
+              : "Monthly quota for " + quotaKey + " reached. Upgrade to keep going.",
+            quotaExhausted: !decision.error,
+            quota: quotaKey,
+            planId: decision.planId,
+            used: decision.used,
+            limit: decision.limit,
+            remaining: decision.remaining,
+          }),
+          {
+            status: decision.error ? 503 : 402,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "X-Request-Id": requestId,
+            },
+          },
+        );
+      }
+    }
     return streamResponse(
       req, prompts[skill], input, skill,
       user.id, requestId, promptVersion, body.model,
@@ -499,6 +618,41 @@ Deno.serve(async (req) => {
       cacheHit: true,
       cacheAgeSeconds: cached.ageSeconds,
     }, { headers: { "X-Request-Id": requestId, "X-Cache": "HIT" } });
+  }
+
+  // Day 4.0: quota gate. Sits after the cache check so a cache HIT
+  // stays free — only an LLM call charges. Returns 402 if exhausted
+  // (client surfaces upgrade modal) or 503 if the consume_quota RPC
+  // itself failed (fail-CLOSED so we don't leak spend on infra
+  // outages — the admin Health board will alert).
+  if (shouldChargeQuota(skill, input)) {
+    const quotaKey = SKILL_TO_QUOTA[skill]!;
+    const decision = await consumeQuotaForUser(req, quotaKey);
+    if (!decision.allowed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          requestId,
+          error: decision.error
+            ? "Quota check failed: " + decision.error
+            : "Monthly quota for " + quotaKey + " reached. Upgrade to keep going.",
+          quotaExhausted: !decision.error,
+          quota: quotaKey,
+          planId: decision.planId,
+          used: decision.used,
+          limit: decision.limit,
+          remaining: decision.remaining,
+        }),
+        {
+          status: decision.error ? 503 : 402,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "X-Request-Id": requestId,
+          },
+        },
+      );
+    }
   }
 
   const providers = chooseProviders(skill, body.provider);

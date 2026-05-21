@@ -36,6 +36,14 @@ const DEFAULT_TTL_SECONDS: Record<Skill, number> = {
   "followup-email":           0,                  // disabled: tone variations matter
   // Phase 5: skill plans are stable for the same skill+context for hours.
   "skill-action-plan":        60 * 60 * 12,
+  // In-app guidance chat — disabled (chat is per-conversation and the
+  // prompt context shifts with feature surface, so caching tends to
+  // serve stale or wrong replies).
+  "chat-assist":              0,
+  // Single-bullet strengthen — same bullet text + role context is
+  // deterministic enough to cache. 24h matches the user's edit
+  // cadence (they tweak a bullet, then often re-strengthen later).
+  "bullet-strengthen":        60 * 60 * 24,
 };
 
 // Stable JSON stringify that sorts object keys recursively.

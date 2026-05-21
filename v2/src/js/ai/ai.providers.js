@@ -933,6 +933,34 @@
     }
   }
 
+  // Day 4.0 — detect a server-side quota-exhausted 402 response and
+  // surface the upgrade modal. Server returns:
+  //   { ok:false, quotaExhausted:true, quota:"ai_bullets", ... }
+  // with HTTP status 402. Shared between SDK + manual-fetch paths
+  // because either one might be the active codepath depending on SDK
+  // availability.
+  function handleQuotaExhausted(parsed) {
+    if (!parsed || !parsed.quotaExhausted || !parsed.quota) return null;
+    const upgrade = window.CBV2 && window.CBV2.upgradeModal;
+    if (upgrade && typeof upgrade.show === "function") {
+      upgrade.show({ reason: "quota_exhausted", quota: parsed.quota })
+        .catch(function () { /* modal cancelled */ });
+    }
+    // Optimistic local-cache sync: usage = limit so the next click is
+    // blocked by the client gate too (matches the server reality).
+    const ent = window.CBV2 && window.CBV2.entitlements;
+    if (ent && typeof ent.recordConsumption === "function" && typeof parsed.limit === "number") {
+      try {
+        const current = ent.get();
+        const have = current && current.usage && typeof current.usage[parsed.quota] === "number"
+          ? current.usage[parsed.quota] : 0;
+        const delta = Math.max(0, parsed.limit - have);
+        if (delta > 0) ent.recordConsumption(parsed.quota, delta);
+      } catch (_e) { /* never let cache sync break the error path */ }
+    }
+    return new Error("Monthly quota for " + parsed.quota + " reached. Upgrade to keep going.");
+  }
+
   async function invokeViaSdk(payload) {
     const auth = window.CBV2 && window.CBV2.auth;
     const client = auth && auth.getClient && auth.getClient();
@@ -942,18 +970,27 @@
     const { data, error } = await client.functions.invoke("ai-run", { body: payload });
     if (error) {
       let msg = error.message || "Edge function error";
+      let parsed = null;
+      let status = 0;
       try {
-        if (error.context && typeof error.context.text === "function") {
-          const t = await error.context.text();
-          try {
-            const j = JSON.parse(t);
-            msg = j.error || j.message || msg;
-            if (Array.isArray(j.warnings) && j.warnings.length) {
-              msg += " — " + j.warnings.join(" · ");
-            }
-          } catch (e) { if (t) msg = t.slice(0, 240); }
+        if (error.context) {
+          if (typeof error.context.status === "number") status = error.context.status;
+          if (typeof error.context.text === "function") {
+            const t = await error.context.text();
+            try {
+              parsed = JSON.parse(t);
+              msg = parsed.error || parsed.message || msg;
+              if (Array.isArray(parsed.warnings) && parsed.warnings.length) {
+                msg += " — " + parsed.warnings.join(" · ");
+              }
+            } catch (e) { if (t) msg = t.slice(0, 240); }
+          }
         }
       } catch (e) { /* ignore */ }
+      if (status === 402 || (parsed && parsed.quotaExhausted)) {
+        const quotaErr = handleQuotaExhausted(parsed);
+        if (quotaErr) throw quotaErr;
+      }
       throw new Error(msg);
     }
     return data;
@@ -998,6 +1035,14 @@
         30000
       );
       if (!response.ok) {
+        // Day 4.0: quota-exhausted gets special handling — surface
+        // the upgrade modal before throwing the toast error.
+        if (response.status === 402) {
+          let parsed = null;
+          try { parsed = await response.clone().json(); } catch (_e) { /* not JSON */ }
+          const quotaErr = parsed ? handleQuotaExhausted(parsed) : null;
+          if (quotaErr) throw quotaErr;
+        }
         const detail = await parseErrorBody(response);
         throw new Error("AI " + response.status + ": " + detail);
       }

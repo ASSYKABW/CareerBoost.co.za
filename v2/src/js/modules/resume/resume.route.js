@@ -4509,6 +4509,17 @@ Built analytics dashboard used by 3 teams"></textarea>
       return;
     }
 
+    // Day 4.0 — client-side advisory gate. Mirrors the server-side
+    // consume_quota check that ai-run does. If exhausted, the upgrade
+    // modal is shown and we bail before firing the AI call. Server is
+    // the source of truth — this is purely for "block before the spin"
+    // UX so users don't see a brief spinner just to get rejected.
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_bullets");
+      if (!ok) return;
+    }
+
     // Mark this bullet as "generating" so the chip shows a spinner state.
     view.strengthenLoadingId = bId;
     rerenderEditor();
@@ -4536,6 +4547,11 @@ Built analytics dashboard used by 3 teams"></textarea>
       };
       // Auto-open the chip popover so the user sees results immediately.
       view.bulletPopoverOpenId = bId;
+      // Day 4.0 — optimistic local-cache decrement so the next click
+      // sees the new remaining count without waiting for the next
+      // entitlements.load(). Server already committed atomically.
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && ent.recordConsumption) ent.recordConsumption("ai_bullets");
       toast("success", "AI generated " + rewrites.length + " rewrite" + (rewrites.length === 1 ? "" : "s") + ".");
     } catch (err) {
       const msg = (err && err.message) ? err.message : "AI rewrite failed.";
