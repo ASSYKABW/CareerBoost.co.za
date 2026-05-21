@@ -9,6 +9,12 @@
     radial-gradient(48% 36% at 82% 8%, rgba(34, 197, 94, 0.12), transparent 62%),
     #0b0f16;
   color: #eef3ff;
+  /* Day 4.2 — root-level overflow guard. The admin console contains
+     a lot of grids + tables originally sized for desktop; any rogue
+     child width that escapes a media query should be clipped here
+     rather than causing the whole page to scroll sideways. */
+  overflow-x: clip;
+  max-width: 100vw;
 }
 
 .admin-sidebar {
@@ -220,6 +226,10 @@
 .admin-status-banner strong,
 .admin-status-banner span {
   display: block;
+  /* Day 4.2: long status text ("Supabase live · May 21, 10:30 PM")
+     should soft-wrap on narrow viewports, not push the banner wider. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .admin-status-banner strong {
@@ -2193,18 +2203,66 @@
   .admin-content {
     padding: 16px 14px;
     gap: 16px;
+    /* Belt-and-braces: any rogue child that tries to exceed viewport
+       width gets clipped instead of forcing a horizontal scroll. */
+    overflow-x: hidden;
   }
 
-  .admin-usage-hero,
-  .admin-grid--usage,
-  .admin-session-quality-grid {
+  /* ── Status banner ("Admin backend connected" + chip row) ───────
+     Was display:flex space-between with no wrap, which pushed the
+     chip row off-screen on phones. Stack the two halves and let the
+     chip container wrap to multiple rows. */
+  .admin-status-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px 16px;
+    min-height: 0;
+    gap: 10px;
+  }
+  .admin-status-banner strong { font-size: 14px; }
+  .admin-status-banner span { font-size: 12px; }
+  .admin-status-counts {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* ── North Star hero ("Active placements") ────────────────────
+     Was 3-col grid with 32px padding and a 64px count. Stack to
+     single column with phone-friendly type. */
+  .admin-north-star {
     grid-template-columns: 1fr;
+    padding: 18px 16px;
+    gap: 14px;
+    margin-bottom: 16px;
+    border-radius: 16px;
+  }
+  .admin-north-star-copy h2 { font-size: 19px; line-height: 1.25; margin: 4px 0 6px; }
+  .admin-north-star-copy p { font-size: 13px; line-height: 1.5; }
+  .admin-north-star-value strong { font-size: 40px; }
+  .admin-north-star-value span,
+  .admin-north-star-value small { font-size: 12px; }
+
+  /* ── Panel headers ("Today's priorities" + chip, etc.) ─────────
+     The desktop layout puts the title block on the left and a chip
+     on the right via space-between. On mobile, stack so the chip
+     drops below the heading instead of competing for row width. */
+  .admin-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 
-  .admin-table-row {
-    grid-template-columns: 1fr 1fr;
+  /* ── Sweep: every admin-grid* variant collapses to single column ──
+     Catches admin-grid--command, admin-grid--main, admin-grid--two,
+     admin-grid--usage, admin-grid--four, etc. Anything that's a
+     multi-column board should stack. */
+  [class*="admin-grid"] {
+    grid-template-columns: 1fr !important;
   }
 
+  /* Explicit table-row collapses (single-row layouts that aren't
+     part of admin-grid* and need their own stacking rule). */
+  .admin-table-row,
   .admin-table-row--four,
   .admin-table-row--three,
   .admin-table-row--five,
@@ -2212,15 +2270,33 @@
   .admin-table-row--module,
   .admin-table-row--retention,
   .admin-table-row--support,
-  .admin-grid--two,
   .admin-action-list--grid,
   .admin-kv-grid,
   .admin-kv-grid--compact,
   .admin-export-grid,
   .admin-readiness-grid,
   .admin-support-queue,
-  .admin-cohort-grid {
+  .admin-cohort-grid,
+  .admin-usage-hero,
+  .admin-session-quality-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Stat / KPI tiles — let titles + values wrap cleanly. */
+  .admin-stat h3,
+  .admin-stat .value,
+  .admin-panel h2,
+  .admin-panel h3 {
+    overflow-wrap: anywhere;
+  }
+
+  /* Tables / lists — large mono numbers should soft-wrap so a long
+     value (e.g. a 9-digit count) doesn't force the row wider than
+     viewport. */
+  .admin-stat .value,
+  .admin-kpi .value {
+    font-size: 22px;
+    letter-spacing: -0.015em;
   }
 }
 
