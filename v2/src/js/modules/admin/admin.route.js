@@ -154,7 +154,19 @@
       .filter(Boolean);
   }
 
-  function adminAccessState() {
+  // adminAccessState has TWO callers with different needs:
+  //
+  //   - renderView (and admin data-fetch guards) need the FULL check:
+  //     role + MFA elevation. Pass no options or { skipMfa: false }.
+  //
+  //   - The dropdown menu (app-shell) only needs to know "is this user
+  //     an admin at all?" so the menu link is visible. Without skipMfa
+  //     the link would be hidden until the MFA snapshot loads — which
+  //     only happens AFTER the user clicks the link, which they can't
+  //     do because it's hidden. Chicken-and-egg. Pass { skipMfa: true }
+  //     for menu-visibility checks.
+  function adminAccessState(opts) {
+    const skipMfa = !!(opts && opts.skipMfa);
     const backendOn = window.CBV2.config && window.CBV2.config.isBackendEnabled && window.CBV2.config.isBackendEnabled();
     const auth = window.CBV2.auth;
     if (!backendOn) {
@@ -177,8 +189,9 @@
     // present a 6-digit code to elevate their session from aal1 to
     // aal2 before the admin console renders. The server-side gate
     // (getAuthedAdmin) enforces the same requirement so this isn't a
-    // pure UI guard.
-    const mfa = window.CBV2.adminMfa;
+    // pure UI guard. Skipped when the caller only needs the role check
+    // (see opts.skipMfa above).
+    const mfa = !skipMfa && window.CBV2.adminMfa;
     if (mfa && typeof mfa.getSnapshot === "function") {
       const snap = mfa.getSnapshot();
       if (!snap.loaded) {
@@ -219,8 +232,11 @@
 
   window.CBV2.adminAccess = {
     state: adminAccessState,
+    // Menu-visibility helper: only asks "is this user an admin at all?"
+    // The MFA elevation happens at /admin entry, not at menu render
+    // time — see the long comment on adminAccessState for why.
     canAccess: function () {
-      return adminAccessState().ok;
+      return adminAccessState({ skipMfa: true }).ok;
     }
   };
 
