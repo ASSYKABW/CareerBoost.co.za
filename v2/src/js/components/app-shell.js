@@ -132,6 +132,7 @@
               <span class="chip chip-sm violet user-menu-plan">${st(planLabel)} plan</span>
             </div>
           </div>
+          ${renderUserMenuQuotas()}
           <div class="user-menu-divider" role="separator"></div>
           <a class="user-menu-item" role="menuitem" href="#/settings?tab=profile">
             <i class="fa-solid fa-user" aria-hidden="true"></i> Profile &amp; avatar
@@ -147,6 +148,85 @@
         </div>
       </div>
     `;
+  }
+
+  // Day 4.5 — Always-visible quota meter inside the user menu.
+  //
+  // Reads from the same entitlements cache the upgrade modal uses.
+  // Shows every metered quota that has a finite monthly cap; skips
+  // unlimited ones to avoid noise. Auto-updates because entitlements
+  // .onChange triggers refreshUserChip below.
+  //
+  // If every quota is unlimited (Career plan), the entire section is
+  // omitted — no value in showing 6 empty bars.
+  //
+  // If entitlements haven't loaded yet (cold start), shows a placeholder
+  // so the menu doesn't jump in height when they arrive.
+  function renderUserMenuQuotas() {
+    const ent = window.CBV2 && window.CBV2.entitlements;
+    if (!ent || typeof ent.get !== "function") return "";
+    const data = ent.get();
+    if (!data) {
+      // Placeholder so the menu height is predictable on cold open.
+      return (
+        '<div class="user-menu-quotas">' +
+          '<div class="user-menu-quotas-head"><span>This month\'s usage</span><span class="user-menu-quotas-link"><a href="#/settings?tab=account">Manage</a></span></div>' +
+          '<p class="user-menu-quotas-empty">Loading usage…</p>' +
+        '</div>'
+      );
+    }
+    const monthly = (data.limits && data.limits.monthly) || {};
+    const usage = data.usage || {};
+    // Display order — most common features first.
+    const QUOTAS = [
+      { key: "ai_resumes",        label: "Resume tailors" },
+      { key: "ai_covers",         label: "Cover letters" },
+      { key: "ai_bullets",        label: "Bullet rewrites" },
+      { key: "ai_mocks",          label: "Mock interviews" },
+      { key: "ai_research",       label: "Company research" },
+      { key: "ai_question_banks", label: "Question banks" },
+    ];
+    const visible = QUOTAS.filter(function (q) {
+      const lim = monthly[q.key];
+      // Skip unlimited (null / missing). Free-tier limits of 1 still
+      // render so the user sees how close they are.
+      return typeof lim === "number" && lim > 0;
+    });
+    if (!visible.length) {
+      // Every quota is unlimited (Career plan). Show a quiet badge
+      // instead of an empty bar list.
+      return (
+        '<div class="user-menu-quotas user-menu-quotas--unlimited">' +
+          '<i class="fa-solid fa-infinity" aria-hidden="true"></i>' +
+          '<span>All AI features unlimited on your plan.</span>' +
+        '</div>'
+      );
+    }
+    const st = window.CBV2.sanitizeText || function (x) { return String(x || ""); };
+    const rows = visible.map(function (q) {
+      const used = Number(usage[q.key] || 0);
+      const lim = Number(monthly[q.key]);
+      const pct = Math.max(0, Math.min(100, Math.round((used / lim) * 100)));
+      const tone = pct >= 90 ? "rose" : (pct >= 60 ? "amber" : "ok");
+      return (
+        '<div class="user-menu-quota-row">' +
+          '<div class="user-menu-quota-line">' +
+            '<span class="user-menu-quota-label">' + st(q.label) + '</span>' +
+            '<span class="user-menu-quota-numbers">' + used + ' <span>/ ' + lim + '</span></span>' +
+          '</div>' +
+          '<div class="user-menu-quota-bar"><span class="user-menu-quota-bar-fill user-menu-quota-bar-fill--' + tone + '" style="width:' + pct + '%"></span></div>' +
+        '</div>'
+      );
+    }).join("");
+    return (
+      '<div class="user-menu-quotas">' +
+        '<div class="user-menu-quotas-head">' +
+          '<span>This month\'s usage</span>' +
+          '<a href="#/settings?tab=account" class="user-menu-quotas-link">Manage</a>' +
+        '</div>' +
+        rows +
+      '</div>'
+    );
   }
 
   function renderStatusPillSlot() {
@@ -305,6 +385,31 @@
       if (document.querySelector("[data-user-chip]")) refreshUserChip();
     });
     window.CBV2.__userChipSubscribed = true;
+  }
+
+  // Day 4.5 — subscribe to entitlements changes too so the quota meter
+  // inside the user menu updates live whenever a quota is consumed or
+  // the plan changes. entitlements.recordConsumption + load both
+  // notify subscribers; this hook turns those notifications into a
+  // user-chip repaint so the next dropdown open shows fresh numbers
+  // (and an already-open dropdown updates in place).
+  if (window.CBV2.entitlements && !window.CBV2.__userChipEntSubscribed) {
+    if (typeof window.CBV2.entitlements.onChange === "function") {
+      window.CBV2.entitlements.onChange(function () {
+        if (document.querySelector("[data-user-chip]")) refreshUserChip();
+      });
+      window.CBV2.__userChipEntSubscribed = true;
+    } else {
+      // entitlements.js might still be initializing; retry once.
+      setTimeout(function () {
+        if (window.CBV2.entitlements && typeof window.CBV2.entitlements.onChange === "function" && !window.CBV2.__userChipEntSubscribed) {
+          window.CBV2.entitlements.onChange(function () {
+            if (document.querySelector("[data-user-chip]")) refreshUserChip();
+          });
+          window.CBV2.__userChipEntSubscribed = true;
+        }
+      }, 600);
+    }
   }
 
   window.CBV2.bindUserMenu = function () {
