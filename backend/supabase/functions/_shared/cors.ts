@@ -24,7 +24,10 @@ const SITE_URL = RAW_SITE_URL ?? "*";
 export const corsHeaders = {
   "Access-Control-Allow-Origin": SITE_URL,
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    // Day 3.3: x-cb-admin-nonce is the per-session CSRF token required
+    // on admin mutations. Must be in the allowlist or browsers will
+    // reject preflight from any non-same-origin caller.
+    "authorization, x-client-info, apikey, content-type, x-cb-admin-nonce",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   "Access-Control-Max-Age": "86400",
   Vary: "Origin",

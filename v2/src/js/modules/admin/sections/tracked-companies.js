@@ -37,12 +37,33 @@
   // ----- helpers ---------------------------------------------------------
   function st(v) { return (window.CBV2.sanitizeText || String)(v); }
 
+  // Day 3.3: read the per-session CSRF nonce from sessionStorage (set by
+  // admin.route.js's getAdminCsrfNonce on first admin call). Falls back
+  // to generating one here if this section is hit before any other
+  // admin RPC has fired (unusual but safe).
+  function getCsrfNonce() {
+    try {
+      let n = sessionStorage.getItem("cb_admin_csrf_nonce");
+      if (!n) {
+        const a = (crypto.randomUUID && crypto.randomUUID()) || "";
+        const b = (crypto.randomUUID && crypto.randomUUID()) || "";
+        n = (a + "_" + b).replace(/[^A-Za-z0-9\-_]/g, "").slice(0, 100);
+        if (n.length < 32) n = "fallback_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+        sessionStorage.setItem("cb_admin_csrf_nonce", n);
+      }
+      return n;
+    } catch (_e) {
+      return "ephemeral_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    }
+  }
+
   function callApi(action, payload) {
     const auth = window.CBV2.auth;
     const client = auth && auth.getClient && auth.getClient();
     const body = Object.assign({ action: action }, payload || {});
+    const headers = { "X-CB-Admin-Nonce": getCsrfNonce() };
     if (client && client.functions && typeof client.functions.invoke === "function") {
-      return client.functions.invoke("admin-tracked-companies", { body: body })
+      return client.functions.invoke("admin-tracked-companies", { body: body, headers: headers })
         .then(function (res) {
           if (res.error) throw res.error;
           if (res.data && res.data.ok === false) throw new Error(res.data.error || "API error");

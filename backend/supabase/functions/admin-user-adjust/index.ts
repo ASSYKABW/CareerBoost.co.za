@@ -26,6 +26,8 @@
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
+import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
+import { enforceAdminRate } from "../_shared/admin-rate-limit.ts";
 
 const VALID_ACTIONS = new Set([
   "grant_quota",
@@ -47,12 +49,23 @@ Deno.serve(async (req) => {
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
+  // Day 3.3: CSRF check before auth so a missing nonce returns 403
+  // immediately without paying the auth round-trip cost.
+  const csrf = checkAdminCsrf(req);
+  if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+
   let admin;
   try {
     admin = await getAuthedAdmin(req);
   } catch (err) {
     const msg = (err as Error).message || "Admin access denied.";
     return errorResponse(msg, msg.includes("required") ? 403 : 401);
+  }
+
+  // Day 3.4: per-operator rate limit. 30 mutations / 5 min.
+  const rate = await enforceAdminRate(admin, "admin-user-adjust");
+  if (!rate.allowed) {
+    return errorResponse(rate.reason || "Admin rate limit exceeded.", 429);
   }
 
   let body: Body;

@@ -19,6 +19,8 @@
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
+import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
+import { enforceAdminRate } from "../_shared/admin-rate-limit.ts";
 
 interface Body {
   targetEmail?: string;
@@ -32,6 +34,10 @@ Deno.serve(async (req) => {
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
+  // Day 3.3: CSRF nonce required for promote/demote (security-critical mutation).
+  const csrf = checkAdminCsrf(req);
+  if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+
   let admin;
   try {
     admin = await getAuthedAdmin(req);
@@ -39,6 +45,10 @@ Deno.serve(async (req) => {
     const msg = (err as Error).message || "Admin access denied.";
     return errorResponse(msg, msg.includes("required") ? 403 : 401);
   }
+
+  // Day 3.4: per-operator rate limit.
+  const rate = await enforceAdminRate(admin, "admin-promote-user");
+  if (!rate.allowed) return errorResponse(rate.reason || "Rate limit exceeded.", 429);
 
   let body: Body;
   try {
@@ -75,7 +85,7 @@ Deno.serve(async (req) => {
         });
         return errorResponse("Failed to look up target user: " + error.message, 502);
       }
-      const batch = (data?.users || []) as Array<Record<string, unknown>>;
+      const batch = ((data?.users || []) as unknown) as Array<Record<string, unknown>>;
       const hit = batch.find((u) => String(u.email || "").toLowerCase() === targetEmail);
       if (hit) {
         foundId = String(hit.id || "");

@@ -893,14 +893,48 @@
   // Phase C: Operator Management — list, promote, demote.
   // Uses the same SDK-or-fetch pattern as fetchAdminMetrics so it works in
   // both modern (functions.invoke) and degraded (raw fetch) environments.
+  // Day 3.3: per-session admin CSRF nonce. Stored in sessionStorage so
+  // it dies when the tab closes (limits replay window) and is NOT
+  // automatically attached to cross-origin requests (a malicious page
+  // can't add this custom header to its requests without our origin's
+  // CORS allowing it — which it doesn't). Generated lazily on first
+  // admin call, reused for the rest of the session.
+  function getAdminCsrfNonce() {
+    try {
+      let nonce = sessionStorage.getItem("cb_admin_csrf_nonce");
+      if (!nonce) {
+        // 32 url-safe chars from crypto.randomUUID() (minus the dashes) +
+        // a fresh randomUUID half to total ~50 chars. Well within the
+        // server's 32..128 length window + matches /^[A-Za-z0-9\-_]+$/.
+        const a = (crypto.randomUUID && crypto.randomUUID()) || "";
+        const b = (crypto.randomUUID && crypto.randomUUID()) || "";
+        nonce = (a + "_" + b).replace(/[^A-Za-z0-9\-_]/g, "").slice(0, 100);
+        if (nonce.length < 32) {
+          // Fallback for ancient browsers where crypto.randomUUID is missing.
+          nonce = "fallback_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+        }
+        sessionStorage.setItem("cb_admin_csrf_nonce", nonce);
+      }
+      return nonce;
+    } catch (_e) {
+      // sessionStorage blocked (private mode) — generate one-shot.
+      return "ephemeral_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    }
+  }
+
   async function callAdminEndpoint(name, body) {
     if (!isBackendAdminRuntime()) {
       throw new Error("Sign in as an admin to call " + name + ".");
     }
     const auth = window.CBV2.auth;
     const client = auth && auth.getClient && auth.getClient();
+    // Day 3.3: include the per-session CSRF nonce on every admin call.
+    // The SDK accepts arbitrary headers via the second arg's `headers`
+    // option. Read-only endpoints don't strictly need it but sending it
+    // anyway keeps the client logic simple.
+    const csrfHeaders = { "X-CB-Admin-Nonce": getAdminCsrfNonce() };
     if (client && client.functions && typeof client.functions.invoke === "function") {
-      const invoked = await client.functions.invoke(name, { body: body || {} });
+      const invoked = await client.functions.invoke(name, { body: body || {}, headers: csrfHeaders });
       if (invoked.error) throw new Error(await parseEdgeError(invoked.error));
       return invoked.data;
     }
@@ -908,11 +942,11 @@
     const endpoint = window.CBV2.config.getFunctionsUrl() + "/" + name;
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
+      headers: Object.assign({
         "Content-Type": "application/json",
         Authorization: "Bearer " + token,
         apikey: window.CBV2.config.getSupabaseAnon()
-      },
+      }, csrfHeaders),
       body: JSON.stringify(body || {})
     });
     const result = await response.json();
@@ -1716,14 +1750,52 @@
       return;
     }
 
+    // Day 3.5: dry-run preview. Show the operator the EXACT list of
+    // recipients + the exact payload values BEFORE executing the bulk
+    // loop. Catches "wrong selection" and "wrong payload" mistakes.
+    // List is sorted alphabetically by email for stable reading; capped
+    // at first 200 entries shown (rest is summarized) to keep modal
+    // height manageable on a 50-row bulk.
+    const previewLines = [];
+    const sortedIds = ids.slice().sort(function (a, b) {
+      const ea = String((selectedMap[a] && selectedMap[a].email) || "").toLowerCase();
+      const eb = String((selectedMap[b] && selectedMap[b].email) || "").toLowerCase();
+      return ea.localeCompare(eb);
+    });
+    const showLimit = 200;
+    const shown = sortedIds.slice(0, showLimit);
+    shown.forEach(function (id) {
+      const m = selectedMap[id] || {};
+      const email = m.email || "(no email)";
+      const name = m.fullName || m.name || "";
+      previewLines.push("  " + (name ? name + " <" + email + ">" : email));
+    });
+    const overflowCount = sortedIds.length - shown.length;
+
+    // Format the payload as JSON for accuracy. Truncate any value past
+    // 200 chars so a long email body doesn't blow up the modal.
+    const payloadPreview = JSON.stringify(payload, function (_k, v) {
+      if (typeof v === "string" && v.length > 200) return v.slice(0, 200) + "…";
+      return v;
+    }, 2);
+
+    const previewBody =
+      "ACTION:   " + action + "\n" +
+      "TARGETS:  " + ids.length + " user" + (ids.length === 1 ? "" : "s") + "\n" +
+      "PAYLOAD:  " + payloadPreview + "\n\n" +
+      "RECIPIENTS (alphabetical):\n" +
+      previewLines.join("\n") +
+      (overflowCount > 0 ? "\n  … and " + overflowCount + " more not shown" : "") +
+      "\n\nEach action writes to admin_audit_log with your operator email. This CANNOT be undone.";
+
     const proceed = modal && modal.confirm
       ? await modal.confirm({
-          title: "Confirm bulk action",
-          body: "Apply " + action + " to " + ids.length + " selected user" + (ids.length === 1 ? "" : "s") + "?\n\nEach action writes to the admin audit log with your operator email. This cannot be undone.",
+          title: "Confirm bulk action — review before executing",
+          body: previewBody,
           confirmLabel: confirmLabel,
           tone: confirmTone
         })
-      : confirm("Apply " + action + " to " + ids.length + " users?");
+      : confirm("Apply " + action + " to " + ids.length + " users?\n\nFirst recipient: " + (shown[0] ? (selectedMap[shown[0]] && selectedMap[shown[0]].email) : "?"));
     if (!proceed) return;
 
     // ----- Run sequentially with progress on adminUsersRemote.bulk ----

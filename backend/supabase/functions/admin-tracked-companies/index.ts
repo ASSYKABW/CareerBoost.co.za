@@ -29,6 +29,8 @@
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
+import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
+import { enforceAdminRate } from "../_shared/admin-rate-limit.ts";
 
 const VALID_ATS = new Set(["greenhouse", "lever", "workable", "smartrecruiters", "ashby"]);
 const PROBE_TIMEOUT_MS = 8000;
@@ -114,6 +116,17 @@ Deno.serve(async (req) => {
   const meta = extractRequestMeta(req);
   const svc = getServiceClient();
   const action = String(body.action || "").trim().toLowerCase();
+
+  // Day 3.3: CSRF check on mutating actions only (list + probe are
+  // read-only and don't need nonce — keeps the probe button cheap to
+  // call repeatedly during operator data-entry).
+  if (action !== "list" && action !== "probe") {
+    const csrf = checkAdminCsrf(req);
+    if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+    // Day 3.4: rate-limit mutations only (list/probe stay free).
+    const rate = await enforceAdminRate(admin, "admin-tracked-companies." + action);
+    if (!rate.allowed) return errorResponse(rate.reason || "Rate limit exceeded.", 429);
+  }
 
   // -- list --
   if (action === "list") {
