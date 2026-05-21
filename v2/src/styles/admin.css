@@ -2051,29 +2051,148 @@
   }
 }
 
+/* ============================================================================
+   Day 4.2 — admin shell mobile rework.
+
+   At desktop the sidebar is a 280px sticky column; at <=860px it
+   becomes a slide-in drawer (the previous "stack on top" layout
+   wasted 5+ screens of vertical space before the user reached actual
+   content). The hamburger lives in the topbar (rendered by JS in
+   renderToolbar) and toggles `.is-nav-open` on the shell.
+   ============================================================================ */
+
+/* Hamburger button. Hidden on desktop; revealed at <=860px. */
+.admin-nav-toggle {
+  display: none;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  color: #eef3ff;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.admin-nav-toggle:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Overlay backdrop that closes the drawer on tap. Hidden until
+   .is-nav-open is set on the shell. */
+.admin-nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(2, 4, 10, 0.55);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
 @media (max-width: 860px) {
+  /* Single-column body — sidebar floats above. */
   .admin-shell {
     grid-template-columns: 1fr;
   }
 
+  /* Slide-in drawer. Off-screen by default, brought in by
+     .admin-shell.is-nav-open. */
   .admin-sidebar {
-    position: relative;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    width: min(86vw, 320px);
+    height: 100vh;
+    border-right: 1px solid rgba(148, 163, 184, 0.16);
+    border-bottom: 0;
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    /* iOS safe-area-aware top padding so the brand isn't hidden
+       under the notch on phones. */
+    padding-top: max(22px, env(safe-area-inset-top));
   }
 
-  .admin-topbar {
-    position: relative;
-    grid-template-columns: 1fr;
+  .admin-shell.is-nav-open .admin-sidebar {
+    transform: translateX(0);
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.55);
   }
+
+  .admin-shell.is-nav-open .admin-nav-overlay {
+    display: block;
+  }
+
+  /* Topbar — show hamburger, stack title above actions, tighten
+     padding so the header doesn't dominate the viewport. */
+  .admin-nav-toggle { display: inline-flex; }
+
+  .admin-topbar {
+    position: sticky;
+    min-height: 0;
+    padding: 12px 14px;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "burger title"
+      "actions actions"
+      "operator operator";
+    gap: 10px 12px;
+  }
+  .admin-nav-toggle { grid-area: burger; }
+  .admin-topbar-title { grid-area: title; min-width: 0; }
+  .admin-topbar-actions { grid-area: actions; }
+  .admin-operator { grid-area: operator; }
+
+  .admin-topbar h1 {
+    font-size: 17px;
+    line-height: 1.25;
+    margin: 2px 0 0;
+  }
+  .admin-kicker { font-size: 10px; letter-spacing: 0.16em; }
 
   .admin-topbar-actions {
     justify-content: flex-start;
+    gap: 6px;
+  }
+
+  /* "Supabase role verified" is redundant on mobile — the user
+     already sees the Live + Refreshed chips. Hide it to make room. */
+  .admin-role-chip { display: none; }
+
+  /* Tone down the giant primary refresh button and pull the export
+     button into the same visual weight. */
+  .admin-topbar-actions .btn-primary,
+  .admin-topbar-actions .btn-ghost {
+    padding: 6px 11px;
+    font-size: 12px;
+    height: auto;
+    min-height: 32px;
+    box-shadow: none;
+    background-image: none;
+  }
+  .admin-topbar-actions .btn-primary {
+    background: rgba(34, 197, 94, 0.18);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #b5f5cc;
+  }
+
+  .admin-topbar-actions .chip {
+    font-size: 10.5px;
+    padding: 2px 7px;
+  }
+
+  .admin-operator {
+    margin: 0;
+    font-size: 11.5px;
+    color: #6b778a;
   }
 
   .admin-content {
-    padding: 18px;
+    padding: 16px 14px;
+    gap: 16px;
   }
 
   .admin-usage-hero,
@@ -2102,6 +2221,28 @@
   .admin-support-queue,
   .admin-cohort-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Extra-narrow phones: collapse the kicker entirely and shrink the
+   title one more notch. */
+@media (max-width: 480px) {
+  .admin-topbar h1 { font-size: 16px; }
+  .admin-kicker { display: none; }
+  .admin-content { padding: 14px 12px; gap: 14px; }
+  /* The Export CSV button is rarely tapped on phones — collapse to
+     an icon-only square to save row space. */
+  .admin-topbar-actions .btn-ghost#admin-export {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .admin-topbar-actions .btn-ghost#admin-export span,
+  .admin-topbar-actions .btn-ghost#admin-export {
+    font-size: 0;
+  }
+  .admin-topbar-actions .btn-ghost#admin-export i {
+    font-size: 13px;
   }
 }
 

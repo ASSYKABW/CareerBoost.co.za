@@ -631,14 +631,19 @@
     const name = (profile && profile.full_name) || (user && user.email) || "Operator";
     return (
       '<header class="admin-topbar">' +
-        '<div>' +
+        // Day 4.2 — hamburger button. Visible only at <=860px via CSS.
+        // Toggles `.admin-shell.is-nav-open` which slides the sidebar in.
+        '<button type="button" class="admin-nav-toggle" id="admin-nav-toggle" aria-label="Open navigation" aria-expanded="false">' +
+          '<i class="fa-solid fa-bars" aria-hidden="true"></i>' +
+        '</button>' +
+        '<div class="admin-topbar-title">' +
           '<p class="admin-kicker">CareerBoost Admin</p>' +
           '<h1>Usage &amp; operations command center</h1>' +
         '</div>' +
         '<div class="admin-topbar-actions">' +
           renderRealtimeChip() +
           renderStalenessChip() +
-          '<span class="chip blue"><i class="fa-solid fa-shield-halved"></i> ' + st(access.label || "Admin") + '</span>' +
+          '<span class="chip blue admin-role-chip"><i class="fa-solid fa-shield-halved"></i> ' + st(access.label || "Admin") + '</span>' +
           '<button type="button" class="btn-ghost" id="admin-export"><i class="fa-solid fa-download"></i> Export CSV</button>' +
           '<button type="button" class="btn-primary" id="admin-refresh"><i class="fa-solid fa-rotate"></i> Refresh</button>' +
         '</div>' +
@@ -689,8 +694,11 @@
           : '<p class="admin-copy">Admin section "' + st(active) + '" failed to load.</p>');
 
     return (
-      '<section class="admin-shell">' +
+      '<section class="admin-shell" id="admin-shell">' +
         renderAdminNav(active) +
+        // Day 4.2 — backdrop that closes the slide-in nav on mobile.
+        // Hidden by CSS until .admin-shell.is-nav-open is set.
+        '<button type="button" class="admin-nav-overlay" id="admin-nav-overlay" aria-label="Close navigation" tabindex="-1"></button>' +
         '<main class="admin-main">' +
           renderToolbar(access) +
           '<div class="admin-content">' + content + '</div>' +
@@ -1337,6 +1345,52 @@
 
   window.CBV2.routes.admin = renderView;
   window.CBV2.afterRender.admin = function () {
+    // Day 4.2 — mobile nav toggle. Hamburger button + overlay open/close
+    // the sidebar on screens too narrow to keep it always-visible.
+    // All idempotent: rebinding on every render is fine because
+    // dataset.bound guards each handler.
+    (function bindAdminNavToggle() {
+      const shell = document.getElementById("admin-shell");
+      const toggle = document.getElementById("admin-nav-toggle");
+      const overlay = document.getElementById("admin-nav-overlay");
+      if (!shell || !toggle) return;
+      function close() {
+        shell.classList.remove("is-nav-open");
+        toggle.setAttribute("aria-expanded", "false");
+      }
+      function open() {
+        shell.classList.add("is-nav-open");
+        toggle.setAttribute("aria-expanded", "true");
+      }
+      if (!toggle.dataset.bound) {
+        toggle.dataset.bound = "1";
+        toggle.addEventListener("click", function () {
+          if (shell.classList.contains("is-nav-open")) close(); else open();
+        });
+      }
+      if (overlay && !overlay.dataset.bound) {
+        overlay.dataset.bound = "1";
+        overlay.addEventListener("click", close);
+      }
+      // Tap any nav link → close the drawer so the user lands on the
+      // chosen section instead of being stuck behind the overlay.
+      const sidebar = document.querySelector(".admin-sidebar");
+      if (sidebar && !sidebar.dataset.linksBound) {
+        sidebar.dataset.linksBound = "1";
+        sidebar.addEventListener("click", function (ev) {
+          const a = ev.target && ev.target.closest && ev.target.closest("a.admin-nav-link, a.admin-return-link");
+          if (a) close();
+        });
+      }
+      // Esc closes the drawer.
+      if (!document.body.dataset.adminEscBound) {
+        document.body.dataset.adminEscBound = "1";
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape" && shell.classList.contains("is-nav-open")) close();
+        });
+      }
+    })();
+
     // Day 3.2 — kick the MFA snapshot if it hasn't loaded yet so the
     // loading placeholder resolves to either the challenge form, the
     // enroll nudge, or the actual admin console. Also bind the form

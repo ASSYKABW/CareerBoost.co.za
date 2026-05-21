@@ -549,6 +549,10 @@
   background: rgba(255, 255, 255, 0.03);
   color: var(--color-text-muted);
   letter-spacing: 0.01em;
+  /* Day 4.2: chips are atomic labels (e.g. "2 open incidents") —
+     never let the browser break their text across two lines, which
+     makes them look like two broken chips stacked on top of each other. */
+  white-space: nowrap;
 }
 .chip-sm { font-size: 10px; padding: 2px 7px; }
 
