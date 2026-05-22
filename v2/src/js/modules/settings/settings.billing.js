@@ -252,8 +252,81 @@
       if (url) window.location.href = url;
     } catch (err) {
       const portalBtn2 = document.getElementById("billing-portal");
-      if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Could not open portal.");
+      const msg = (err && err.message) || "Could not open portal.";
+      // Fallback path: when PayStack has no subscription_code for the
+      // user (test-mode quirk where charge.success fired without
+      // subscription.create), or any other portal-blocked state,
+      // offer a direct "Switch to Free plan" downgrade so the user
+      // isn't trapped on a plan they can't manage.
+      const noSub = /no active.*subscription/i.test(msg) || /not yet available/i.test(msg);
+      if (noSub) {
+        const modal = window.CBV2 && window.CBV2.modal;
+        const proceed = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Switch back to the Free plan?",
+              body:
+                "Your subscription isn't manageable through the PayStack portal right now " +
+                "(this can happen on test transactions or partial signups). " +
+                "We can immediately switch you to the Free plan instead. " +
+                "Your data stays — only the plan changes.",
+              confirmLabel: "Switch to Free",
+              cancelLabel: "Keep my plan",
+              tone: "danger",
+            })
+          : window.confirm("Switch back to the Free plan?");
+        if (proceed) {
+          await directDowngradeToFree();
+          if (portalBtn2) portalBtn2.disabled = false;
+          return;
+        }
+      }
+      if (window.CBV2.toast) window.CBV2.toast.error(msg);
       if (portalBtn2) portalBtn2.disabled = false;
+    }
+  }
+
+  // Direct downgrade — bypasses the billing portal. Calls the
+  // downgrade-to-free edge function which best-effort disables the
+  // PayStack subscription (if any) and updates the local subscriptions
+  // row to plan_id='free'. Used as the fallback path from openPortal()
+  // when the portal can't be opened.
+  async function directDowngradeToFree() {
+    const auth = window.CBV2 && window.CBV2.auth;
+    const c = window.CBV2 && window.CBV2.config;
+    if (!auth || !c) return;
+    try {
+      const client = auth.getClient && auth.getClient();
+      let response;
+      if (client && client.functions && typeof client.functions.invoke === "function") {
+        const invoked = await client.functions.invoke("downgrade-to-free", { body: {} });
+        if (invoked.error) throw new Error(invoked.error.message || "Downgrade failed.");
+        response = invoked.data;
+      } else {
+        const token = await auth.getAccessToken();
+        const resp = await fetch(c.getFunctionsUrl() + "/downgrade-to-free", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+            apikey: c.getSupabaseAnon(),
+          },
+          body: "{}",
+        });
+        response = await resp.json();
+        if (!resp.ok || !response.ok) throw new Error((response && response.error) || ("HTTP " + resp.status));
+      }
+      // Refresh entitlements so the UI reflects the new free plan.
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && typeof ent.load === "function") {
+        try { await ent.load(true); } catch (_e) {}
+      }
+      if (window.CBV2.toast) {
+        window.CBV2.toast.success("Switched to Free plan. All quotas reset to free-tier limits.");
+      }
+    } catch (err) {
+      if (window.CBV2.toast) {
+        window.CBV2.toast.error("Couldn't switch to Free: " + ((err && err.message) || "unknown error"));
+      }
     }
   }
 
