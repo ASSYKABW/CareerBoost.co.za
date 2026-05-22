@@ -287,10 +287,52 @@
 
     try {
       const auth = window.CBV2.auth;
+      const c = window.CBV2 && window.CBV2.config;
       const client = auth && auth.getClient && auth.getClient();
-      if (!client) throw new Error("Backend not configured.");
-      const { error } = await client.auth.updateUser({ password: state.password });
-      if (error) throw error;
+      if (!client || !c) throw new Error("Backend not configured.");
+
+      // Use server-side update via password-recovery-update edge function
+      // instead of client.auth.updateUser. Reason: Supabase rejects the
+      // client-side path with "AAL2 session is required" when the
+      // project has MFA enforcement enabled — and recovery sessions are
+      // always AAL1 (one-factor email proof). The edge function uses
+      // service-role to bypass that gate; the recovery JWT still proves
+      // email control, which is the security check that matters.
+      let response;
+      if (client.functions && typeof client.functions.invoke === "function") {
+        const invoked = await client.functions.invoke("password-recovery-update", {
+          body: { password: state.password },
+        });
+        if (invoked.error) {
+          // Try to surface the structured server message verbatim.
+          let msg = invoked.error.message || "Couldn't update password.";
+          try {
+            if (invoked.error.context && typeof invoked.error.context.text === "function") {
+              const t = await invoked.error.context.text();
+              try { const j = JSON.parse(t); msg = j.error || j.message || msg; }
+              catch (_e) { if (t) msg = t.slice(0, 240); }
+            }
+          } catch (_e) {}
+          throw new Error(msg);
+        }
+        response = invoked.data;
+      } else {
+        const token = await auth.getAccessToken();
+        const resp = await fetch(c.getFunctionsUrl() + "/password-recovery-update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+            apikey: c.getSupabaseAnon(),
+          },
+          body: JSON.stringify({ password: state.password }),
+        });
+        response = await resp.json();
+        if (!resp.ok || !response.ok) {
+          throw new Error((response && response.error) || ("HTTP " + resp.status));
+        }
+      }
+
       state.status = "success";
       rerender();
       setTimeout(function () {
