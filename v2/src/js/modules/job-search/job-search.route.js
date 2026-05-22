@@ -1049,24 +1049,53 @@
 
   function renderSavedWorkspace(st) {
     const rows = (window.CBV2.store.getSavedSearches && window.CBV2.store.getSavedSearches()) || [];
-    const head =
+    const savedJobs = (window.CBV2.store.getSavedJobs && window.CBV2.store.getSavedJobs()) || [];
+
+    // Day 4.6 follow-up — the Saved tab used to only show saved
+    // SEARCHES (the dashboard-digest queries). Bookmarked JOBS lived
+    // in cache.savedJobs with no UI surface — they accumulated in
+    // localStorage and only the count chip in the header reflected
+    // them, leaving users to wonder "where are my 9 saved jobs?"
+    // This block renders them above the saved-searches list.
+    const jobsHead =
       '<div class="resume-section-head job-search-saved-head">' +
-      '<h2><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Saved searches</h2>' +
+      '<h2><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Saved jobs</h2>' +
+      '<span class="chip subtle">' +
+      st(String(savedJobs.length) + " role" + (savedJobs.length === 1 ? "" : "s") + " bookmarked") +
+      "</span>" +
+      "</div>";
+
+    let jobsBody = "";
+    if (!savedJobs.length) {
+      jobsBody =
+        '<div class="job-search-saved-empty muted">' +
+        st("No jobs bookmarked yet. Run a search, then click the bookmark icon on any role to save it here.") +
+        "</div>";
+    } else {
+      jobsBody =
+        '<ul class="job-search-saved-jobs-list" id="job-search-saved-jobs-list">' +
+        savedJobs.map(function (job) { return renderSavedJobRow(job, st); }).join("") +
+        "</ul>";
+    }
+
+    const searchesHead =
+      '<div class="resume-section-head job-search-saved-head">' +
+      '<h2><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Saved searches</h2>' +
       '<span class="chip subtle">' +
       st(String(rows.length) + " pick" + (rows.length === 1 ? "" : "s") + " · dashboard digest uses these") +
                   "</span>" +
       "</div>";
 
-    let body = "";
+    let searchesBody = "";
     if (!rows.length) {
-      body =
+      searchesBody =
         '<div class="job-search-saved-empty muted">' +
         st(
           "No saved searches yet. Switch to Search, enter a query, then use “Save search” — they power the dashboard digest and show up here."
         ) +
         "</div>";
     } else {
-      body =
+      searchesBody =
         '<ul class="job-search-saved-list" id="job-search-saved-list">' +
         rows.map(function (row) {
           return renderSavedRow(row, st);
@@ -1077,10 +1106,74 @@
     return (
       '<div class="job-search-saved-workspace" id="job-search-saved-root">' +
       '<article class="card panel-lg job-search-saved-card">' +
-      head +
-      body +
+      jobsHead +
+      jobsBody +
+      "</article>" +
+      '<article class="card panel-lg job-search-saved-card">' +
+      searchesHead +
+      searchesBody +
       "</article>" +
       "</div>"
+    );
+  }
+
+  // Day 4.6 follow-up — single saved-job row. Shows title, company,
+  // location, posted date, fit chip if available, plus action buttons:
+  // Open (external URL), Apply (move into Pipeline as a real application
+  // row), Remove (unbookmark). Wiring lives in the existing
+  // job-search afterRender hook via event delegation on
+  // [data-saved-job-action].
+  function renderSavedJobRow(job, st) {
+    const j = job || {};
+    const title = st(j.title || "Untitled role");
+    const company = st(j.company || "");
+    const location = st(j.location || (j.remote ? "Remote" : ""));
+    const url = j.url ? String(j.url) : "";
+    const score = typeof j.roleFitScore === "number" ? j.roleFitScore : null;
+    const fitChip = (score !== null && fitChipLabel)
+      ? fitChipLabel(score)
+      : "";
+    const remoteChip = j.remote
+      ? '<span class="chip blue chip-sm"><i class="fa-solid fa-house-laptop" aria-hidden="true"></i> Remote</span>'
+      : "";
+    const postedLine = j.postedAt && typeof formatPostedLine === "function"
+      ? formatPostedLine(j.postedAt)
+      : "";
+    const savedAt = j.savedAt ? new Date(j.savedAt) : null;
+    const savedAgo = savedAt
+      ? '<span class="muted job-search-saved-job-meta">Saved ' + st(savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric" })) + "</span>"
+      : "";
+
+    const openBtn = url
+      ? '<a class="btn-ghost btn-sm" href="' + st(url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open</a>'
+      : "";
+    const applyBtn =
+      '<button type="button" class="btn-primary btn-sm" data-saved-job-action="apply" data-job-id="' + st(j.id || "") + '">' +
+      '<i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Apply</button>';
+    const removeBtn =
+      '<button type="button" class="btn-ghost btn-sm" data-saved-job-action="remove" data-job-id="' + st(j.id || "") + '" title="Remove from saved">' +
+      '<i class="fa-solid fa-xmark" aria-hidden="true"></i></button>';
+
+    return (
+      '<li class="job-search-saved-job-row" data-saved-job-id="' + st(j.id || "") + '">' +
+        '<div class="job-search-saved-job-main">' +
+          '<div class="job-search-saved-job-title">' +
+            '<strong>' + title + '</strong>' +
+            (fitChip ? ' ' + fitChip : "") +
+            (remoteChip ? ' ' + remoteChip : "") +
+          '</div>' +
+          '<div class="job-search-saved-job-meta-row">' +
+            (company ? '<span class="job-search-saved-job-meta">' + company + '</span>' : "") +
+            (location ? '<span class="job-search-saved-job-meta">· ' + location + '</span>' : "") +
+            (postedLine ? '<span class="job-search-saved-job-meta">· ' + st(postedLine) + '</span>' : "") +
+            (savedAgo ? ' · ' + savedAgo : "") +
+          '</div>' +
+        '</div>' +
+        '<div class="job-search-saved-job-actions">' +
+          openBtn + applyBtn + removeBtn +
+        '</div>' +
+      '</li>'
     );
   }
 
@@ -2395,26 +2488,88 @@
     if (!root || root.getAttribute("data-job-search-saved-bound") === "1") return;
     root.setAttribute("data-job-search-saved-bound", "1");
     root.addEventListener("click", async function (e) {
-      const btn = e.target && e.target.closest ? e.target.closest("[data-delete-saved]") : null;
-      if (!btn) return;
-      const id = btn.getAttribute("data-delete-saved");
-      if (!id) return;
-      // Phase 4.5: in-app modal replaces native confirm.
-      const modal = window.CBV2 && window.CBV2.modal;
-      const ok = modal && modal.confirm
-        ? await modal.confirm({
-            title: "Remove saved search?",
-            body: "It will be removed from your picks and from the digest email list. You can save it again later.",
-            confirmLabel: "Remove",
-            tone: "danger",
-          })
-        : window.confirm("Remove this saved search from your picks and digest list?");
-      if (!ok) return;
+      const target = e.target && e.target.closest ? e.target : null;
+      if (!target) return;
+
+      // ----- Saved-search delete (existing behavior) -----
+      const searchBtn = target.closest("[data-delete-saved]");
+      if (searchBtn) {
+        const id = searchBtn.getAttribute("data-delete-saved");
+        if (!id) return;
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Remove saved search?",
+              body: "It will be removed from your picks and from the digest email list. You can save it again later.",
+              confirmLabel: "Remove",
+              tone: "danger",
+            })
+          : window.confirm("Remove this saved search from your picks and digest list?");
+        if (!ok) return;
+        const store = window.CBV2.store;
+        if (!store || typeof store.deleteSavedSearch !== "function") return;
+        store.deleteSavedSearch(id);
+        if (window.CBV2.toast) window.CBV2.toast.success("Saved search removed.");
+        window.CBV2.renderCurrentRoute();
+        return;
+      }
+
+      // ----- Saved-job actions (Day 4.6 follow-up) -----
+      // [data-saved-job-action="apply"|"remove"] data-job-id="..."
+      const jobBtn = target.closest("[data-saved-job-action]");
+      if (!jobBtn) return;
+      const action = jobBtn.getAttribute("data-saved-job-action");
+      const jobId = jobBtn.getAttribute("data-job-id");
+      if (!action || !jobId) return;
       const store = window.CBV2.store;
-      if (!store || typeof store.deleteSavedSearch !== "function") return;
-      store.deleteSavedSearch(id);
-      if (window.CBV2.toast) window.CBV2.toast.success("Saved search removed.");
-      window.CBV2.renderCurrentRoute();
+      if (!store) return;
+      const savedJobs = (store.getSavedJobs && store.getSavedJobs()) || [];
+      const job = savedJobs.find(function (j) { return j && j.id === jobId; });
+      if (!job) {
+        if (window.CBV2.toast) window.CBV2.toast.error("Couldn't find that saved job.");
+        return;
+      }
+
+      if (action === "apply") {
+        if (!job.url) {
+          if (window.CBV2.toast) window.CBV2.toast.error("This saved job has no URL — can't move to Pipeline.");
+          return;
+        }
+        if (typeof store.saveApplicationFromJobUrl !== "function") return;
+        const res = store.saveApplicationFromJobUrl(job.url, {
+          company: job.company || "",
+          role: job.title || "",
+        });
+        if (!res || !res.ok) {
+          // Most common: duplicate. Still remove from bookmarks so the
+          // user's saved-jobs list reflects reality.
+          if (typeof store.unbookmarkJob === "function") store.unbookmarkJob(job.id);
+          if (window.CBV2.toast) window.CBV2.toast.info((res && res.error) || "Already in your Pipeline.");
+          window.CBV2.renderCurrentRoute();
+          return;
+        }
+        if (typeof store.unbookmarkJob === "function") store.unbookmarkJob(job.id);
+        if (window.CBV2.toast) window.CBV2.toast.success("Added to Pipeline — tailor a resume and apply.");
+        window.CBV2.renderCurrentRoute();
+        return;
+      }
+
+      if (action === "remove") {
+        const modal = window.CBV2 && window.CBV2.modal;
+        const ok = modal && modal.confirm
+          ? await modal.confirm({
+              title: "Remove saved job?",
+              body: 'Remove <strong>' + (job.title || "this role") + (job.company ? " · " + job.company : "") + '</strong> from your saved list. You can bookmark it again from a search result later.',
+              confirmLabel: "Remove",
+              tone: "danger",
+            })
+          : window.confirm("Remove " + (job.title || "this saved job") + "?");
+        if (!ok) return;
+        if (typeof store.unbookmarkJob === "function") store.unbookmarkJob(job.id);
+        if (window.CBV2.toast) window.CBV2.toast.success("Removed from saved jobs.");
+        window.CBV2.renderCurrentRoute();
+        return;
+      }
     });
   }
 

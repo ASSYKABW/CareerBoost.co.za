@@ -3187,6 +3187,87 @@
   max-width: 62ch;
 }
 
+/* ---- Day 4.6 follow-up: bookmarked-job rows in the Saved tab ---- */
+.job-search-saved-jobs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.job-search-saved-job-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.job-search-saved-job-row:hover {
+  border-color: rgba(94, 234, 212, 0.28);
+  background: rgba(94, 234, 212, 0.04);
+}
+.job-search-saved-job-main {
+  min-width: 0;
+  flex: 1;
+}
+.job-search-saved-job-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.job-search-saved-job-title strong {
+  font-size: 14px;
+  color: #f2f4fb;
+  font-weight: 600;
+}
+.job-search-saved-job-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  font-size: 12px;
+  color: #8b92a6;
+  align-items: baseline;
+  line-height: 1.4;
+}
+.job-search-saved-job-meta { color: #aab4c4; }
+.job-search-saved-job-meta-row .muted { color: #6b778a; }
+.job-search-saved-job-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.job-search-saved-job-actions .btn-sm {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+@media (max-width: 640px) {
+  .job-search-saved-job-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .job-search-saved-job-actions {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .job-search-saved-job-actions .btn-sm {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
 .job-search-saved-list {
   list-style: none;
   margin: 0;
