@@ -167,6 +167,13 @@
     if (!ent || typeof ent.get !== "function") return "";
     const data = ent.get();
     if (!data) {
+      // Best-effort: kick a load so the placeholder gets replaced as
+      // soon as entitlements arrives. Fire-and-forget — the
+      // entitlements.onChange subscription wired above repaints the
+      // chip when load() resolves.
+      if (typeof ent.load === "function") {
+        try { ent.load(false).catch(function () {}); } catch (_e) {}
+      }
       // Placeholder so the menu height is predictable on cold open.
       return (
         '<div class="user-menu-quotas">' +
@@ -361,15 +368,34 @@
   // Repaints the topbar user-chip (avatar + dropdown) without re-rendering
   // the entire app shell. Used by the Profile settings page after avatar
   // upload / name change so the change is visible instantly.
+  //
+  // Day 4.5 — preserve the open/closed state of the dropdown across
+  // the swap. Previously, entitlements-driven repaints would
+  // collapse the user's open menu mid-click because the fresh chip
+  // started with menu.hidden=true. We carry the state forward.
   function refreshUserChip() {
     const actions = document.querySelector(".topbar-actions");
     if (!actions) return;
     const existing = actions.querySelector("[data-user-chip]");
+    // Capture open/closed state before swap so live repaints don't
+    // close the dropdown the user is actively looking at.
+    const wasOpen = existing
+      ? !!(existing.querySelector("[data-user-menu]") && !existing.querySelector("[data-user-menu]").hidden)
+      : false;
     const html = renderUserChip();
     const tmp = document.createElement("div");
     tmp.innerHTML = html;
     const fresh = tmp.firstElementChild;
     if (!fresh) return;
+    // Restore open state on the fresh element before swap so there's
+    // no visual flicker.
+    if (wasOpen) {
+      const freshMenu = fresh.querySelector("[data-user-menu]");
+      const freshBtn = fresh.querySelector("[data-user-toggle]");
+      if (freshMenu) freshMenu.hidden = false;
+      if (freshBtn) freshBtn.setAttribute("aria-expanded", "true");
+      fresh.classList.add("is-open");
+    }
     if (existing) {
       existing.replaceWith(fresh);
     } else {
@@ -438,6 +464,20 @@
       menu.hidden = !isOpen;
       btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
       wrap.classList.toggle("is-open", isOpen);
+      // Day 4.5 — when opening the menu, force-refresh the quota meter
+      // if it's still showing the placeholder. Covers the edge case
+      // where the entitlements subscription didn't fire (e.g. first
+      // open before load() resolved).
+      if (isOpen) {
+        const ent = window.CBV2 && window.CBV2.entitlements;
+        if (ent && typeof ent.load === "function" && typeof ent.get === "function") {
+          if (!ent.get()) {
+            // Cold state — kick a load. Once it resolves, the
+            // entitlements.onChange subscription repaints the chip.
+            ent.load(false).catch(function () {});
+          }
+        }
+      }
     }
 
     if (btn && menu) {
