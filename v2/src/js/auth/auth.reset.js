@@ -324,15 +324,43 @@
     }
     const conf = document.getElementById("auth-reset-confirm");
     if (conf) {
+      // Mismatch banner UX: only show while typing when the user has
+      // entered AT LEAST as many characters as the password — typing
+      // "p" doesn't mean "doesn't match", just "not finished".
+      // Also show on blur (covers the case where they Tab away before
+      // typing enough chars). Reset on focus so the user isn't stared
+      // down by an error the moment they refocus to fix it.
+      function shouldShowMismatch() {
+        if (!state.confirm) return false;
+        if (state.confirm.length < state.password.length) return false;
+        return state.password !== state.confirm;
+      }
+      function syncMismatchBanner() {
+        const banner = document.querySelector(".auth-form .ai-notice.rose");
+        const want = shouldShowMismatch() && !state.error;
+        if (want && !banner) rerender();
+        if (!want && banner && !state.error) rerender();
+      }
       conf.addEventListener("input", function () {
         state.confirm = conf.value;
-        // Only re-render if the mismatch banner state changed (otherwise
-        // typing in the confirm field would lose focus).
-        const mismatch = state.confirm && state.password !== state.confirm;
+        syncMismatchBanner();
+      });
+      conf.addEventListener("blur", function () {
+        // On blur, show mismatch even if shorter than password — they're
+        // done with the field and the values don't agree.
+        state.confirm = conf.value;
+        if (state.confirm && state.password !== state.confirm && !state.error) {
+          const banner = document.querySelector(".auth-form .ai-notice.rose");
+          if (!banner) rerender();
+        }
+      });
+      conf.addEventListener("focus", function () {
+        // Clear stale mismatch banner so the user can fix without being
+        // yelled at while they're trying.
         const banner = document.querySelector(".auth-form .ai-notice.rose");
-        const shouldShow = mismatch && !state.error;
-        if (shouldShow && !banner) rerender();
-        if (!shouldShow && banner && !state.error) rerender();
+        if (banner && !state.error) {
+          banner.remove();
+        }
       });
     }
   }
