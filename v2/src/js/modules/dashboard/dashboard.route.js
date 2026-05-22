@@ -414,15 +414,15 @@
   // Picks ONE primary CTA based on the most urgent signal.
   function buildPrimaryCta(apps, metrics, derived) {
     if (!apps.length) {
-      // Day 4.6 — if the user has saved roles waiting, the most
-      // valuable next action is opening Pipeline to apply, not running
-      // another search. Mirrors the hero copy logic above.
+      // Day 4.6 — if the user has saved roles waiting, route them to
+      // the Saved tab in Job Search. Pipeline is for applications; the
+      // saved bookmarks live under #/job-search?tab=saved.
       const savedCount = Number(derived.savedJobsCount || 0);
       if (savedCount > 0) {
         return {
           label: "Open " + savedCount + " saved role" + (savedCount === 1 ? "" : "s"),
-          href: "#/applications",
-          icon: "fa-list-check"
+          href: "#/job-search?tab=saved",
+          icon: "fa-bookmark"
         };
       }
       if (derived.preferredTarget) {
@@ -491,11 +491,15 @@
       // applications have been filed yet. Order matters: most actionable
       // signal first (saved-but-not-applied), then "toolkit's ready",
       // then the totally-new welcome.
+      //
+      // Saved jobs live in Job Search's "Saved" tab (?tab=saved), NOT
+      // in Pipeline — Pipeline is for applications. The hero copy
+      // points the user to the right place so the CTA below resolves.
       const savedCount = Number(derived.savedJobsCount || 0);
       if (savedCount > 0) {
         return {
           main: '<em>' + savedCount + '</em> saved role' + (savedCount === 1 ? "" : "s") + ' waiting for an application.',
-          sub:  "Open Pipeline to tailor a resume and apply — most users start their first send within a week of saving."
+          sub:  "Open the Saved tab in Job Search to pick one, tailor a resume, and apply."
         };
       }
       if (hasOtherActivity()) {
