@@ -290,8 +290,67 @@
       hotSearches: hotSearches,
       highFitRecentSaved: highFitRecentSaved,
       hasRoleFocus: hasRoleFocus,
-      preferredTarget: preferredTarget
+      preferredTarget: preferredTarget,
+      // Day 4.6 — content the user has built outside the applications
+      // pipeline. Used so the dashboard doesn't render the cold-start
+      // storyboard or "let's start from scratch" hero when they
+      // actually have a resume saved, jobs bookmarked, or interview
+      // history — they're not new, just between application rounds.
+      savedJobsCount: Array.isArray(savedJobs) ? savedJobs.length : 0
     };
+  }
+
+  // Day 4.6 — detect whether the user has *any* content in the
+  // candidate tables. Used to gate the "you have nothing" hero +
+  // storyboard so they don't show for returning users who have a
+  // resume / saved jobs / cover letters / interview history but no
+  // applications yet.
+  //
+  // Cheap reads from the local store; called once per dashboard
+  // render so the cost is negligible.
+  function hasOtherActivity() {
+    const store = window.CBV2 && window.CBV2.store;
+    if (!store) return false;
+    // Resume — base text typed in OR structured editor data OR saved CVs.
+    try {
+      const r = store.getResumeStructured && store.getResumeStructured();
+      if (r) return true;
+    } catch (_e) {}
+    try {
+      if (typeof store.getResumeBase === "function") {
+        const base = store.getResumeBase();
+        if (base && String(base).trim().length > 50) return true;
+      }
+    } catch (_e) {}
+    // Cover letters.
+    try {
+      const cl = store.getCoverLetterState && store.getCoverLetterState();
+      if (cl && (
+        (Array.isArray(cl.variants) && cl.variants.length) ||
+        (Array.isArray(cl.rolePacks) && cl.rolePacks.length) ||
+        cl.lastResult
+      )) return true;
+    } catch (_e) {}
+    // Interview history.
+    try {
+      const ivSet = store.getInterviewSet && store.getInterviewSet();
+      if (ivSet) return true;
+    } catch (_e) {}
+    try {
+      const mock = store.getInterviewMockSession && store.getInterviewMockSession();
+      if (mock) return true;
+    } catch (_e) {}
+    // Saved jobs.
+    try {
+      const saved = store.getSavedJobs && store.getSavedJobs();
+      if (Array.isArray(saved) && saved.length) return true;
+    } catch (_e) {}
+    // Saved searches.
+    try {
+      const ss = store.getSavedSearches && store.getSavedSearches();
+      if (Array.isArray(ss) && ss.length) return true;
+    } catch (_e) {}
+    return false;
   }
 
   // ---------------------------------------------------------------------------
@@ -355,6 +414,17 @@
   // Picks ONE primary CTA based on the most urgent signal.
   function buildPrimaryCta(apps, metrics, derived) {
     if (!apps.length) {
+      // Day 4.6 — if the user has saved roles waiting, the most
+      // valuable next action is opening Pipeline to apply, not running
+      // another search. Mirrors the hero copy logic above.
+      const savedCount = Number(derived.savedJobsCount || 0);
+      if (savedCount > 0) {
+        return {
+          label: "Open " + savedCount + " saved role" + (savedCount === 1 ? "" : "s"),
+          href: "#/applications",
+          icon: "fa-list-check"
+        };
+      }
       if (derived.preferredTarget) {
         return {
           label: "Find roles for " + derived.preferredTarget,
@@ -417,6 +487,25 @@
     const name = st(firstName());
     const preferredTarget = st(derived.preferredTarget || "");
     if (!apps.length) {
+      // Day 4.6 — acknowledge other content the user has built when no
+      // applications have been filed yet. Order matters: most actionable
+      // signal first (saved-but-not-applied), then "toolkit's ready",
+      // then the totally-new welcome.
+      const savedCount = Number(derived.savedJobsCount || 0);
+      if (savedCount > 0) {
+        return {
+          main: '<em>' + savedCount + '</em> saved role' + (savedCount === 1 ? "" : "s") + ' waiting for an application.',
+          sub:  "Open Pipeline to tailor a resume and apply — most users start their first send within a week of saving."
+        };
+      }
+      if (hasOtherActivity()) {
+        // They have a resume / cover letter / interview history but
+        // haven't applied yet. Treat as "between rounds", not "new".
+        return {
+          main: 'Toolkit\'s ready, <em>' + name + '</em>. Time to find roles.',
+          sub:  "Your resume + assets are saved. Run a targeted search or open the command palette to jump straight to applying."
+        };
+      }
       if (preferredTarget) {
         return {
           main: "Let's land your first <em>" + preferredTarget + "</em> role.",
@@ -1145,8 +1234,12 @@
     const metrics = computeMetrics(apps);
     const derived = deriveState(apps, events, savedSearches, state.digest, savedJobs, effectiveRoleProfile);
 
-    // Cold-start: no apps AND no events → show guided ladder only.
-    if (!apps.length && !events.length) {
+    // Cold-start: TRULY empty — no apps, no events, no resume / saved
+    // jobs / cover letters / interview history. The previous gate only
+    // checked apps + events, so a returning user who'd built a resume
+    // or saved jobs but hadn't applied yet got hit with the marketing
+    // storyboard meant for first-time visitors. Day 4.6 fix.
+    if (!apps.length && !events.length && !hasOtherActivity()) {
       return `
         <section class="page-container">
           ${renderHero(apps, metrics, derived)}
