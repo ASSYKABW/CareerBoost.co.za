@@ -24,12 +24,19 @@
   window.CBV2 = window.CBV2 || {};
   if (window.CBV2.upgradeModal && window.CBV2.upgradeModal._installed) return;
 
+  // Each plan carries prices for ALL supported currencies. The render
+  // step picks the right one based on the active currency. ZAR prices
+  // match plan_catalog seeded by migration 0027; USD prices match the
+  // original plan_catalog seed (kept for when USD settlement is
+  // activated on PayStack later).
   const PLAN_DEFS = [
     {
       id: "plus",
       label: "Plus",
-      price: 9.99,
-      annual: 89,
+      prices: {
+        ZAR: { monthly: 179,  annual: 1790 },
+        USD: { monthly: 9.99, annual: 89   },
+      },
       tagline: "For active job seekers",
       perks: [
         "10 resume tailorings / month",
@@ -42,8 +49,10 @@
     {
       id: "pro",
       label: "Pro",
-      price: 19.99,
-      annual: 179,
+      prices: {
+        ZAR: { monthly: 349,   annual: 3490 },
+        USD: { monthly: 19.99, annual: 179  },
+      },
       featured: true,
       tagline: "Most popular",
       perks: [
@@ -58,8 +67,10 @@
     {
       id: "career",
       label: "Career",
-      price: 39.99,
-      annual: 349,
+      prices: {
+        ZAR: { monthly: 699,   annual: 6990 },
+        USD: { monthly: 39.99, annual: 349  },
+      },
       tagline: "For executives + career changers",
       perks: [
         "Everything unlimited",
@@ -70,6 +81,58 @@
       ]
     },
   ];
+
+  // Currency display helpers.
+  const CURRENCY_SYMBOL = { ZAR: "R", USD: "$" };
+  function formatPrice(amount, currency) {
+    const sym = CURRENCY_SYMBOL[currency] || "";
+    // ZAR is typically shown without decimals at round-number prices
+    // (R179, not R179.00); USD with two decimals at sub-dollar prices.
+    if (currency === "ZAR" && Number.isInteger(amount)) {
+      return sym + amount.toLocaleString();
+    }
+    return sym + amount.toFixed(2);
+  }
+
+  // Detect default currency for a fresh modal open. Priority:
+  //   1. URL ?currency=ZAR|USD (lets us link people to a specific view)
+  //   2. Saved preference (sticky once toggled)
+  //   3. Browser locale starting with en-ZA → ZAR
+  //   4. Default → ZAR  (we're SA-first; USD readers can toggle)
+  // Falls back to ZAR if anything goes sideways.
+  function detectDefaultCurrency() {
+    try {
+      const url = new URL(window.location.href);
+      const q = url.searchParams.get("currency");
+      if (q === "ZAR" || q === "USD") return q;
+    } catch (_e) {}
+    try {
+      const saved = localStorage.getItem("cbv2_billing_currency");
+      if (saved === "ZAR" || saved === "USD") return saved;
+    } catch (_e) {}
+    try {
+      const lang = (navigator.language || "").toLowerCase();
+      if (lang.startsWith("en-za") || lang.endsWith("-za")) return "ZAR";
+    } catch (_e) {}
+    return "ZAR";
+  }
+
+  // Returns true if USD plans appear to be available. For now this is
+  // a runtime feature flag — if plan_catalog has any USD plan codes
+  // populated (set via the SQL editor after PayStack USD activation),
+  // entitlements will reflect it and we can show the currency toggle.
+  // Until then, ZAR-only.
+  //
+  // We check entitlements.get().limits, which exposes plan limits but
+  // NOT the plan codes themselves. As a heuristic we assume USD is on
+  // if the cbv2_billing_usd_enabled flag is in localStorage (set by
+  // ops once they've registered USD plans). This avoids a separate
+  // fetch on every modal open.
+  function isUsdEnabled() {
+    try {
+      return localStorage.getItem("cbv2_billing_usd_enabled") === "1";
+    } catch (_e) { return false; }
+  }
 
   // Default copy keyed off the reason + which feature/quota triggered it.
   function buildCopy(spec) {
@@ -187,6 +250,7 @@
     const copy = buildCopy(spec);
     const recommendedId = pickRecommended(spec);
     let interval = "monthly"; // toggleable
+    let currency = detectDefaultCurrency(); // ZAR | USD — toggleable when USD is live
 
     return new Promise(function (resolve) {
       const backdrop = document.createElement("div");
@@ -195,14 +259,19 @@
       backdrop.setAttribute("aria-modal", "true");
 
       function render() {
+        const showCurrencyToggle = isUsdEnabled();
+        // Annual price displayed as per-month equivalent for easy compare
+        // (e.g. R1,790/yr ÷ 12 = R149/mo), with the headline annual price
+        // in the period note so the user knows what the actual charge is.
         const plansHtml = PLAN_DEFS.map(function (p) {
           const isRec = p.id === recommendedId;
           const isFeat = !!p.featured;
-          const price = interval === "annual"
-            ? (p.annual / 12).toFixed(2)
-            : p.price.toFixed(2);
+          const priceTable = (p.prices && p.prices[currency]) || p.prices.ZAR;
+          const headlineAmount = interval === "annual"
+            ? (priceTable.annual / 12)
+            : priceTable.monthly;
           const periodNote = interval === "annual"
-            ? "/ mo, billed $" + p.annual + "/yr"
+            ? "/ mo, billed " + formatPrice(priceTable.annual, currency) + "/yr"
             : "/ mo";
           return (
             '<article class="cb-upgrade-plan' +
@@ -211,7 +280,7 @@
               '<h3>' + p.label + '</h3>' +
               '<p class="cb-upgrade-tagline">' + p.tagline + '</p>' +
               '<div class="cb-upgrade-price">' +
-                '<strong>$' + price + '</strong>' +
+                '<strong>' + formatPrice(headlineAmount, currency) + '</strong>' +
                 '<small>' + periodNote + '</small>' +
               '</div>' +
               '<ul class="cb-upgrade-perks">' +
@@ -224,6 +293,13 @@
             '</article>'
           );
         }).join("");
+        const currencyToggleHtml = showCurrencyToggle
+          ? '<div class="cb-upgrade-currency" role="tablist" style="display:flex;justify-content:center;gap:6px;margin:8px 0 4px;">' +
+              '<button type="button" data-cb-upgrade-currency="ZAR" class="cb-upgrade-cur-btn ' + (currency === "ZAR" ? "is-active" : "") + '">ZAR (R)</button>' +
+              '<button type="button" data-cb-upgrade-currency="USD" class="cb-upgrade-cur-btn ' + (currency === "USD" ? "is-active" : "") + '">USD ($)</button>' +
+            '</div>'
+          : "";
+        const footCopy = "Secure payment via PayStack. Cancel anytime in Billing settings. Pricing in " + currency + ".";
         backdrop.innerHTML = (
           '<div class="cb-upgrade-card">' +
             '<div class="cb-upgrade-head">' +
@@ -233,13 +309,14 @@
               '</div>' +
               '<button type="button" class="cb-upgrade-close" data-cb-upgrade-close="1" title="Close">×</button>' +
             '</div>' +
+            currencyToggleHtml +
             '<div class="cb-upgrade-interval" role="tablist">' +
               '<button type="button" data-cb-upgrade-interval="monthly" class="' + (interval === "monthly" ? "is-active" : "") + '">Monthly</button>' +
               '<button type="button" data-cb-upgrade-interval="annual" class="' + (interval === "annual" ? "is-active" : "") + '">Annual (save ~17%)</button>' +
             '</div>' +
             '<div class="cb-upgrade-grid">' + plansHtml + '</div>' +
             '<p class="cb-upgrade-error" hidden></p>' +
-            '<p class="cb-upgrade-foot">Secure payment via Stripe. Cancel anytime in Billing settings. Pricing in USD.</p>' +
+            '<p class="cb-upgrade-foot">' + footCopy + '</p>' +
           '</div>'
         );
       }
@@ -257,11 +334,14 @@
         const buttons = backdrop.querySelectorAll(".cb-upgrade-cta");
         buttons.forEach(function (b) { b.disabled = true; });
         showError("");
-        const choice = { selectedPlan: planId, interval: interval };
+        const choice = { selectedPlan: planId, interval: interval, currency: currency };
         try {
-          const url = await startCheckout(planId, interval);
+          const url = await startCheckout(planId, interval, currency);
+          // Persist the chosen currency so the next modal open defaults
+          // to the same one (sticky preference).
+          try { localStorage.setItem("cbv2_billing_currency", currency); } catch (_e) {}
           // Don't resolve until we're navigating — give the browser a
-          // chance to start loading Stripe's page.
+          // chance to start loading PayStack's hosted checkout.
           window.location.href = url;
           finish(choice);
         } catch (err) {
@@ -292,6 +372,11 @@
           interval = intervalChoice;
           render();
         }
+        const currencyChoice = event.target && event.target.getAttribute && event.target.getAttribute("data-cb-upgrade-currency");
+        if (currencyChoice === "ZAR" || currencyChoice === "USD") {
+          currency = currencyChoice;
+          render();
+        }
         const planChoice = event.target && event.target.getAttribute && event.target.getAttribute("data-cb-upgrade-pick");
         if (planChoice) pick(planChoice);
       });
@@ -301,10 +386,12 @@
     });
   }
 
-  // Call stripe-checkout with the chosen plan/interval. Returns the
-  // Stripe Checkout URL on success; throws with a friendly message on
-  // failure.
-  async function startCheckout(planId, interval) {
+  // Call paystack-checkout with the chosen plan/interval/currency.
+  // Returns the PayStack hosted-checkout authorization URL on success;
+  // throws with a friendly message on failure. (Switched from Stripe
+  // to PayStack in the Phase Billing v2 migration — see migration
+  // 0027 and docs/PAYSTACK-SETUP.md.)
+  async function startCheckout(planId, interval, currency) {
     const auth = window.CBV2 && window.CBV2.auth;
     if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) {
       throw new Error("Sign in to upgrade your plan.");
@@ -313,34 +400,52 @@
     if (!c || !c.isBackendEnabled || !c.isBackendEnabled()) {
       throw new Error("Backend not configured.");
     }
+    const body = {
+      planId: planId,
+      interval: interval,
+      currency: currency || "ZAR",
+    };
     const client = auth.getClient && auth.getClient();
     if (client && client.functions && typeof client.functions.invoke === "function") {
-      const invoked = await client.functions.invoke("stripe-checkout", {
-        body: { planId: planId, interval: interval }
-      });
+      const invoked = await client.functions.invoke("paystack-checkout", { body: body });
       if (invoked.error) {
-        const msg = invoked.error.message || "Checkout failed.";
+        // Try to surface the structured server message — paystack-
+        // checkout returns clear errors like "Plan code missing for
+        // career annual USD" when an operator-side setup step is
+        // incomplete.
+        let msg = invoked.error.message || "Checkout failed.";
+        try {
+          if (invoked.error.context && typeof invoked.error.context.text === "function") {
+            const t = await invoked.error.context.text();
+            try {
+              const j = JSON.parse(t);
+              msg = j.error || j.message || msg;
+            } catch (_e) { if (t) msg = t.slice(0, 240); }
+          }
+        } catch (_e) {}
         throw new Error(msg);
       }
-      if (!invoked.data || !invoked.data.url) {
-        throw new Error("Stripe didn't return a checkout URL.");
+      if (!invoked.data || !invoked.data.authorizationUrl) {
+        throw new Error("PayStack didn't return a checkout URL.");
       }
-      return invoked.data.url;
+      return invoked.data.authorizationUrl;
     }
     // Fallback raw fetch.
     const token = await auth.getAccessToken();
-    const resp = await fetch(c.getFunctionsUrl() + "/stripe-checkout", {
+    const resp = await fetch(c.getFunctionsUrl() + "/paystack-checkout", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer " + token,
         apikey: c.getSupabaseAnon(),
       },
-      body: JSON.stringify({ planId: planId, interval: interval })
+      body: JSON.stringify(body),
     });
     const json = await resp.json();
-    if (!resp.ok || !json.url) throw new Error(json.error || "Checkout failed.");
-    return json.url;
+    if (!resp.ok || !json.authorizationUrl) {
+      throw new Error(json.error || "Checkout failed.");
+    }
+    return json.authorizationUrl;
   }
 
   // Public API.

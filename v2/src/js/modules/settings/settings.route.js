@@ -3386,6 +3386,41 @@
           setTimeout(function () { el.classList.remove("is-highlighted"); }, 1200);
         }
       }
+      // PayStack callback handler — when checkout returns the user
+      // here with ?billing=success, show a success toast and reload
+      // entitlements so the new plan reflects immediately (the
+      // webhook may have already fired by now, but a fresh load is
+      // race-safe). The param is consumed once via a guard flag so a
+      // page refresh doesn't re-trigger the toast.
+      if (params && params.billing === "success" && !window.__cbv2BillingSuccessHandled) {
+        window.__cbv2BillingSuccessHandled = true;
+        const ent = window.CBV2 && window.CBV2.entitlements;
+        if (ent && typeof ent.load === "function") {
+          ent.load(true).catch(function () { /* non-fatal */ });
+        }
+        if (window.CBV2.toast) {
+          window.CBV2.toast.success("Payment received — your plan is being activated. This usually takes a few seconds.");
+        }
+        // Strip ?billing=success from the URL so a refresh doesn't
+        // re-toast. Keep the rest of the hash intact (#/settings?tab=account).
+        try {
+          const url = new URL(window.location.href);
+          const hash = url.hash || "";
+          const qIdx = hash.indexOf("?");
+          if (qIdx >= 0) {
+            const pathPart = hash.slice(0, qIdx);
+            const search = new URLSearchParams(hash.slice(qIdx + 1));
+            search.delete("billing");
+            const cleaned = search.toString();
+            const newHash = pathPart + (cleaned ? "?" + cleaned : "");
+            history.replaceState({}, "", url.origin + url.pathname + url.search + newHash);
+          }
+        } catch (e) { /* non-fatal */ }
+      } else if (params && params.billing === "cancelled") {
+        if (window.CBV2.toast) {
+          window.CBV2.toast.info("Checkout cancelled — your plan is unchanged.");
+        }
+      }
     } catch (e) { /* non-fatal */ }
   };
 })();
