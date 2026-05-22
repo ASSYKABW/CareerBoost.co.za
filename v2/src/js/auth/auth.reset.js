@@ -61,14 +61,61 @@
     return "Career<span>Boost</span>";
   }
 
-  // Wait briefly for the SDK to exchange the recovery token in the
-  // URL hash for a recovery session. The SDK fires onAuthStateChange
-  // with event=PASSWORD_RECOVERY when it's ready. Resolves true on
-  // success, false on timeout.
+  // Establish the recovery session. Supabase JS 2.45 uses PKCE for
+  // password recovery — the email link redirects to:
+  //   https://www.careerboost.co.za/#/auth/reset?code=PKCE_CODE
+  //
+  // The SDK's detectSessionInUrl auto-handles this in clean
+  // redirect URLs but is unreliable when the URL has a hash route
+  // (`#/auth/reset?code=...` vs `?code=...`). The fix is to manually
+  // pull `code` out of the URL and call exchangeCodeForSession.
+  //
+  // Also handles the older implicit-grant flow (#access_token=...)
+  // for back-compat with older Supabase project settings.
+  //
+  // Returns true on success, false on timeout / expired link / missing
+  // code verifier (which happens if the user requested the reset on a
+  // different device than they click from).
   async function awaitRecoverySession(timeoutMs) {
     const auth = window.CBV2 && window.CBV2.auth;
     if (!auth) return false;
-    const deadline = Date.now() + (timeoutMs || 3500);
+
+    // Already signed in (recovery session was set on a previous render)?
+    if (auth.isAuthenticated && auth.isAuthenticated()) return true;
+
+    const client = auth.getClient && auth.getClient();
+
+    // PKCE flow — extract `code` from anywhere in the URL and exchange
+    // it. Supabase puts it in `?code=` BEFORE or AFTER the hash route
+    // depending on how the redirect_to was constructed. We grep the
+    // full URL, not just window.location.search, to catch both shapes.
+    if (client && client.auth && typeof client.auth.exchangeCodeForSession === "function") {
+      const codeMatch = String(window.location.href || "").match(/[?&]code=([^&#]+)/);
+      if (codeMatch && codeMatch[1]) {
+        try {
+          const { data, error } = await client.auth.exchangeCodeForSession(codeMatch[1]);
+          if (error) {
+            console.warn("[auth.reset] exchangeCodeForSession error:", error.message);
+            // Common cause: PKCE code_verifier is missing from localStorage.
+            // This happens if the user requested the reset on one device
+            // and clicked the link on another. Surface a clearer
+            // distinction by checking for the verifier-related error string.
+            if (/verifier|code/i.test(error.message || "")) {
+              state.error = "This reset link can only be used on the same browser that requested it. Open the link in the browser where you clicked Forgot password — or request a new link below.";
+            }
+            return false;
+          }
+          if (data && data.session) return true;
+        } catch (err) {
+          console.warn("[auth.reset] exchangeCodeForSession threw:", err);
+        }
+      }
+    }
+
+    // Implicit-grant flow (older Supabase setting) — wait for the SDK
+    // to pick up #access_token=... from the hash. Keep the timeout
+    // because the SDK is async and may take a beat to resolve.
+    const deadline = Date.now() + (timeoutMs || 6000);
     while (Date.now() < deadline) {
       try {
         if (auth.isAuthenticated && auth.isAuthenticated()) return true;
@@ -105,13 +152,22 @@
       );
     }
     if (state.status === "expired") {
+      // If the failure reason was a PKCE verifier mismatch (different
+      // browser/device than the one used to request the reset), show
+      // the more accurate explanation. Otherwise show the generic
+      // "link expired" copy.
+      const hasSpecificError = !!state.error;
+      const title = hasSpecificError ? "Can't use this link here." : "This reset link expired.";
+      const subtitle = hasSpecificError
+        ? state.error
+        : "Reset links work for 1 hour and only once. Request a fresh one from the sign-in page.";
       return (
         '<section class="auth-container">' +
           '<div class="auth-card">' +
             '<a class="auth-back" href="#/auth"><i class="fa-solid fa-arrow-left"></i> Back to sign in</a>' +
             '<div class="auth-brand">' + renderBrand() + '</div>' +
-            '<h1 class="auth-title">This reset link expired.</h1>' +
-            '<p class="auth-subtitle">Reset links work for 1 hour and only once. Request a fresh one from the sign-in page.</p>' +
+            '<h1 class="auth-title">' + st(title) + '</h1>' +
+            '<p class="auth-subtitle">' + st(subtitle) + '</p>' +
             '<div class="auth-submit-row">' +
               '<a class="btn-primary" href="#/auth?mode=forgot"><i class="fa-solid fa-paper-plane"></i> Send me a new link</a>' +
             '</div>' +
