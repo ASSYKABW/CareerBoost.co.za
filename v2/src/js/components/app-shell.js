@@ -106,8 +106,17 @@
     const profile = (window.CBV2.profile && window.CBV2.profile.get()) || null;
     const email = user.email || "Signed in";
     const displayName = (profile && profile.full_name) ? profile.full_name : email.split("@")[0];
-    const plan = (profile && profile.plan) ? profile.plan : "free";
-    const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+    // Plan label: prefer entitlements (authoritative — set by the
+    // webhook on successful charge) over profile.plan (legacy field
+    // that often goes stale because nothing syncs it after upgrade).
+    // Falls back to profile.plan or "Free" if entitlements hasn't loaded.
+    const ent = window.CBV2 && window.CBV2.entitlements;
+    const entData = ent && typeof ent.get === "function" ? ent.get() : null;
+    const planFromEnt = entData && entData.plan_label;
+    const planFromProfile = profile && profile.plan
+      ? profile.plan.charAt(0).toUpperCase() + profile.plan.slice(1)
+      : "";
+    const planLabel = planFromEnt || planFromProfile || "Free";
     const st = window.CBV2.sanitizeText || function (x) { return String(x || ""); };
     const canAdmin = window.CBV2.adminAccess && typeof window.CBV2.adminAccess.canAccess === "function"
       ? window.CBV2.adminAccess.canAccess()

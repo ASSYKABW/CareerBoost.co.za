@@ -22,9 +22,13 @@
   window.CBV2.afterRender = window.CBV2.afterRender || {};
 
   const state = {
-    status: "checking",  // checking | success | expired | error | local
+    status: "checking",  // checking | success | recovery | expired | error | local
     email: "",
     message: "",
+    flow: "",            // signup | recovery | invite | magiclink | email_change
+    // recovery-only fields
+    recoveryBusy: false,
+    recoveryError: "",
   };
 
   function st(value) {
@@ -75,6 +79,50 @@
             '<div class="lp-auth-confirm-spinner" aria-hidden="true"></div>' +
             '<h1>Confirming your email…</h1>' +
             '<p>Hang tight — finishing your signup.</p>' +
+          '</section>' +
+        '</main>'
+      );
+    }
+
+    if (state.status === "recovery") {
+      // Password-reset flow: Supabase has signed the user in with a
+      // recovery session, but we MUST prompt for a new password before
+      // dumping them into the app. Otherwise anyone with the email
+      // link gets full account access.
+      const errHtml = state.recoveryError
+        ? '<p class="lp-auth-confirm-error" role="alert"><i class="fa-solid fa-circle-exclamation"></i> ' + st(state.recoveryError) + '</p>'
+        : "";
+      const busy = state.recoveryBusy;
+      return (
+        '<main class="lp-page lp-auth-confirm-page">' +
+          '<section class="lp-auth-confirm-card">' +
+            '<div class="lp-auth-confirm-icon" aria-hidden="true">' +
+              '<i class="fa-solid fa-key"></i>' +
+            '</div>' +
+            '<span class="lp-eyebrow">Reset password</span>' +
+            '<h1>Set a new password.</h1>' +
+            '<p>Choose a new password for <strong>' + st(state.email || "your account") + '</strong>. You\'ll stay signed in afterwards.</p>' +
+            '<form id="cb-recovery-form" class="lp-auth-confirm-form" autocomplete="off" novalidate>' +
+              '<label class="lp-auth-confirm-field">' +
+                '<span>New password</span>' +
+                '<input type="password" id="cb-recovery-pw1" autocomplete="new-password" minlength="8" required ' +
+                  (busy ? "disabled" : "") + '>' +
+              '</label>' +
+              '<label class="lp-auth-confirm-field">' +
+                '<span>Confirm new password</span>' +
+                '<input type="password" id="cb-recovery-pw2" autocomplete="new-password" minlength="8" required ' +
+                  (busy ? "disabled" : "") + '>' +
+              '</label>' +
+              '<p class="lp-auth-confirm-hint">At least 8 characters. Mix of letters + numbers recommended.</p>' +
+              errHtml +
+              '<div class="lp-auth-confirm-actions">' +
+                '<button type="submit" class="lp-btn lp-btn--primary lp-btn--lg" ' +
+                  (busy ? "disabled" : "") + '>' +
+                  '<i class="fa-solid fa-' + (busy ? "spinner fa-spin-pulse" : "check") + '"></i> ' +
+                  (busy ? "Updating password…" : "Update password") +
+                '</button>' +
+              '</div>' +
+            '</form>' +
           '</section>' +
         '</main>'
       );
@@ -173,11 +221,23 @@
     rerender();
 
     const flow = detectFlow();
+    state.flow = flow;
     const user = await awaitSession(3500);
 
     if (user) {
-      state.status = "success";
       state.email = user.email || "";
+      if (flow === "recovery") {
+        // CRITICAL: do NOT show the "You're in" success screen for
+        // password-reset flows. The recovery link signs the user in
+        // (Supabase behavior) but we MUST prompt for a new password
+        // before they can continue — otherwise anyone with the email
+        // link gets full account access.
+        state.status = "recovery";
+        rerender();
+        bindRecoveryForm();
+        return;
+      }
+      state.status = "success";
       rerender();
       return;
     }
@@ -191,6 +251,69 @@
       ? "Password reset link expired. Request a fresh one from the sign-in page."
       : "Confirmation link expired or already used.";
     rerender();
+  }
+
+  // Wire the new-password form. Submit calls auth.updateUser with the
+  // new password, then redirects to /dashboard with a success toast.
+  function bindRecoveryForm() {
+    const form = document.getElementById("cb-recovery-form");
+    if (!form || form.dataset.bound === "1") return;
+    form.dataset.bound = "1";
+
+    // Auto-focus first password field.
+    const pw1 = document.getElementById("cb-recovery-pw1");
+    if (pw1) { try { pw1.focus(); } catch (_e) {} }
+
+    form.addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      if (state.recoveryBusy) return;
+      const p1 = document.getElementById("cb-recovery-pw1");
+      const p2 = document.getElementById("cb-recovery-pw2");
+      const pw1Val = p1 ? p1.value : "";
+      const pw2Val = p2 ? p2.value : "";
+
+      if (!pw1Val || pw1Val.length < 8) {
+        state.recoveryError = "Password must be at least 8 characters.";
+        rerender(); bindRecoveryForm();
+        return;
+      }
+      if (pw1Val !== pw2Val) {
+        state.recoveryError = "Passwords don't match. Type the same one in both fields.";
+        rerender(); bindRecoveryForm();
+        return;
+      }
+
+      state.recoveryBusy = true;
+      state.recoveryError = "";
+      rerender();
+      // Don't re-bind here — the input is disabled, no interaction
+      // possible until the async call returns.
+
+      try {
+        const auth = window.CBV2 && window.CBV2.auth;
+        const client = auth && auth.getClient && auth.getClient();
+        if (!client || !client.auth || typeof client.auth.updateUser !== "function") {
+          throw new Error("Auth client unavailable. Refresh and try again.");
+        }
+        const { error } = await client.auth.updateUser({ password: pw1Val });
+        if (error) throw new Error(error.message || "Couldn't update password.");
+        // Success — redirect with a toast.
+        state.recoveryBusy = false;
+        rerender();
+        if (window.CBV2.toast) {
+          window.CBV2.toast.success("Password updated. You're signed in.");
+        }
+        // Brief delay so the user sees the success toast before route change.
+        setTimeout(function () {
+          window.location.hash = "#/dashboard";
+        }, 400);
+      } catch (err) {
+        state.recoveryBusy = false;
+        state.recoveryError = (err && err.message) || "Couldn't update password. Try again or request a fresh reset link.";
+        rerender();
+        bindRecoveryForm();
+      }
+    });
   }
 
   // Register against the route slug. The router strips the leading

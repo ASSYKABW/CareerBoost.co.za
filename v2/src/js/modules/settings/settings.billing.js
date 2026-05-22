@@ -122,10 +122,21 @@
             '<div class="billing-plan-actions">' +
               statusBadge(ent.status, ent.cancel_at_period_end) +
               (isPaid
-                ? '<button type="button" class="btn-secondary" id="billing-portal">Manage subscription</button>'
+                ? '<button type="button" class="btn-secondary" id="billing-portal"><i class="fa-solid fa-credit-card"></i> Manage subscription</button>'
                 : '<button type="button" class="btn-primary" id="billing-upgrade">Upgrade plan</button>') +
             '</div>' +
           '</div>' +
+          // Day 4.7+ — explicit cancel link for paid users so it's
+          // not buried under a generic "Manage" verb. Routes to the
+          // same portal (PayStack / Stripe lets users cancel in the
+          // portal itself); the separate link is just discoverability.
+          (isPaid
+            ? '<p class="ai-meta billing-cancel-note">' +
+                'Want to cancel? ' +
+                '<a href="#" id="billing-cancel-link">Cancel your subscription</a>' +
+                ' — keeps you on your plan until the end of your billing period.' +
+              '</p>'
+            : '') +
 
           '<div class="billing-features">' +
             '<p class="eyebrow">Features on your plan</p>' +
@@ -159,46 +170,90 @@
     const upgrade = document.getElementById("billing-upgrade");
     const upgradeBottom = document.getElementById("billing-upgrade-bottom");
     const portal = document.getElementById("billing-portal");
+    const cancelLink = document.getElementById("billing-cancel-link");
     const open = function () {
       const modal = window.CBV2 && window.CBV2.upgradeModal;
       if (modal && modal.show) modal.show({ reason: "feature_locked" });
     };
     if (upgrade) upgrade.addEventListener("click", open);
     if (upgradeBottom) upgradeBottom.addEventListener("click", open);
-    if (portal) {
-      portal.addEventListener("click", async function () {
-        portal.disabled = true;
-        try {
-          const auth = window.CBV2 && window.CBV2.auth;
-          const c = window.CBV2 && window.CBV2.config;
-          if (!auth || !c) throw new Error("Not configured.");
-          const client = auth.getClient && auth.getClient();
-          let url;
-          if (client && client.functions && typeof client.functions.invoke === "function") {
-            const invoked = await client.functions.invoke("stripe-portal", { body: {} });
-            if (invoked.error) throw new Error(invoked.error.message || "Portal failed.");
-            url = invoked.data && invoked.data.url;
-          } else {
-            const token = await auth.getAccessToken();
-            const resp = await fetch(c.getFunctionsUrl() + "/stripe-portal", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: "Bearer " + token,
-                apikey: c.getSupabaseAnon(),
-              },
-              body: "{}"
-            });
-            const j = await resp.json();
-            if (!resp.ok || !j.url) throw new Error(j.error || "Portal failed.");
-            url = j.url;
-          }
-          if (url) window.location.href = url;
-        } catch (err) {
-          if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Could not open portal.");
-          portal.disabled = false;
+    if (portal) portal.addEventListener("click", openPortal);
+    // Cancel link uses the same portal — PayStack's billing portal has
+    // the cancel-subscription option inside. We just give it a more
+    // discoverable entry point in the UI.
+    if (cancelLink) cancelLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      openPortal();
+    });
+  }
+
+  // Routes to the right billing portal based on which processor billed
+  // this subscription. We look up payment_processor by querying the
+  // subscriptions table directly (entitlements doesn't currently expose
+  // this field; rather than another migration we just hit the row —
+  // RLS lets the user read their own).
+  async function openPortal() {
+    const portalBtn = document.getElementById("billing-portal");
+    if (portalBtn) portalBtn.disabled = true;
+    try {
+      const auth = window.CBV2 && window.CBV2.auth;
+      const c = window.CBV2 && window.CBV2.config;
+      if (!auth || !c) throw new Error("Not configured.");
+      const client = auth.getClient && auth.getClient();
+      const user = auth.getUser && auth.getUser();
+      if (!user || !user.id) throw new Error("Not signed in.");
+
+      // Detect the processor that billed this user. Default to paystack
+      // (the current processor for new signups).
+      let processor = "paystack";
+      try {
+        if (client && client.from) {
+          const { data: subRow } = await client
+            .from("subscriptions")
+            .select("payment_processor")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (subRow && subRow.payment_processor) processor = subRow.payment_processor;
         }
-      });
+      } catch (_e) { /* fall back to paystack default */ }
+
+      const fnName = processor === "stripe" ? "stripe-portal" : "paystack-portal";
+      let url;
+      if (client && client.functions && typeof client.functions.invoke === "function") {
+        const invoked = await client.functions.invoke(fnName, { body: {} });
+        if (invoked.error) {
+          // Try to surface structured error message
+          let msg = invoked.error.message || "Portal failed.";
+          try {
+            if (invoked.error.context && typeof invoked.error.context.text === "function") {
+              const t = await invoked.error.context.text();
+              try { const j = JSON.parse(t); msg = j.error || j.message || msg; }
+              catch (_e) { if (t) msg = t.slice(0, 240); }
+            }
+          } catch (_e) {}
+          throw new Error(msg);
+        }
+        url = invoked.data && invoked.data.url;
+      } else {
+        const token = await auth.getAccessToken();
+        const resp = await fetch(c.getFunctionsUrl() + "/" + fnName, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+            apikey: c.getSupabaseAnon(),
+          },
+          body: "{}"
+        });
+        const j = await resp.json();
+        if (!resp.ok || !j.url) throw new Error(j.error || "Portal failed.");
+        url = j.url;
+      }
+      if (url) window.location.href = url;
+    } catch (err) {
+      const portalBtn2 = document.getElementById("billing-portal");
+      if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Could not open portal.");
+      if (portalBtn2) portalBtn2.disabled = false;
     }
   }
 

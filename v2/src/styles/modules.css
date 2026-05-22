@@ -6271,6 +6271,55 @@ a.settings-status-card:hover {
   font-weight: 600;
 }
 
+/* Password-reset recovery form (auth.confirmed.js, status=recovery) */
+.lp-auth-confirm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+  text-align: left;
+}
+.lp-auth-confirm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lp-auth-confirm-field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lp-text, #d8e0ee);
+}
+.lp-auth-confirm-field input[type=password] {
+  padding: 12px 14px;
+  background: rgba(8, 11, 18, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  color: #f8fbff;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.lp-auth-confirm-field input[type=password]:focus {
+  border-color: rgba(34, 227, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 227, 255, 0.18);
+}
+.lp-auth-confirm-hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--lp-text-muted, #8a94a6);
+}
+.lp-auth-confirm-error {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  background: rgba(226, 91, 91, 0.12);
+  border: 1px solid rgba(226, 91, 91, 0.3);
+  border-radius: 8px;
+  color: #ffb6b6;
+  font-size: 13px;
+}
+.lp-auth-confirm-error i { margin-right: 6px; }
+
 @media (max-width: 560px) {
   .lp-auth-confirm-page { padding: 32px 16px; }
   .lp-auth-confirm-card { padding: 32px 22px 26px; border-radius: 16px; }

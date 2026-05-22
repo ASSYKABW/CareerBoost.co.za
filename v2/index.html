@@ -93,7 +93,7 @@
   <link rel="stylesheet" href="./src/styles/tokens.css" />
   <link rel="stylesheet" href="./src/styles/base.css" />
   <link rel="stylesheet" href="./src/styles/layout.css?v=20260521-day4-mobile" />
-  <link rel="stylesheet" href="./src/styles/modules.css?v=20260522-saved-jobs" />
+  <link rel="stylesheet" href="./src/styles/modules.css?v=20260522-paystack-fixes" />
   <link rel="stylesheet" href="./src/styles/auth.css" />
   <link rel="stylesheet" href="./src/styles/phase1.css?v=20260522-day4-quota-meter" />
   <link rel="stylesheet" href="./src/styles/design-system.css" />
@@ -258,7 +258,7 @@
   <script src="./src/js/app/shared/toast.js"></script>
   <script src="./src/js/app/shortcuts.js"></script>
   <script src="./src/js/components/brand-kit.js"></script>
-  <script src="./src/js/components/app-shell.js?v=20260522-day4-quota-meter3"></script>
+  <script src="./src/js/components/app-shell.js?v=20260522-paystack-fixes"></script>
   <script src="./src/js/components/global-search.js"></script>
   <script src="./src/js/components/status-pill.js"></script>
   <script src="./src/js/components/logos.js"></script>
@@ -310,7 +310,7 @@
        confirmation link in their signup email (or an OAuth round-trip).
        Replaces the bare #/dashboard redirect with a polished "You're in!"
        card and a friendly recovery path if the link expired. -->
-  <script src="./src/js/auth/auth.confirmed.js"></script>
+  <script src="./src/js/auth/auth.confirmed.js?v=20260522-paystack-fixes"></script>
   <!-- P3 signup-security: OTP code-entry route. Primary post-signup
        destination; the user types the 6-digit code from their email.
        The email link still works (→ auth.confirmed.js) as a fallback. -->
@@ -363,7 +363,7 @@
   <script src="./src/js/modules/settings/settings.meta.js?v=20260516-aadefer"></script>
   <!-- Phase Billing: settings → Billing tab renderer. Loads before
        settings.route.js which calls window.CBV2.settingsBilling.render(). -->
-  <script src="./src/js/modules/settings/settings.billing.js"></script>
+  <script src="./src/js/modules/settings/settings.billing.js?v=20260522-paystack-fixes"></script>
   <!-- P2: candidate-intelligence card extracted from settings.route.js
        as first step of splitting the 3387-line file. Loaded before
        settings.route.js which calls window.CBV2.settingsIntel.render(). -->
