@@ -61,21 +61,21 @@
     return "Career<span>Boost</span>";
   }
 
-  // Establish the recovery session. Supabase JS 2.45 uses PKCE for
-  // password recovery — the email link redirects to:
-  //   https://www.careerboost.co.za/#/auth/reset?code=PKCE_CODE
+  // Establish the recovery session. The Supabase email link redirects
+  // here with the tokens appended after a SECOND hash fragment:
+  //   https://www.careerboost.co.za/#/auth/reset#access_token=...&refresh_token=...&type=recovery
   //
-  // The SDK's detectSessionInUrl auto-handles this in clean
-  // redirect URLs but is unreliable when the URL has a hash route
-  // (`#/auth/reset?code=...` vs `?code=...`). The fix is to manually
-  // pull `code` out of the URL and call exchangeCodeForSession.
-  //
-  // Also handles the older implicit-grant flow (#access_token=...)
-  // for back-compat with older Supabase project settings.
+  // The SDK's detectSessionInUrl tries to parse window.location.hash
+  // but the double-hash confuses its key extractor — it sees
+  // "/auth/reset#access_token" as the key name and misses it entirely.
+  // We work around by:
+  //   1. Extracting tokens from the raw URL via regex (catches both
+  //      the implicit-grant #access_token= and the PKCE ?code= shapes)
+  //   2. Calling setSession() / exchangeCodeForSession() directly
+  //   3. Cleaning the URL hash so a refresh doesn't re-process
   //
   // Returns true on success, false on timeout / expired link / missing
-  // code verifier (which happens if the user requested the reset on a
-  // different device than they click from).
+  // code verifier (cross-device click).
   async function awaitRecoverySession(timeoutMs) {
     const auth = window.CBV2 && window.CBV2.auth;
     if (!auth) return false;
@@ -84,37 +84,66 @@
     if (auth.isAuthenticated && auth.isAuthenticated()) return true;
 
     const client = auth.getClient && auth.getClient();
+    const fullUrl = String(window.location.href || "");
 
-    // PKCE flow — extract `code` from anywhere in the URL and exchange
-    // it. Supabase puts it in `?code=` BEFORE or AFTER the hash route
-    // depending on how the redirect_to was constructed. We grep the
-    // full URL, not just window.location.search, to catch both shapes.
+    // Implicit-grant flow — tokens in the URL hash. Match anywhere in
+    // the URL using `[#&?]` so we catch the case where access_token sits
+    // after a second `#` (our hash-routed redirect_to).
+    const accessTokenMatch = fullUrl.match(/[#&?]access_token=([^&#]+)/);
+    const refreshTokenMatch = fullUrl.match(/[#&?]refresh_token=([^&#]+)/);
+    if (accessTokenMatch && refreshTokenMatch && client && client.auth && typeof client.auth.setSession === "function") {
+      try {
+        const { data, error } = await client.auth.setSession({
+          access_token: decodeURIComponent(accessTokenMatch[1]),
+          refresh_token: decodeURIComponent(refreshTokenMatch[1]),
+        });
+        if (error) {
+          console.warn("[auth.reset] setSession error:", error.message);
+          if (/expired|invalid|jwt/i.test(error.message || "")) {
+            state.error = "This reset link expired or was already used. Request a fresh one below.";
+          }
+          return false;
+        }
+        if (data && data.session) {
+          // Clean the URL so a page refresh doesn't re-process the
+          // tokens (and so the route doesn't keep the long hash).
+          try {
+            history.replaceState({}, "", window.location.pathname + window.location.search + "#/auth/reset");
+          } catch (_e) { /* non-fatal */ }
+          return true;
+        }
+      } catch (err) {
+        console.warn("[auth.reset] setSession threw:", err);
+      }
+    }
+
+    // PKCE flow — `?code=PKCE_xxxx` somewhere in the URL.
     if (client && client.auth && typeof client.auth.exchangeCodeForSession === "function") {
-      const codeMatch = String(window.location.href || "").match(/[?&]code=([^&#]+)/);
+      const codeMatch = fullUrl.match(/[?&]code=([^&#]+)/);
       if (codeMatch && codeMatch[1]) {
         try {
           const { data, error } = await client.auth.exchangeCodeForSession(codeMatch[1]);
           if (error) {
             console.warn("[auth.reset] exchangeCodeForSession error:", error.message);
-            // Common cause: PKCE code_verifier is missing from localStorage.
-            // This happens if the user requested the reset on one device
-            // and clicked the link on another. Surface a clearer
-            // distinction by checking for the verifier-related error string.
             if (/verifier|code/i.test(error.message || "")) {
               state.error = "This reset link can only be used on the same browser that requested it. Open the link in the browser where you clicked Forgot password — or request a new link below.";
             }
             return false;
           }
-          if (data && data.session) return true;
+          if (data && data.session) {
+            try {
+              history.replaceState({}, "", window.location.pathname + window.location.search + "#/auth/reset");
+            } catch (_e) {}
+            return true;
+          }
         } catch (err) {
           console.warn("[auth.reset] exchangeCodeForSession threw:", err);
         }
       }
     }
 
-    // Implicit-grant flow (older Supabase setting) — wait for the SDK
-    // to pick up #access_token=... from the hash. Keep the timeout
-    // because the SDK is async and may take a beat to resolve.
+    // Final fallback — wait for the SDK to do it on its own (rare but
+    // covers any edge case where the manual paths didn't trigger).
     const deadline = Date.now() + (timeoutMs || 6000);
     while (Date.now() < deadline) {
       try {
