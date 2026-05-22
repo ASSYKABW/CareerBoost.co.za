@@ -38,7 +38,22 @@
 
   // Phase 4: persist wizard state to localStorage so a tab refresh on Step 2
   // doesn't wipe Step 1 inputs. Cleared on finish() success.
+  //
+  // Day 4.7 — TTL bumped from 7 → 30 days. The 7-day cutoff was a
+  // "stale state is a code smell" heuristic but in practice real users
+  // sign up, start the wizard, get distracted by life, and come back
+  // 2-3 weeks later. Wiping their step-1 inputs at that point is a
+  // worse user experience than the marginal hygiene benefit of a
+  // tight TTL. 30 days is generous enough to survive a holiday or
+  // a busy sprint while still capping unbounded growth.
+  //
+  // Server-side persistence (per the task spec's "or") is the long-
+  // term right answer but requires a profile column + RPC for partial
+  // wizard state. Bumping the TTL is the smallest move that solves
+  // the reported pain; we can graduate to server-side when the wizard
+  // schema settles.
   const WIZARD_STATE_KEY = "cbv2_onboarding_wizard_v1";
+  const WIZARD_STATE_TTL_MS = 30 * 86400000;  // 30 days
   function saveWizardState() {
     try {
       const snap = {
@@ -61,8 +76,7 @@
       if (!raw) return null;
       const snap = JSON.parse(raw);
       if (!snap || typeof snap !== "object") return null;
-      // Expire after 7 days — stale onboarding state is a code smell.
-      if (typeof snap.savedAt !== "number" || Date.now() - snap.savedAt > 7 * 86400000) return null;
+      if (typeof snap.savedAt !== "number" || Date.now() - snap.savedAt > WIZARD_STATE_TTL_MS) return null;
       return snap;
     } catch (e) { return null; }
   }
