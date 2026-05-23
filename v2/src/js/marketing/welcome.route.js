@@ -85,12 +85,17 @@
         { label: "FAQ",            href: "#faq" },
         { label: "Help center",    href: "#faq" },
         { label: "What's new",     href: "#features" },
-        // Week 2 #6: Status page now live on Better Stack at the
-        // status.careerboost.co.za subdomain (separate from the SPA,
-        // so external link with target=_blank). DNS CNAME setup on
-        // the operator side; see commit message for Better Stack
-        // dashboard steps if revisiting.
-        { label: "Status",         href: "https://status.careerboost.co.za", external: true },
+        // Week 2 #6: Status page lives on Better Stack's default URL
+        // (their free careerboost.betteruptime.com subdomain).
+        // We attempted a custom status.careerboost.co.za subdomain
+        // but the DNS CNAME wiring on the operator's domain provider
+        // ran into UI friction. Better Stack default URL is functional
+        // + has SSL out of the box; the custom subdomain is a vanity
+        // upgrade we can revisit later. To swap back to the custom
+        // domain: change href to "https://status.careerboost.co.za"
+        // and ensure the CNAME `status` -> `statuspage.betteruptime.com`
+        // exists at the DNS provider.
+        { label: "Status",         href: "https://careerboost.betteruptime.com", external: true },
       ]
     },
     {
