@@ -543,8 +543,8 @@
           '<div class="lp-hero-inner">' +
             '<div class="lp-hero-copy">' +
               '<span class="lp-eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Private by design &nbsp;·&nbsp; <i class="fa-solid fa-user-check" aria-hidden="true"></i> Human in control</span>' +
-              '<h1>Stop juggling 12 tabs.<br/>Run your job search from one place.</h1>' +
-              '<p class="lp-hero-sub">Research roles, tailor every resume, rehearse interviews out loud, and track every follow-up — all in one calm workspace. For serious job seekers, not auto-apply spam.</p>' +
+              '<h1>Your job search, in one calm place.</h1>' +
+              '<p class="lp-hero-sub">Stop juggling 12 tabs across job boards, ATS forms, and AI prompts. Research roles, tailor every resume, rehearse interviews out loud, and track every follow-up — all in one workspace. For serious job seekers, not auto-apply spam.</p>' +
               '<div class="lp-hero-actions">' +
                 '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
                 '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#features">See how it works <i class="fa-solid fa-arrow-down"></i></a>' +

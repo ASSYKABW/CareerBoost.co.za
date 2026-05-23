@@ -5357,11 +5357,15 @@ a.settings-status-card:hover {
 }
 .lp-hero-copy { display: flex; flex-direction: column; gap: 18px; }
 .lp-hero-copy h1 {
-  font-size: clamp(36px, 5vw, 56px);
-  line-height: 1.08;
+  font-size: clamp(32px, 4.2vw, 52px);
+  line-height: 1.1;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--lp-text);
+  /* `balance` distributes the words evenly across wrapped lines so the
+     headline doesn't end on an orphaned word like "tabs." (Chromium /
+     Safari / Firefox 121+; gracefully ignored on older browsers.) */
+  text-wrap: balance;
 }
 .lp-hero-sub {
   font-size: 17px;
@@ -6059,7 +6063,7 @@ a.settings-status-card:hover {
   /* Tighter hero on tablets + phones. Headline rescales via clamp(). */
   .lp-hero { padding: 36px 0 28px; }
   .lp-hero-copy { gap: 14px; }
-  .lp-hero-copy h1 { font-size: clamp(28px, 7vw, 38px); line-height: 1.12; }
+  .lp-hero-copy h1 { font-size: clamp(26px, 6.4vw, 34px); line-height: 1.15; }
   .lp-hero-sub { font-size: 15px; }
   .lp-hero-meta { font-size: 11px; }
 
