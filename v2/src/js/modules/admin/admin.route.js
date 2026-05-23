@@ -1980,13 +1980,21 @@
         const failed = Number(response.failed || 0);
         adminUsersRemote.bulk.done = ids.length;
         adminUsersRemote.bulk.failed = failed;
+        // Surface the first failure's actual error message in toast
+        // so the operator doesn't have to SQL-dive admin_email_log to
+        // see WHY the send failed (Resend validation, rate limit, etc.).
+        const firstError = (response.results || [])
+          .filter(function (r) { return r && r.status === "failed" && r.error; })
+          .map(function (r) { return r.error; })[0] || "";
         if (window.CBV2.toast) {
           if (failed === 0) {
             window.CBV2.toast.success("Sent to all " + sent + " recipients. Delivery status updates within a minute.");
           } else if (sent === 0) {
-            window.CBV2.toast.error("All " + failed + " sends failed. Check Resend keys in Edge Function secrets.");
+            const detail = firstError ? " — " + firstError : " (check Resend keys + sender-domain verification).";
+            window.CBV2.toast.error("All " + failed + " sends failed" + detail);
           } else {
-            window.CBV2.toast.warning("Sent " + sent + " · " + failed + " failed. Open Audit Log for per-recipient detail.");
+            const detail = firstError ? " First error: " + firstError : "";
+            window.CBV2.toast.warning("Sent " + sent + " · " + failed + " failed." + detail);
           }
         }
       } catch (err) {

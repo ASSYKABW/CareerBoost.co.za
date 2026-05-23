@@ -211,10 +211,18 @@ Deno.serve(async (req) => {
           text: bodyText,
           // Resend tags surface on their dashboard + webhook events,
           // making it easy to filter for operator-triggered sends.
+          // Resend tag VALUES must match /^[A-Za-z0-9_-]+$/ — no @ or .
+          // so the operator's email needs sanitizing (jonathan@gmail.com
+          // → jonathan_gmail_com). Replace every disallowed char with _.
           tags: [
             { name: "source", value: "admin-console" },
             { name: "batch_id", value: batchId },
-            { name: "operator", value: (admin.email || admin.id).slice(0, 60) },
+            {
+              name: "operator",
+              value: String(admin.email || admin.id)
+                .replace(/[^A-Za-z0-9_-]/g, "_")
+                .slice(0, 60),
+            },
           ],
         }),
       });
