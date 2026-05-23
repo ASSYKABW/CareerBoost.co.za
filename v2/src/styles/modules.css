@@ -6594,3 +6594,188 @@ a.settings-status-card:hover {
   .cb-ai-chat-panel { width: 100vw; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   Landing-page launch polish (welcome.route.js additions)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Hero animation: pill pulse + stage progression ─────────────── */
+.lp-mock-pill {
+  animation: lp-pill-pulse 2.4s ease-in-out infinite;
+}
+@keyframes lp-pill-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--lp-accent-glow); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+.lp-mock-stages span.is-rotating {
+  transition: background 0.45s ease, color 0.45s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-mock-pill { animation: none; }
+  .lp-mock-stages span.is-rotating { transition: none; }
+}
+
+/* ── SA flag chip (used in hero eyebrow + footer origin) ─────────── */
+.lp-flag {
+  display: inline-block;
+  vertical-align: -1px;
+  font-size: 1.05em;
+  margin-right: 4px;
+}
+.lp-footer-origin {
+  font-size: 13px;
+  color: var(--lp-text-muted);
+  margin: 12px 0 16px;
+}
+
+/* ── Currency toggle in pricing header ──────────────────────────── */
+.lp-ccy-toggle {
+  display: inline-flex;
+  margin-top: 18px;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  padding: 3px;
+  background: var(--lp-bg-alt);
+}
+.lp-ccy-btn {
+  border: 0;
+  background: transparent;
+  color: var(--lp-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.lp-ccy-btn:hover { color: var(--lp-text); }
+.lp-ccy-btn.is-active {
+  background: var(--lp-accent);
+  color: #062018;
+}
+
+/* ── Pricing comparison table ──────────────────────────────────── */
+.lp-compare-wrap {
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid var(--lp-border);
+}
+.lp-compare-title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--lp-text);
+  margin-bottom: 20px;
+}
+.lp-compare-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.lp-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 640px;
+}
+.lp-compare th,
+.lp-compare td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--lp-border);
+}
+.lp-compare thead th {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lp-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.lp-compare tbody th {
+  font-weight: 500;
+  color: var(--lp-text-muted);
+}
+.lp-compare tbody td {
+  color: var(--lp-text);
+  text-align: center;
+}
+.lp-compare .lp-compare-featured {
+  background: var(--lp-accent-glow);
+  color: var(--lp-accent);
+}
+.lp-compare .lp-compare-yes { color: var(--lp-accent); font-weight: 700; }
+.lp-compare .lp-compare-no  { color: var(--lp-text-dim); }
+
+/* ── Product screenshot section ─────────────────────────────────── */
+.lp-screenshot {
+  margin: 0 auto;
+  max-width: 1000px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-bg-alt);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+}
+.lp-screenshot-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.lp-screenshot-fallback {
+  display: block;
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--lp-text-muted);
+  font-size: 14px;
+}
+
+/* ── Testimonials grid ─────────────────────────────────────────── */
+.lp-testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.lp-testimonial {
+  background: var(--lp-bg-alt);
+  border: 1px solid var(--lp-border);
+  border-radius: 14px;
+  padding: 24px;
+  margin: 0;
+}
+.lp-testimonial-mark {
+  color: var(--lp-accent);
+  font-size: 18px;
+  margin-right: 6px;
+  opacity: 0.7;
+}
+.lp-testimonial blockquote {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--lp-text);
+}
+.lp-testimonial-cap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lp-testimonial-avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--lp-accent-glow);
+  color: var(--lp-accent);
+  font-weight: 700;
+}
+.lp-testimonial-cap strong { display: block; font-size: 14px; color: var(--lp-text); }
+.lp-testimonial-cap span { font-size: 12px; color: var(--lp-text-muted); }
+
+/* ── Centered variant of the final-CTA card (stats column removed) */
+.lp-final-card--centered {
+  display: block;
+  text-align: center;
+}
+.lp-final-card--centered .lp-final-actions { justify-content: center; }
+.lp-final-card--centered .lp-final-copy { max-width: 640px; margin: 0 auto; }
+
