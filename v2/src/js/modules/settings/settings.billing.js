@@ -46,13 +46,15 @@
   }
 
   function statusBadge(status, cancelAtPeriodEnd) {
-    if (cancelAtPeriodEnd) {
-      return '<span class="chip amber">Ending after this period</span>';
+    // status='canceled' means the sub is fully dead on PayStack —
+    // show the same amber "Cancelled" treatment as cancel_at_period_end
+    // so the user clearly knows there's no auto-renew coming.
+    if (cancelAtPeriodEnd || status === "canceled") {
+      return '<span class="chip amber">Cancelled</span>';
     }
     if (status === "active") return '<span class="chip green">Active</span>';
     if (status === "trialing") return '<span class="chip blue">Trial</span>';
     if (status === "past_due") return '<span class="chip rose">Payment failed</span>';
-    if (status === "canceled") return '<span class="chip subtle">Canceled</span>';
     if (status === "paused") return '<span class="chip amber">Paused</span>';
     return '<span class="chip subtle">' + st(status) + '</span>';
   }
@@ -79,6 +81,12 @@
     const planLabel = ent.plan_label || "Free";
     const planId = ent.plan_id || "free";
     const isPaid = planId !== "free";
+    // Cancelled-but-still-active: user clicked Cancel on PayStack; we
+    // kept them on their paid plan until period_end but the sub will
+    // not renew. From here the "Manage subscription" portal call will
+    // fail (PayStack rejects manage on disabled subs), so we swap the
+    // UI to a "Switch to Free now" CTA instead.
+    const isCancelling = isPaid && (ent.cancel_at_period_end === true || ent.status === "canceled");
 
     const quotas = renderQuotaRow("Resume tailorings", "ai_resumes", ent) +
       renderQuotaRow("Cover letters", "ai_covers", ent) +
@@ -102,10 +110,12 @@
     }).join("");
 
     const renewalLine = ent.current_period_end
-      ? ent.cancel_at_period_end
-        ? "Cancels on " + formatDate(ent.current_period_end)
-        : "Renews on " + formatDate(ent.current_period_end)
-      : "No active subscription";
+      ? (isCancelling
+          ? "Subscription cancelled — access until " + formatDate(ent.current_period_end)
+          : "Renews on " + formatDate(ent.current_period_end))
+      : isCancelling
+        ? "Subscription cancelled"
+        : "No active subscription";
     const periodStart = ent.period_start ? formatDate(ent.period_start) : "this month";
 
     return (
@@ -121,22 +131,32 @@
             '</div>' +
             '<div class="billing-plan-actions">' +
               statusBadge(ent.status, ent.cancel_at_period_end) +
-              (isPaid
-                ? '<button type="button" class="btn-secondary" id="billing-portal"><i class="fa-solid fa-credit-card"></i> Manage subscription</button>'
-                : '<button type="button" class="btn-primary" id="billing-upgrade">Upgrade plan</button>') +
+              (isCancelling
+                ? '<button type="button" class="btn-primary" id="billing-downgrade-now"><i class="fa-solid fa-arrow-down"></i> Switch to Free now</button>'
+                : isPaid
+                  ? '<button type="button" class="btn-secondary" id="billing-portal"><i class="fa-solid fa-credit-card"></i> Manage subscription</button>'
+                  : '<button type="button" class="btn-primary" id="billing-upgrade">Upgrade plan</button>') +
             '</div>' +
           '</div>' +
-          // Day 4.7+ — explicit cancel link for paid users so it's
-          // not buried under a generic "Manage" verb. Routes to the
-          // same portal (PayStack / Stripe lets users cancel in the
-          // portal itself); the separate link is just discoverability.
-          (isPaid
+          // Cancel/downgrade explainer. Three states:
+          //   - paid + cancelling → explain they'll keep features until
+          //     period_end and the button drops them immediately if they
+          //     prefer.
+          //   - paid + active → standard "Cancel your subscription" link
+          //     that routes through PayStack/Stripe portal.
+          //   - free → nothing.
+          (isCancelling
             ? '<p class="ai-meta billing-cancel-note">' +
-                'Want to cancel? ' +
-                '<a href="#" id="billing-cancel-link">Cancel your subscription</a>' +
-                ' — keeps you on your plan until the end of your billing period.' +
+                'You\'ll keep ' + st(planLabel) + ' features until your period ends. ' +
+                'Click <strong>Switch to Free now</strong> if you\'d rather drop immediately.' +
               '</p>'
-            : '') +
+            : isPaid
+              ? '<p class="ai-meta billing-cancel-note">' +
+                  'Want to cancel? ' +
+                  '<a href="#" id="billing-cancel-link">Cancel your subscription</a>' +
+                  ' — keeps you on your plan until the end of your billing period.' +
+                '</p>'
+              : '') +
 
           '<div class="billing-features">' +
             '<p class="eyebrow">Features on your plan</p>' +
@@ -171,6 +191,7 @@
     const upgradeBottom = document.getElementById("billing-upgrade-bottom");
     const portal = document.getElementById("billing-portal");
     const cancelLink = document.getElementById("billing-cancel-link");
+    const downgradeNow = document.getElementById("billing-downgrade-now");
     const open = function () {
       const modal = window.CBV2 && window.CBV2.upgradeModal;
       if (modal && modal.show) modal.show({ reason: "feature_locked" });
@@ -184,6 +205,25 @@
     if (cancelLink) cancelLink.addEventListener("click", function (e) {
       e.preventDefault();
       openPortal();
+    });
+    // "Switch to Free now" shortcut for cancelled subs. Confirms first
+    // because it's an irreversible-this-cycle action (they'll need to
+    // re-subscribe + re-pay if they want their plan back).
+    if (downgradeNow) downgradeNow.addEventListener("click", async function () {
+      const modal = window.CBV2 && window.CBV2.modal;
+      const proceed = modal && modal.confirm
+        ? await modal.confirm({
+            title: "Switch to Free now?",
+            body:
+              "Your subscription is already cancelled — you'd normally keep your current plan until period end. " +
+              "Switching now drops you to Free immediately. Your data stays, only the plan changes. " +
+              "You can upgrade again any time.",
+            confirmLabel: "Switch to Free now",
+            cancelLabel: "Keep until period ends",
+            tone: "danger",
+          })
+        : window.confirm("Switch to Free now? You'll lose paid features immediately.");
+      if (proceed) await directDowngradeToFree();
     });
   }
 
@@ -255,10 +295,17 @@
       const msg = (err && err.message) || "Could not open portal.";
       // Fallback path: when PayStack has no subscription_code for the
       // user (test-mode quirk where charge.success fired without
-      // subscription.create), or any other portal-blocked state,
-      // offer a direct "Switch to Free plan" downgrade so the user
-      // isn't trapped on a plan they can't manage.
-      const noSub = /no active.*subscription/i.test(msg) || /not yet available/i.test(msg);
+      // subscription.create), the sub is already cancelled / complete
+      // on PayStack's side (so /manage/link is rejected), or any other
+      // portal-blocked state — offer a direct "Switch to Free plan"
+      // downgrade so the user isn't trapped on a plan they can't manage.
+      const noSub =
+        /no active.*subscription/i.test(msg) ||
+        /not yet available/i.test(msg) ||
+        /already.*cancel/i.test(msg) ||
+        /subscription.*not.*active/i.test(msg) ||
+        /subscription.*complete/i.test(msg) ||
+        /subscription.*disabled/i.test(msg);
       if (noSub) {
         const modal = window.CBV2 && window.CBV2.modal;
         const proceed = modal && modal.confirm

@@ -117,6 +117,11 @@
       ? profile.plan.charAt(0).toUpperCase() + profile.plan.slice(1)
       : "";
     const planLabel = planFromEnt || planFromProfile || "Free";
+    // If the sub is cancelled but the user still has access until the
+    // period end, append a small marker so the chip doesn't look like
+    // an indefinitely-active paid plan.
+    const planCancelled = !!(entData && (entData.cancel_at_period_end || entData.status === "canceled")) && (entData.plan_id && entData.plan_id !== "free");
+    const planChipText = planCancelled ? planLabel + " plan · cancelled" : planLabel + " plan";
     const st = window.CBV2.sanitizeText || function (x) { return String(x || ""); };
     const canAdmin = window.CBV2.adminAccess && typeof window.CBV2.adminAccess.canAccess === "function"
       ? window.CBV2.adminAccess.canAccess()
@@ -138,7 +143,7 @@
             <div class="user-menu-identity">
               <strong class="user-menu-name">${st(displayName)}</strong>
               <span class="user-menu-email">${st(email)}</span>
-              <span class="chip chip-sm violet user-menu-plan">${st(planLabel)} plan</span>
+              <span class="chip chip-sm ${planCancelled ? "amber" : "violet"} user-menu-plan">${st(planChipText)}</span>
             </div>
           </div>
           ${renderUserMenuQuotas()}

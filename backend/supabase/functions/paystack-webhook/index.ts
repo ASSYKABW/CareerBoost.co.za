@@ -142,6 +142,11 @@ async function handleChargeSuccess(svc: ReturnType<typeof getServiceClient>, eve
   };
   if (customerCode) update.paystack_customer_code = customerCode;
   if (subscriptionCode) update.paystack_subscription_code = subscriptionCode;
+  // A successful charge means we just renewed; clear any prior cancel
+  // flag and reset canceled_at so the UI shows "Active" again rather
+  // than carrying a stale "cancelled" badge.
+  update.cancel_at_period_end = false;
+  update.canceled_at = null;
 
   const { error } = await svc
     .from("subscriptions")
@@ -172,13 +177,16 @@ async function handleSubscriptionCreate(svc: ReturnType<typeof getServiceClient>
   const row = rows[0];
   if (row.paystack_subscription_code === sub.subscription_code) return; // already set
 
+  const createUpdate: Record<string, unknown> = {
+    paystack_subscription_code: sub.subscription_code,
+    last_event_id: event.id || sub.subscription_code,
+    updated_at: new Date().toISOString(),
+  };
+  if (sub.next_payment_date) createUpdate.current_period_end = sub.next_payment_date;
+
   await svc
     .from("subscriptions")
-    .update({
-      paystack_subscription_code: sub.subscription_code,
-      last_event_id: event.id || sub.subscription_code,
-      updated_at: new Date().toISOString(),
-    })
+    .update(createUpdate)
     .eq("user_id", row.user_id);
 }
 
@@ -205,16 +213,22 @@ async function handleSubscriptionDisable(svc: ReturnType<typeof getServiceClient
     ? "canceled"
     : "active";
 
+  const update: Record<string, unknown> = {
+    status: finalStatus,
+    cancel_at_period_end: finalStatus === "active",
+    canceled_at: new Date().toISOString(),
+    last_event_id: event.id || sub.subscription_code,
+    updated_at: new Date().toISOString(),
+    ...(finalStatus === "canceled" ? { plan_id: "free" } : {}),
+  };
+  // Without this the billing UI can't show "Cancels on X" — it falls
+  // back to "No active subscription" which is misleading while the user
+  // still has paid features until period end.
+  if (sub.next_payment_date) update.current_period_end = sub.next_payment_date;
+
   await svc
     .from("subscriptions")
-    .update({
-      status: finalStatus,
-      cancel_at_period_end: finalStatus === "active",
-      canceled_at: new Date().toISOString(),
-      last_event_id: event.id || sub.subscription_code,
-      updated_at: new Date().toISOString(),
-      ...(finalStatus === "canceled" ? { plan_id: "free" } : {}),
-    })
+    .update(update)
     .eq("user_id", userId);
 }
 
