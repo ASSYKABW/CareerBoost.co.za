@@ -102,7 +102,7 @@
       heading: "Company",
       links: [
         { label: "About",          href: "#" },
-        { label: "Contact",        href: "mailto:hello@careerboost.app" },
+        { label: "Contact support", href: "mailto:support@careerboost.co.za" },
         { label: "Privacy",        href: "#/privacy" },
         { label: "Terms",          href: "#/terms" },
       ]
@@ -118,7 +118,7 @@
     { label: "LinkedIn",    icon: "fa-linkedin-in", href: "#", brand: true,  pending: true },
     { label: "Twitter / X", icon: "fa-x-twitter",   href: "#", brand: true,  pending: true },
     { label: "GitHub",      icon: "fa-github",      href: "#", brand: true,  pending: true },
-    { label: "Email",       icon: "fa-envelope",    href: "mailto:hello@careerboost.app", brand: false, pending: false },
+    { label: "Email",       icon: "fa-envelope",    href: "mailto:support@careerboost.co.za", brand: false, pending: false },
   ];
 
   const STEPS = [
@@ -219,7 +219,7 @@
         '<div class="lp-mock-window">' +
           '<div class="lp-mock-bar">' +
             '<span></span><span></span><span></span>' +
-            '<em>careerboost.app</em>' +
+            '<em>careerboost.co.za</em>' +
           '</div>' +
           '<div class="lp-mock-body">' +
             '<div class="lp-mock-rail">' +
@@ -466,6 +466,18 @@
               '<h2>Questions before you start.</h2>' +
             '</header>' +
             '<div class="lp-faq-list">' + faqs + '</div>' +
+            // Email contact prompt: anyone whose question isn't covered
+            // by the FAQ above gets a clear escape hatch. mailto: opens
+            // their default mail client. Goes to support@careerboost.co.za
+            // which forwards to Gmail via ImprovMX.
+            '<div class="lp-faq-contact">' +
+              '<p>' +
+                '<i class="fa-solid fa-envelope" aria-hidden="true"></i> ' +
+                'Still have a question? Email us at ' +
+                '<a href="mailto:support@careerboost.co.za">support@careerboost.co.za</a> ' +
+                '&mdash; usually replies within one business day.' +
+              '</p>' +
+            '</div>' +
           '</div>' +
         '</section>' +
 

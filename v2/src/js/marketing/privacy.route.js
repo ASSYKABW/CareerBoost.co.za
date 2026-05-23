@@ -191,7 +191,7 @@
           <h2>11. Contact</h2>
           <p>
             Questions, complaints, data-subject requests, or anything else
-            about this policy: <a href="mailto:privacy@careerboost.app">privacy@careerboost.app</a>.
+            about this policy: <a href="mailto:privacy@careerboost.co.za">privacy@careerboost.co.za</a>.
           </p>
 
           <p class="legal-foot">

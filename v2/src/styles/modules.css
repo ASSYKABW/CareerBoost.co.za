@@ -5747,6 +5747,34 @@ a.settings-status-card:hover {
 
 /* ── FAQ ─────────────────────────────────────────────────────────── */
 .lp-faq-list { display: flex; flex-direction: column; gap: 8px; }
+.lp-faq-contact {
+  margin-top: 28px;
+  padding: 18px 22px;
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius);
+  text-align: center;
+}
+.lp-faq-contact p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--lp-text, #d8e0ee);
+  line-height: 1.5;
+}
+.lp-faq-contact i {
+  color: var(--lp-accent, #5eead4);
+  margin-right: 4px;
+}
+.lp-faq-contact a {
+  color: var(--lp-accent, #5eead4);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(94, 234, 212, 0.35);
+  transition: border-color 120ms ease;
+}
+.lp-faq-contact a:hover {
+  border-color: var(--lp-accent, #5eead4);
+}
 .lp-faq {
   background: var(--lp-surface);
   border: 1px solid var(--lp-border);

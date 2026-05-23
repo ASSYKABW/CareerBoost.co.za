@@ -186,7 +186,7 @@
           <h2>13. Contact</h2>
           <p>
             Questions about these terms, billing disputes, or anything
-            else: <a href="mailto:hello@careerboost.app">hello@careerboost.app</a>.
+            else: <a href="mailto:support@careerboost.co.za">support@careerboost.co.za</a>.
           </p>
 
           <p class="legal-foot">
