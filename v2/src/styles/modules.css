@@ -6614,19 +6614,6 @@ a.settings-status-card:hover {
   .lp-mock-stages span.is-rotating { transition: none; }
 }
 
-/* ── SA flag chip (used in hero eyebrow + footer origin) ─────────── */
-.lp-flag {
-  display: inline-block;
-  vertical-align: -1px;
-  font-size: 1.05em;
-  margin-right: 4px;
-}
-.lp-footer-origin {
-  font-size: 13px;
-  color: var(--lp-text-muted);
-  margin: 12px 0 16px;
-}
-
 /* ── Currency toggle in pricing header ──────────────────────────── */
 .lp-ccy-toggle {
   display: inline-flex;
@@ -6703,29 +6690,6 @@ a.settings-status-card:hover {
 }
 .lp-compare .lp-compare-yes { color: var(--lp-accent); font-weight: 700; }
 .lp-compare .lp-compare-no  { color: var(--lp-text-dim); }
-
-/* ── Product screenshot section ─────────────────────────────────── */
-.lp-screenshot {
-  margin: 0 auto;
-  max-width: 1000px;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid var(--lp-border);
-  background: var(--lp-bg-alt);
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
-}
-.lp-screenshot-img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.lp-screenshot-fallback {
-  display: block;
-  padding: 60px 24px;
-  text-align: center;
-  color: var(--lp-text-muted);
-  font-size: 14px;
-}
 
 /* ── Testimonials grid ─────────────────────────────────────────── */
 .lp-testimonials-grid {

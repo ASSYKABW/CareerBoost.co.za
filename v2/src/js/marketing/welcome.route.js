@@ -99,12 +99,11 @@
     }
   ];
 
-  // Only ship live social channels — "Coming soon" placeholders read as
-  // "incomplete product" on launch day. When you create LinkedIn / X /
-  // GitHub accounts, push them back into this array with their real
-  // hrefs and they'll render automatically.
+  // Only ship live social channels. When you create X / GitHub accounts,
+  // push them into this array with their real hrefs.
   const SOCIAL_LINKS = [
-    { label: "Email", icon: "fa-envelope", href: "mailto:support@careerboost.co.za", brand: false },
+    { label: "LinkedIn", icon: "fa-linkedin-in", href: "https://www.linkedin.com/company/120914243/", brand: true, external: true },
+    { label: "Email",    icon: "fa-envelope",    href: "mailto:support@careerboost.co.za",            brand: false },
   ];
 
   const STEPS = [
@@ -269,8 +268,9 @@
   function renderFooterBrand() {
     const socials = SOCIAL_LINKS.map(function (s) {
       const cls = s.brand ? "fa-brands" : "fa-solid";
+      const ext = s.external ? ' target="_blank" rel="noopener noreferrer"' : '';
       return (
-        '<a href="' + s.href + '" class="lp-social" aria-label="' + s.label + '" title="' + s.label + '">' +
+        '<a href="' + s.href + '" class="lp-social" aria-label="' + s.label + '" title="' + s.label + '"' + ext + '>' +
           '<i class="' + cls + ' ' + s.icon + '" aria-hidden="true"></i>' +
         '</a>'
       );
@@ -279,7 +279,6 @@
       '<div class="lp-footer-brand-col">' +
         renderBrand() +
         '<p class="lp-footer-tagline">A calm, AI-powered workspace for ambitious job seekers. Research roles, tailor every application, rehearse interviews, track every move.</p>' +
-        '<p class="lp-footer-origin"><span class="lp-flag" aria-hidden="true">🇿🇦</span> Built in South Africa for the global job seeker.</p>' +
         '<div class="lp-social-row">' + socials + '</div>' +
       '</div>'
     );
@@ -543,7 +542,7 @@
         '<section class="lp-hero" id="hero">' +
           '<div class="lp-hero-inner">' +
             '<div class="lp-hero-copy">' +
-              '<span class="lp-eyebrow"><span class="lp-flag" aria-hidden="true">🇿🇦</span> Built in South Africa &nbsp;·&nbsp; <i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Private by design</span>' +
+              '<span class="lp-eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Private by design &nbsp;·&nbsp; <i class="fa-solid fa-user-check" aria-hidden="true"></i> Human in control</span>' +
               '<h1>Stop juggling 12 tabs.<br/>Run your job search from one place.</h1>' +
               '<p class="lp-hero-sub">Research roles, tailor every resume, rehearse interviews out loud, and track every follow-up — all in one calm workspace. For serious job seekers, not auto-apply spam.</p>' +
               '<div class="lp-hero-actions">' +
@@ -572,30 +571,6 @@
               '<p>Stop juggling tabs, spreadsheets, and AI prompts. CareerBoost is the workspace where research, tailoring, practice, and tracking actually connect.</p>' +
             '</header>' +
             '<div class="lp-feature-grid">' + features + '</div>' +
-          '</div>' +
-        '</section>' +
-
-        // ── Real product screenshot ────────────────────────────────
-        // Loads a real dashboard screenshot; on load failure (file not
-        // there yet) the <img> hides itself and we fall back to a
-        // stylized caption. Replace v2/src/assets/screenshot-dashboard.png
-        // with an actual capture:
-        //   - 1440x900 viewport, dark theme
-        //   - Pipeline view with a few realistic-looking cards
-        //   - No PII (use fake names like "Acme Inc — Senior PM")
-        //   - PNG, under 250KB (use tinypng.com to compress)
-        '<section class="lp-section" id="product">' +
-          '<div class="lp-container">' +
-            '<header class="lp-section-head">' +
-              '<span class="lp-eyebrow">A look inside</span>' +
-              '<h2>Built to be lived in.</h2>' +
-              '<p>The whole workflow — saved jobs, tailoring, mock interviews, calendar — under one roof. Keyboard shortcuts everywhere; works on phone and laptop.</p>' +
-            '</header>' +
-            '<figure class="lp-screenshot">' +
-              '<img class="lp-screenshot-img" src="./src/assets/screenshot-dashboard.png" alt="CareerBoost dashboard showing the pipeline view with saved jobs and weekly priorities" loading="lazy" ' +
-                'onerror="this.style.display=\'none\';var c=this.nextElementSibling;if(c){c.removeAttribute(\'hidden\');}" />' +
-              '<figcaption class="lp-screenshot-fallback" hidden>Dashboard screenshot coming soon — preview the workflow by signing up free.</figcaption>' +
-            '</figure>' +
           '</div>' +
         '</section>' +
 
@@ -647,7 +622,7 @@
                 '</header>' +
                 '<div class="lp-pricing-grid">' + cards + '</div>' +
                 renderComparisonTable() +
-                '<p class="lp-pricing-foot">Secure payments via PayStack (ZAR) or Stripe (USD). Cancel anytime from Billing.</p>' +
+                '<p class="lp-pricing-foot">Secure checkout. Cancel anytime from Billing.</p>' +
               '</div>' +
             '</section>'
           );
