@@ -199,12 +199,27 @@
     if (upgrade) upgrade.addEventListener("click", open);
     if (upgradeBottom) upgradeBottom.addEventListener("click", open);
     if (portal) portal.addEventListener("click", openPortal);
-    // Cancel link uses the same portal — PayStack's billing portal has
-    // the cancel-subscription option inside. We just give it a more
-    // discoverable entry point in the UI.
-    if (cancelLink) cancelLink.addEventListener("click", function (e) {
+    // Cancel link goes directly through downgrade-to-free (not through
+    // PayStack's portal). The portal route was unreliable: PayStack's
+    // /manage page often opens with no cancel button at all (test mode,
+    // already-disabled subs, or just PayStack UI quirks), leaving users
+    // stuck. downgrade-to-free best-effort tells PayStack to disable,
+    // then forces the DB to free regardless — Cancel always works.
+    if (cancelLink) cancelLink.addEventListener("click", async function (e) {
       e.preventDefault();
-      openPortal();
+      const modal = window.CBV2 && window.CBV2.modal;
+      const proceed = modal && modal.confirm
+        ? await modal.confirm({
+            title: "Cancel your subscription?",
+            body:
+              "Your subscription will be cancelled immediately and you'll be moved to the Free plan. " +
+              "All your data stays — only the plan changes. You can upgrade again any time.",
+            confirmLabel: "Cancel & switch to Free",
+            cancelLabel: "Keep my subscription",
+            tone: "danger",
+          })
+        : window.confirm("Cancel your subscription and switch to Free now?");
+      if (proceed) await directDowngradeToFree();
     });
     // "Switch to Free now" shortcut for cancelled subs. Confirms first
     // because it's an irreversible-this-cycle action (they'll need to
