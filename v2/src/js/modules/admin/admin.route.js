@@ -1830,11 +1830,11 @@
       payload = { note: String(note).trim().slice(0, 2000) };
 
     } else if (action === "send_email") {
-      // Bulk email = one mailto: with all recipients in BCC. This gives
-      // each user a personal-looking email (no other addresses visible)
-      // while we record one audit row per user. Subject + body are the
-      // same; for true mail-merge personalization, the operator should
-      // use a real ESP.
+      // Week 2 #1 — bulk email now sends via Resend (admin-send-email
+      // edge function) instead of opening mailto:. Each recipient gets
+      // a personal-looking 1:1 email with delivery tracking via the
+      // Resend webhook. The dry-run preview below still shows the
+      // recipient list + subject so operators can verify before send.
       const emails = ids.map(function (id) { return (selectedMap[id] || {}).email || ""; }).filter(Boolean);
       if (!emails.length) {
         if (window.CBV2.toast) window.CBV2.toast.error("None of the selected users have an email on file.");
@@ -1843,7 +1843,7 @@
       const subject = modal && modal.prompt
         ? await modal.prompt({
             title: "Bulk email — subject",
-            body: "Same subject sent to all " + emails.length + " selected users (via BCC so each recipient only sees their own address). Max 200 chars.",
+            body: "Same subject sent to all " + emails.length + " selected users. Each recipient gets a personal email (no other addresses visible). Max 200 chars.",
             defaultValue: "An update from CareerBoost",
             required: true,
             validate: function (v) {
@@ -1858,8 +1858,8 @@
 
       const body = modal && modal.prompt
         ? await modal.prompt({
-            title: "Bulk email — body",
-            body: "Body for all " + emails.length + " recipients. Your mail client opens with the draft — review before sending. (Max 10000 chars.)",
+            title: "Bulk email — body (plain text or simple HTML)",
+            body: "Body for all " + emails.length + " recipients. Plain text works; simple HTML (\\<p\\>, \\<a\\>, \\<strong\\>) renders correctly. Max 10000 chars.",
             multiline: true,
             required: true,
             validate: function (v) {
@@ -1874,14 +1874,10 @@
 
       const subj = String(subject).trim().slice(0, 200);
       const bod = String(body).trim().slice(0, 10000);
-      payload = { subject: subj, bodyLength: bod.length };
-      // Open a single mailto: with all addresses in BCC. The "to:"
-      // field gets the operator's own address (filled in by their
-      // mail client) so the user sees a 1:1 looking email.
-      const mailto = "mailto:?bcc=" + encodeURIComponent(emails.join(","))
-        + "&subject=" + encodeURIComponent(subj)
-        + "&body=" + encodeURIComponent(bod);
-      try { window.open(mailto, "_self"); } catch (_e) { /* popup blocked */ }
+      // Stash body in payload so the post-preview executor can read it
+      // without a re-prompt. bodyChars surfaces in the audit; bodyHtml
+      // is consumed and removed before the audit logger sees it.
+      payload = { subject: subj, bodyHtml: bod, bodyChars: bod.length };
     } else {
       return;
     }
@@ -1940,35 +1936,99 @@
     };
     window.CBV2.renderCurrentRoute();
 
-    for (let i = 0; i < ids.length; i += 1) {
-      const id = ids[i];
-      const meta = selectedMap[id] || {};
+    // Week 2 #1 — send_email is the single exception to the per-user
+    // loop. The admin-send-email Edge Function takes the entire
+    // recipient list in one POST + handles Resend rate-limiting
+    // server-side. We get back a structured per-recipient result.
+    if (action === "send_email") {
+      const recipients = ids
+        .map(function (id) {
+          const m = selectedMap[id] || {};
+          return m.email ? { userId: id, email: m.email } : null;
+        })
+        .filter(Boolean);
       try {
-        await window.CBV2.adminUserAdjust.apply({
-          action: action,
-          targetUserId: id,
-          targetEmail: meta.email || "",
-          payload: payload
-        });
+        const auth = window.CBV2 && window.CBV2.auth;
+        const client = auth && auth.getClient && auth.getClient();
+        const reqBody = {
+          subject: payload.subject,
+          bodyHtml: payload.bodyHtml,
+          recipients: recipients,
+        };
+        let response;
+        if (client && client.functions && typeof client.functions.invoke === "function") {
+          const invoked = await client.functions.invoke("admin-send-email", {
+            body: reqBody,
+            headers: { "X-CB-Admin-Nonce": getAdminCsrfNonce() },
+          });
+          if (invoked.error) {
+            let msg = invoked.error.message || "Send failed.";
+            try {
+              if (invoked.error.context && typeof invoked.error.context.text === "function") {
+                const t = await invoked.error.context.text();
+                try { const j = JSON.parse(t); msg = j.error || j.message || msg; }
+                catch (_e) { if (t) msg = t.slice(0, 240); }
+              }
+            } catch (_e) {}
+            throw new Error(msg);
+          }
+          response = invoked.data;
+        } else {
+          throw new Error("Auth client unavailable.");
+        }
+        const sent = Number(response.sent || 0);
+        const failed = Number(response.failed || 0);
+        adminUsersRemote.bulk.done = ids.length;
+        adminUsersRemote.bulk.failed = failed;
+        if (window.CBV2.toast) {
+          if (failed === 0) {
+            window.CBV2.toast.success("Sent to all " + sent + " recipients. Delivery status updates within a minute.");
+          } else if (sent === 0) {
+            window.CBV2.toast.error("All " + failed + " sends failed. Check Resend keys in Edge Function secrets.");
+          } else {
+            window.CBV2.toast.warning("Sent " + sent + " · " + failed + " failed. Open Audit Log for per-recipient detail.");
+          }
+        }
       } catch (err) {
-        adminUsersRemote.bulk.failed += 1;
+        adminUsersRemote.bulk.failed = ids.length;
         adminUsersRemote.bulk.lastError = (err && err.message) || "Unknown error";
+        if (window.CBV2.toast) {
+          window.CBV2.toast.error("Bulk send_email failed: " + adminUsersRemote.bulk.lastError);
+        }
       }
-      adminUsersRemote.bulk.done += 1;
-      // Live progress: re-render only every ~3rd step so we don't
-      // thrash the DOM on a 50-row run. Always re-render at the end.
-      if (i % 3 === 2 || i === ids.length - 1) {
-        window.CBV2.renderCurrentRoute();
+    } else {
+      // All other actions: original per-user loop.
+      for (let i = 0; i < ids.length; i += 1) {
+        const id = ids[i];
+        const meta = selectedMap[id] || {};
+        try {
+          await window.CBV2.adminUserAdjust.apply({
+            action: action,
+            targetUserId: id,
+            targetEmail: meta.email || "",
+            payload: payload
+          });
+        } catch (err) {
+          adminUsersRemote.bulk.failed += 1;
+          adminUsersRemote.bulk.lastError = (err && err.message) || "Unknown error";
+        }
+        adminUsersRemote.bulk.done += 1;
+        // Live progress: re-render only every ~3rd step so we don't
+        // thrash the DOM on a 50-row run. Always re-render at the end.
+        if (i % 3 === 2 || i === ids.length - 1) {
+          window.CBV2.renderCurrentRoute();
+        }
       }
-    }
 
-    const ok = ids.length - adminUsersRemote.bulk.failed;
-    const fail = adminUsersRemote.bulk.failed;
-    if (window.CBV2.toast) {
-      if (fail === 0) window.CBV2.toast.success("Applied " + action + " to all " + ok + " selected users.");
-      else if (ok === 0) window.CBV2.toast.error("Bulk " + action + " failed for all " + fail + " users. Last error: " + (adminUsersRemote.bulk.lastError || "?"));
-      else window.CBV2.toast.warning("Applied " + action + " to " + ok + " users; " + fail + " failed. Last error: " + (adminUsersRemote.bulk.lastError || "?"));
+      const ok = ids.length - adminUsersRemote.bulk.failed;
+      const fail = adminUsersRemote.bulk.failed;
+      if (window.CBV2.toast) {
+        if (fail === 0) window.CBV2.toast.success("Applied " + action + " to all " + ok + " selected users.");
+        else if (ok === 0) window.CBV2.toast.error("Bulk " + action + " failed for all " + fail + " users. Last error: " + (adminUsersRemote.bulk.lastError || "?"));
+        else window.CBV2.toast.warning("Applied " + action + " to " + ok + " users; " + fail + " failed. Last error: " + (adminUsersRemote.bulk.lastError || "?"));
+      }
     }
+    const fail = adminUsersRemote.bulk.failed;
 
     // Clear selection on full success, keep selection on partial fail so
     // operator can retry just the failures (next iteration we'll mark
@@ -2213,11 +2273,9 @@
     }
 
     if (action === "send_email") {
-      // A4: compose modal → mailto: link → audit row.
-      // Two prompts (subject, then body) keeps it simple; consider a
-      // single richer dialog later. The mailto: is opened via window.open
-      // because <a href="mailto:..."> in a freshly-rendered string can be
-      // flaky across browsers' popup blockers.
+      // Week 2 #1 — single-recipient send now goes through Resend
+      // via admin-send-email. Delivery + bounce status updates flow
+      // back via the Resend webhook → admin_email_log row.
       if (!targetEmail) {
         if (window.CBV2.toast) window.CBV2.toast.error("Cannot email — user has no email on file.");
         return;
@@ -2225,7 +2283,7 @@
       const subject = modal && modal.prompt
         ? await modal.prompt({
             title: "Email " + who + " — subject",
-            body: "Subject line for the email. The body comes next. (Max 200 chars.)",
+            body: "Subject line. The body comes next. (Max 200 chars.)",
             defaultValue: "Quick note from CareerBoost support",
             placeholder: "Quick note from CareerBoost support",
             required: true,
@@ -2241,8 +2299,8 @@
 
       const body = modal && modal.prompt
         ? await modal.prompt({
-            title: "Email " + who + " — body",
-            body: "Body of the email. Your mail client will open with this draft — you can edit and send from there. Uses your operator address as the sender. (Max 10000 chars.)",
+            title: "Email " + who + " — body (plain text or simple HTML)",
+            body: "Sent via Resend with delivery tracking. Plain text works; simple HTML (\\<p\\>, \\<a\\>, \\<strong\\>) renders correctly. From: your configured Resend sender. (Max 10000 chars.)",
             placeholder: "Hi there,\n\nThanks for reaching out…",
             multiline: true,
             required: true,
@@ -2256,23 +2314,49 @@
         : (prompt("Body:", "") || "");
       if (body == null || !String(body).trim()) return;
 
-      // Open mailto: first — if the operator changes their mind they
-      // can close the draft. We log to audit AFTER they confirm in
-      // the modal so we don't have a phantom "I sent this" row from
-      // a draft that was actually discarded.
       const subj = String(subject).trim().slice(0, 200);
       const bod = String(body).trim().slice(0, 10000);
-      const mailto = "mailto:" + encodeURIComponent(targetEmail) +
-        "?subject=" + encodeURIComponent(subj) +
-        "&body=" + encodeURIComponent(bod);
-      try { window.open(mailto, "_self"); } catch (_e) { /* popup blocked */ }
 
-      await window.CBV2.adminUserAdjust.apply({
-        action: "send_email",
-        targetUserId: targetUserId,
-        targetEmail: targetEmail,
-        payload: { subject: subj, bodyLength: bod.length }
-      }).catch(function () { /* error already toasted */ });
+      // Single POST to admin-send-email with one recipient. Reuses
+      // the same edge function as bulk so the audit/log surface stays
+      // consistent for operators reviewing the trail.
+      try {
+        const auth = window.CBV2 && window.CBV2.auth;
+        const client = auth && auth.getClient && auth.getClient();
+        if (!client || !client.functions) throw new Error("Auth client unavailable.");
+        const invoked = await client.functions.invoke("admin-send-email", {
+          body: {
+            subject: subj,
+            bodyHtml: bod,
+            recipients: [{ userId: targetUserId, email: targetEmail }],
+          },
+          headers: { "X-CB-Admin-Nonce": getAdminCsrfNonce() },
+        });
+        if (invoked.error) {
+          let msg = invoked.error.message || "Send failed.";
+          try {
+            if (invoked.error.context && typeof invoked.error.context.text === "function") {
+              const t = await invoked.error.context.text();
+              try { const j = JSON.parse(t); msg = j.error || j.message || msg; }
+              catch (_e) { if (t) msg = t.slice(0, 240); }
+            }
+          } catch (_e) {}
+          throw new Error(msg);
+        }
+        const data = invoked.data || {};
+        if (window.CBV2.toast) {
+          if (Number(data.failed || 0) > 0) {
+            const detail = (data.results && data.results[0] && data.results[0].error) || "unknown error";
+            window.CBV2.toast.error("Send to " + targetEmail + " failed: " + detail);
+          } else {
+            window.CBV2.toast.success("Sent to " + targetEmail + ". Delivery confirmation arrives within a minute.");
+          }
+        }
+      } catch (err) {
+        if (window.CBV2.toast) {
+          window.CBV2.toast.error("Couldn't send email: " + ((err && err.message) || "unknown"));
+        }
+      }
       return;
     }
   }

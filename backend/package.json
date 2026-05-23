@@ -39,6 +39,8 @@
     "fn:deploy:paystack-portal": "supabase functions deploy paystack-portal --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:downgrade-to-free": "supabase functions deploy downgrade-to-free --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:password-recovery-update": "supabase functions deploy password-recovery-update --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy:admin-send-email": "supabase functions deploy admin-send-email --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy:admin-resend-webhook": "supabase functions deploy admin-resend-webhook --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:health": "supabase functions deploy health --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:paystack": "npm run fn:deploy:paystack-checkout && npm run fn:deploy:paystack-webhook && npm run fn:deploy:paystack-portal && npm run fn:deploy:downgrade-to-free",
     "fn:deploy:get-entitlements": "supabase functions deploy get-entitlements --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
