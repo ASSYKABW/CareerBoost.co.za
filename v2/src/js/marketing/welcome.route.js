@@ -85,9 +85,12 @@
         { label: "FAQ",            href: "#faq" },
         { label: "Help center",    href: "#faq" },
         { label: "What's new",     href: "#features" },
-        // Day 1.10: "Status" link removed until we have a real status
-        // page (planned for Phase 2 — Better Stack free tier). Linking
-        // to "#" is a broken-trust signal — better to omit until live.
+        // Week 2 #6: Status page now live on Better Stack at the
+        // status.careerboost.co.za subdomain (separate from the SPA,
+        // so external link with target=_blank). DNS CNAME setup on
+        // the operator side; see commit message for Better Stack
+        // dashboard steps if revisiting.
+        { label: "Status",         href: "https://status.careerboost.co.za", external: true },
       ]
     },
     {
@@ -497,7 +500,13 @@
                     '<h4>' + col.heading + '</h4>' +
                     '<ul>' +
                       col.links.map(function (l) {
-                        return '<li><a href="' + l.href + '">' + l.label + '</a></li>';
+                        // External links (Status page on a different
+                        // subdomain etc.) open in a new tab and use
+                        // rel=noopener to drop window.opener access.
+                        const attrs = l.external
+                          ? ' target="_blank" rel="noopener noreferrer"'
+                          : '';
+                        return '<li><a href="' + l.href + '"' + attrs + '>' + l.label + '</a></li>';
                       }).join("") +
                     '</ul>' +
                   '</div>'
