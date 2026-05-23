@@ -77,10 +77,21 @@
   }
   </script>
 
+  <!-- Week 2 #4 perf: trimmed Google Fonts from 3 families × 9 weights
+       down to 2 families × 4 weights. Space Grotesk dropped entirely
+       (CSS fallback to Inter via --font-family-display in tokens.css).
+       Inter weights reduced 400/500/600/700/800 → 400/600/700 (covers
+       normal/semibold/bold — we don't actually render 500 or 800 at
+       a size where the difference matters). JetBrains Mono trimmed
+       500/600 → 500 only. Net ~120KB savings off first-paint.
+
+       Future: self-host the Font Awesome subset (~230 icons in use,
+       see audit in commit log) via Fontello/IcoMoon for another
+       ~250KB savings. Logged as admin_incident `perf:fa-subset`. -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap"
     rel="stylesheet"
   />
   <link
@@ -90,7 +101,7 @@
     referrerpolicy="no-referrer"
   />
 
-  <link rel="stylesheet" href="./src/styles/tokens.css" />
+  <link rel="stylesheet" href="./src/styles/tokens.css?v=20260523-perf" />
   <link rel="stylesheet" href="./src/styles/base.css" />
   <link rel="stylesheet" href="./src/styles/layout.css?v=20260521-day4-mobile" />
   <link rel="stylesheet" href="./src/styles/modules.css?v=20260522-paystack-fixes" />

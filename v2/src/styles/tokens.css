@@ -37,11 +37,13 @@
 
   /* ------------------------------------------------------------------
    * Typography — Inter for UI, Space Grotesk for display, JetBrains Mono
-   * for numeric / data voice. All three are loaded from Google Fonts in
-   * index.html. Display gets slightly tighter tracking to read premium.
+   * for numeric / data voice. Loaded from Google Fonts in index.html.
+   * Week 2 #4 perf: Space Grotesk dropped (~70KB save) — display falls
+   * back to Inter with slightly tighter tracking applied at the
+   * usage site. The visual difference at 18px+ is barely perceptible.
    * ------------------------------------------------------------------ */
   --font-family-base: "Inter", system-ui, sans-serif;
-  --font-family-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-family-display: "Inter", system-ui, sans-serif;
   --font-family-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
 
   --font-size-11: 0.6875rem;
