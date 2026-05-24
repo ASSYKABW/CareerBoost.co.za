@@ -20,7 +20,8 @@
 // via the admin.route.js dispatcher alias, so old links/bookmarks work.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function renderHealthSummary(data, h) {
     const renderStat = h.renderStat;
@@ -307,7 +308,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     return (
       renderHealthSummary(data, h) +
       renderIncidents(data, h) +
@@ -324,5 +325,5 @@
     );
   }
 
-  window.CBV2.adminSections.health = { render: render };
+  window.CBAdmin.sections.health = { render: render };
 })();

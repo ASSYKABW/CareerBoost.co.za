@@ -2,13 +2,14 @@
 // Embeds the Operator Management panel which reads from helpers.adminOperatorsRemote.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   // Phase C: Operator Management panel — lists current admins and lets the
   // operator promote a new user by email or demote an existing one. Every
   // action is audit-logged at the DB level (admin_audit_log table).
   function renderOperatorManagement(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const formatDateTime = h.formatDateTime;
     const op = h.adminOperatorsRemote;
@@ -98,7 +99,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const renderStat = h.renderStat;
     const formatDateTime = h.formatDateTime;
@@ -171,5 +172,5 @@
     );
   }
 
-  window.CBV2.adminSections.settings = { render: render };
+  window.CBAdmin.sections.settings = { render: render };
 })();

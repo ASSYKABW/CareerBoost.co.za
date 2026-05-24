@@ -9,7 +9,8 @@
 // write to these caches; sections are read-only consumers.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   // -- State caches ---------------------------------------------------------
   const ADMIN_METRICS_TTL_MS = 60 * 1000;
@@ -546,7 +547,7 @@
   }
 
   // -- Public namespace -----------------------------------------------------
-  window.CBV2.adminHelpers = {
+  window.CBAdmin.helpers = {
     // constants
     ADMIN_METRICS_TTL_MS: ADMIN_METRICS_TTL_MS,
     // state caches (live mutable references)

@@ -18,7 +18,8 @@
 // so the same controls work here that worked on the old sections.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function renderSummary(data, h) {
     const renderStat = h.renderStat;
@@ -293,7 +294,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     return (
       renderSummary(data, h) +
       renderOperatorManagement(data, h) +
@@ -306,5 +307,5 @@
     );
   }
 
-  window.CBV2.adminSections.operations = { render: render };
+  window.CBAdmin.sections.operations = { render: render };
 })();

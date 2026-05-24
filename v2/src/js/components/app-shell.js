@@ -123,8 +123,8 @@
     const planCancelled = !!(entData && (entData.cancel_at_period_end || entData.status === "canceled")) && (entData.plan_id && entData.plan_id !== "free");
     const planChipText = planCancelled ? planLabel + " plan · cancelled" : planLabel + " plan";
     const st = window.CBV2.sanitizeText || function (x) { return String(x || ""); };
-    const canAdmin = window.CBV2.adminAccess && typeof window.CBV2.adminAccess.canAccess === "function"
-      ? window.CBV2.adminAccess.canAccess()
+    const canAdmin = window.CBAdmin && window.CBAdmin.access && typeof window.CBAdmin.access.canAccess === "function"
+      ? window.CBAdmin.access.canAccess()
       : false;
     const adminLink = canAdmin
       ? '<a class="user-menu-item" role="menuitem" href="#/admin"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Admin console</a>'

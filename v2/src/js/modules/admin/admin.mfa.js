@@ -28,6 +28,7 @@
 
 (function () {
   window.CBV2 = window.CBV2 || {};
+  window.CBAdmin = window.CBAdmin || {};
 
   // Cached MFA state. Reads MUST be synchronous because adminAccessState
   // is called inside renderView and the route renderer doesn't await.
@@ -232,7 +233,7 @@
 
   // ---- Public API ----------------------------------------------------------
 
-  window.CBV2.adminMfa = {
+  window.CBAdmin.mfa = {
     getSnapshot: getSnapshot,
     refreshSnapshot: refreshSnapshot,
     renderLoadingScreen: renderLoadingScreen,
