@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Share your experience — CareerBoost</title>
+  <meta name="description" content="Tell us how CareerBoost helped your job search. Your story might help someone else land their next role." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #05070f;
+      --bg-card:   #0d1326;
+      --bg-input:  #111827;
+      --border:    rgba(255,255,255,0.08);
+      --accent:    #00ff88;
+      --accent-dim: rgba(0,255,136,0.12);
+      --text:      #f0f4ff;
+      --muted:     rgba(240,244,255,0.55);
+      --error:     #ff6b6b;
+      --radius:    12px;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    /* ── Brand header ──────────────────────────────── */
+    .tf-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      margin-bottom: 40px;
+      font-weight: 700;
+      font-size: 20px;
+    }
+    .tf-brand svg { width: 36px; height: 36px; }
+    .tf-brand span { color: #38bdf8; }
+
+    /* ── Card ─────────────────────────────────────── */
+    .tf-card {
+      width: 100%;
+      max-width: 560px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 40px 36px;
+    }
+
+    @media (max-width: 600px) {
+      .tf-card { padding: 28px 20px; }
+    }
+
+    .tf-eyebrow {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .tf-card h1 {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    .tf-card .tf-sub {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    /* ── Form ─────────────────────────────────────── */
+    .tf-form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 480px) {
+      .tf-form-row { grid-template-columns: 1fr; }
+    }
+
+    .tf-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+
+    .tf-field label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .tf-field label .tf-required {
+      color: var(--accent);
+      margin-left: 2px;
+    }
+
+    .tf-field .tf-hint {
+      font-size: 12px;
+      color: rgba(240,244,255,0.35);
+      margin-top: -2px;
+    }
+
+    .tf-field input,
+    .tf-field textarea {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 14px;
+      transition: border-color 0.15s;
+      outline: none;
+      width: 100%;
+    }
+
+    .tf-field input:focus,
+    .tf-field textarea:focus {
+      border-color: rgba(0,255,136,0.5);
+    }
+
+    .tf-field textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    .tf-char-count {
+      font-size: 11px;
+      color: rgba(240,244,255,0.3);
+      text-align: right;
+      margin-top: 2px;
+    }
+
+    .tf-char-count.is-over { color: var(--error); }
+
+    /* ── Star rating ──────────────────────────────── */
+    .tf-stars {
+      display: flex;
+      gap: 6px;
+    }
+
+    .tf-stars button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 22px;
+      padding: 2px;
+      line-height: 1;
+      color: rgba(240,244,255,0.2);
+      transition: color 0.1s, transform 0.1s;
+    }
+
+    .tf-stars button.is-active,
+    .tf-stars button:hover ~ button { /* CSS-only hover handled by JS */ }
+    .tf-stars button.is-active { color: #fbbf24; transform: scale(1.15); }
+
+    /* ── Submit ───────────────────────────────────── */
+    .tf-submit {
+      width: 100%;
+      background: var(--accent);
+      color: #062018;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 24px;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      margin-top: 8px;
+    }
+
+    .tf-submit:hover { opacity: 0.9; }
+    .tf-submit:active { transform: scale(0.98); }
+    .tf-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Messages ─────────────────────────────────── */
+    .tf-msg {
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .tf-msg.is-error {
+      background: rgba(255,107,107,0.12);
+      border: 1px solid rgba(255,107,107,0.3);
+      color: var(--error);
+      display: block;
+    }
+
+    /* ── Success screen ───────────────────────────── */
+    .tf-success {
+      text-align: center;
+      padding: 20px 0;
+      display: none;
+    }
+
+    .tf-success .tf-success-icon {
+      font-size: 52px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .tf-success h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .tf-success p {
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 360px;
+      margin: 0 auto 28px;
+    }
+
+    .tf-success a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .tf-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 28px 0;
+    }
+
+    .tf-privacy {
+      font-size: 12px;
+      color: rgba(240,244,255,0.3);
+      text-align: center;
+      margin-top: 20px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <a class="tf-brand" href="https://www.careerboost.co.za/">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="CareerBoost">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0d1326"/><stop offset="100%" stop-color="#0a0f1d"/>
+        </linearGradient>
+        <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(34,227,255,0.14)"/><stop offset="100%" stop-color="rgba(34,227,255,0.04)"/>
+        </linearGradient>
+      </defs>
+      <rect width="200" height="200" rx="22" ry="22" fill="url(#bg)" stroke="#1a2240" stroke-width="1"/>
+      <g transform="translate(100,100)">
+        <rect x="-62" y="-62" width="124" height="124" rx="7" ry="7" transform="rotate(45)" fill="url(#fill)" stroke="#22e3ff" stroke-width="4"/>
+        <text x="0" y="14" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="44" fill="#f8fbff" letter-spacing="0.04em">CB</text>
+      </g>
+    </svg>
+    Career<span>Boost</span>
+  </a>
+
+  <div class="tf-card" id="tf-card">
+
+    <!-- ── Form ──────────────────────────────────────── -->
+    <div id="tf-form-wrap">
+      <p class="tf-eyebrow">Share your story</p>
+      <h1>How did CareerBoost help?</h1>
+      <p class="tf-sub">Your experience helps other job seekers know what to expect. Takes about 2 minutes.</p>
+
+      <div class="tf-msg" id="tf-error-msg" role="alert"></div>
+
+      <form id="tf-form" novalidate>
+        <div class="tf-form-row">
+          <div class="tf-field">
+            <label for="tf-name">Your name <span class="tf-required">*</span></label>
+            <input type="text" id="tf-name" name="name" placeholder="Jane Smith" autocomplete="name" required />
+          </div>
+          <div class="tf-field">
+            <label for="tf-role">Your role / title</label>
+            <input type="text" id="tf-role" name="role" placeholder="Product Manager" autocomplete="organization-title" />
+          </div>
+        </div>
+
+        <div class="tf-field">
+          <label for="tf-company">Company or location <span class="tf-hint">(optional)</span></label>
+          <input type="text" id="tf-company" name="company" placeholder="Cape Town" autocomplete="organization" />
+        </div>
+
+        <div class="tf-field">
+          <label for="tf-quote">Your testimonial <span class="tf-required">*</span></label>
+          <textarea id="tf-quote" name="quote" placeholder="Tell us how CareerBoost made a difference in your job search…" required></textarea>
+          <div class="tf-char-count" id="tf-char-count">0 / 800</div>
+        </div>
+
+        <div class="tf-field">
+          <label>Rating <span class="tf-hint">(optional)</span></label>
+          <div class="tf-stars" id="tf-stars" role="group" aria-label="Rating out of 5 stars">
+            <button type="button" data-star="1" aria-label="1 star">★</button>
+            <button type="button" data-star="2" aria-label="2 stars">★</button>
+            <button type="button" data-star="3" aria-label="3 stars">★</button>
+            <button type="button" data-star="4" aria-label="4 stars">★</button>
+            <button type="button" data-star="5" aria-label="5 stars">★</button>
+          </div>
+        </div>
+
+        <hr class="tf-divider" />
+
+        <div class="tf-field">
+          <label for="tf-email">Email <span class="tf-hint">(optional — never displayed publicly)</span></label>
+          <input type="email" id="tf-email" name="email" placeholder="jane@example.com" autocomplete="email" />
+          <div class="tf-hint">We may contact you for permission before publishing your quote.</div>
+        </div>
+
+        <button type="submit" class="tf-submit" id="tf-submit-btn">Submit testimonial</button>
+      </form>
+
+      <p class="tf-privacy">
+        Your testimonial may be edited for length and displayed on the CareerBoost website.<br/>
+        We will never share your email address.
+      </p>
+    </div>
+
+    <!-- ── Success state ──────────────────────────────── -->
+    <div class="tf-success" id="tf-success">
+      <span class="tf-success-icon">🎉</span>
+      <h2>Thank you!</h2>
+      <p>Your testimonial has been received. We'll review it shortly — and we may reach out if we have questions.</p>
+      <a href="https://www.careerboost.co.za/">Back to CareerBoost &rarr;</a>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var SUBMIT_URL = "https://kddffkhwpbngiupfmcse.functions.supabase.co/testimonial-submit";
+      var ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGZma2h3cGJuZ2l1cGZtY3NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2MjE4MDAsImV4cCI6MjA5MjE5NzgwMH0.glvjjwKq3JeOy8HF71JfwzW0m45DvwK8tSbnqxu-JY8";
+
+      var form      = document.getElementById("tf-form");
+      var errorMsg  = document.getElementById("tf-error-msg");
+      var submitBtn = document.getElementById("tf-submit-btn");
+      var charCount = document.getElementById("tf-char-count");
+      var quoteTA   = document.getElementById("tf-quote");
+      var starsWrap = document.getElementById("tf-stars");
+      var formWrap  = document.getElementById("tf-form-wrap");
+      var successEl = document.getElementById("tf-success");
+      var starBtns  = Array.from(starsWrap.querySelectorAll("button"));
+      var selectedRating = 0;
+
+      // ── Star rating ─────────────────────────────────────────────
+      function updateStars(val) {
+        starBtns.forEach(function (btn) {
+          var star = parseInt(btn.getAttribute("data-star"), 10);
+          btn.classList.toggle("is-active", star <= val);
+        });
+        selectedRating = val;
+      }
+
+      starsWrap.addEventListener("mouseover", function (e) {
+        var btn = e.target.closest("[data-star]");
+        if (btn) updateStars(parseInt(btn.getAttribute("data-star"), 10));
+      });
+      starsWrap.addEventListener("mouseout",  function () { updateStars(selectedRating); });
+      starsWrap.addEventListener("click",     function (e) {
+        var btn = e.target.closest("[data-star]");
+        if (!btn) return;
+        var val = parseInt(btn.getAttribute("data-star"), 10);
+        selectedRating = (selectedRating === val) ? 0 : val; // click same star to clear
+        updateStars(selectedRating);
+      });
+
+      // ── Char counter ─────────────────────────────────────────────
+      quoteTA.addEventListener("input", function () {
+        var len = quoteTA.value.length;
+        charCount.textContent = len + " / 800";
+        charCount.classList.toggle("is-over", len > 800);
+      });
+
+      // ── Submit ───────────────────────────────────────────────────
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        errorMsg.className = "tf-msg";
+        errorMsg.textContent = "";
+
+        var name    = document.getElementById("tf-name").value.trim();
+        var role    = document.getElementById("tf-role").value.trim();
+        var company = document.getElementById("tf-company").value.trim();
+        var quote   = quoteTA.value.trim();
+        var email   = document.getElementById("tf-email").value.trim();
+
+        if (!name) {
+          showError("Please enter your name.");
+          return;
+        }
+        if (!quote) {
+          showError("Please write your testimonial.");
+          return;
+        }
+        if (quote.length < 20) {
+          showError("Please write a bit more — at least 20 characters.");
+          return;
+        }
+        if (quote.length > 800) {
+          showError("Testimonial is too long (max 800 characters).");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Submitting…";
+
+        fetch(SUBMIT_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": ANON_KEY,
+          },
+          body: JSON.stringify({
+            name: name,
+            role: role,
+            company: company,
+            quote: quote,
+            email: email || null,
+            rating: selectedRating || null,
+          }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              throw new Error(data.error || "Submission failed.");
+            }
+            formWrap.style.display = "none";
+            successEl.style.display = "block";
+          })
+          .catch(function (err) {
+            showError(err.message || "Something went wrong. Please try again.");
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Submit testimonial";
+          });
+      });
+
+      function showError(msg) {
+        errorMsg.textContent = msg;
+        errorMsg.className = "tf-msg is-error";
+        errorMsg.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    })();
+  </script>
+</body>
+</html>
