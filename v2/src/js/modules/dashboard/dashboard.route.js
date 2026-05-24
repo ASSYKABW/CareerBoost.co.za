@@ -581,12 +581,6 @@
       else if (i > 0) break;
     }
 
-    // A compact 3-cell stats strip shown at the bottom of the hero. Each
-    // number is animated from 0 to its value on first paint by the
-    // afterRender hook (data-counter attribute).
-    const total = apps.length;
-    const heard = metrics.stageCounts.interview + metrics.stageCounts.offer + metrics.stageCounts.rejected;
-    const responseRate = metrics.submitted ? Math.round((heard / metrics.submitted) * 100) : 0;
     const chipsHtml = streak >= 2
       ? '<span class="chip green hero-streak" title="Days in a row with at least one application"><i class="fa-solid fa-fire"></i> ' + streak + '-day streak</span>'
       : "";
@@ -599,20 +593,6 @@
           <p class="eyebrow">Today's focus · ${st(today)}</p>
           <h1 class="page-title hero-title">${title.main}</h1>
           <p class="page-subtitle hero-sub">${st(title.sub)}</p>
-          <div class="hero-stats">
-            <div class="hero-stat">
-              <span class="hero-stat-label">Pipeline</span>
-              <span class="hero-stat-value num-font" data-counter="${total}">0</span>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-label">This week</span>
-              <span class="hero-stat-value num-font" data-counter="${metrics.thisWeek}">0</span>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-label">Response rate</span>
-              <span class="hero-stat-value num-font" data-counter="${responseRate}" data-counter-suffix="%">0%</span>
-            </div>
-          </div>
         </div>
         <div class="hero-actions hero-actions--stack">
           <a class="btn-primary hero-cta" href="${st(cta.href)}">
