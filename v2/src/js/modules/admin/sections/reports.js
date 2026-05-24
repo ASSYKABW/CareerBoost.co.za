@@ -2,12 +2,13 @@
 // Includes the audit log panel which reads from helpers.adminAuditRemote (Phase C.2).
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   // Phase C.2: paginated audit log viewer. Reads from /admin-list-audit;
   // shows full mutation history with action + target filters + paging.
   function renderAuditLogPanel() {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const formatDateTime = h.formatDateTime;
     const op = h.adminAuditRemote;
@@ -110,7 +111,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const renderStat = h.renderStat;
     const safeArray = h.safeArray;
@@ -203,5 +204,5 @@
     );
   }
 
-  window.CBV2.adminSections.reports = { render: render };
+  window.CBAdmin.sections.reports = { render: render };
 })();

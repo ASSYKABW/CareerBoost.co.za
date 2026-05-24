@@ -13,13 +13,14 @@
 //   - Channels are created on first admin-route render (afterRender hook).
 //   - They are torn down when the operator navigates away from /admin
 //     OR signs out.
-//   - State exposed via window.CBV2.adminRealtime.state() →
+//   - State exposed via window.CBAdmin.realtime.state() →
 //     { status: "connecting" | "live" | "stale" | "off", lastEventAt }
 //   - admin.route.js renderToolbar shows a "Live" / "Stale" chip
 //     reflecting this state.
 
 (function () {
   window.CBV2 = window.CBV2 || {};
+  window.CBAdmin = window.CBAdmin || {};
 
   const state = {
     status: "off",   // "off" | "connecting" | "live" | "error"
@@ -80,7 +81,7 @@
   }
 
   function isAdminAuthed() {
-    const access = window.CBV2 && window.CBV2.adminAccess;
+    const access = window.CBV2 && window.CBAdmin.access;
     if (!access || typeof access.canAccess !== "function") return false;
     if (!access.canAccess()) return false;
     const c = window.CBV2.config;
@@ -121,11 +122,11 @@
         state.lastEventAt = Date.now();
         setStatus("live");
         // Force the admin-overview cache to refresh on next render.
-        const adminRemote = window.CBV2.adminHelpers && window.CBV2.adminHelpers.adminRemote;
+        const adminRemote = window.CBAdmin.helpers && window.CBAdmin.helpers.adminRemote;
         bumpCache(adminRemote);
         // Trigger a re-fetch + re-render if we're on admin.
-        if (isAdminRoute() && window.CBV2.adminMetrics && window.CBV2.adminMetrics.fetch) {
-          window.CBV2.adminMetrics.fetch(true);
+        if (isAdminRoute() && window.CBAdmin.metrics && window.CBAdmin.metrics.fetch) {
+          window.CBAdmin.metrics.fetch(true);
         }
       })
       .subscribe(function (status) {
@@ -151,14 +152,14 @@
         table: "admin_audit_log",
       }, function () {
         state.lastEventAt = Date.now();
-        const auditRemote = window.CBV2.adminHelpers && window.CBV2.adminHelpers.adminAuditRemote;
+        const auditRemote = window.CBAdmin.helpers && window.CBAdmin.helpers.adminAuditRemote;
         bumpCache(auditRemote);
         // If the operator is currently on a section that displays the
         // audit log, force-fetch.
         const st = window.CBV2 && window.CBV2.getRouteParams && window.CBV2.getRouteParams();
         const section = st && st.section;
-        if ((section === "operations" || section === "reports") && window.CBV2.adminAudit && window.CBV2.adminAudit.fetch) {
-          window.CBV2.adminAudit.fetch({ force: true });
+        if ((section === "operations" || section === "reports") && window.CBAdmin.audit && window.CBAdmin.audit.fetch) {
+          window.CBAdmin.audit.fetch({ force: true });
         }
       })
       .subscribe();
@@ -189,7 +190,7 @@
   }
   wireAuth();
 
-  window.CBV2.adminRealtime = {
+  window.CBAdmin.realtime = {
     setup: setup,
     teardown: teardown,
     refresh: refresh,

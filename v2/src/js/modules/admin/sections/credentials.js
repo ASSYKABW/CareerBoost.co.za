@@ -18,7 +18,8 @@
 
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   // Module state. Survives re-renders within the same admin visit.
   // Cleared when the admin section file is reloaded (page refresh).
@@ -500,5 +501,5 @@
     }
   });
 
-  window.CBV2.adminSections["credentials"] = { render: render };
+  window.CBAdmin.sections["credentials"] = { render: render };
 })();

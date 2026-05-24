@@ -14,7 +14,8 @@
 //   5. Live ops feed (existing — minimal version)
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function renderNorthStar(northStar, h) {
     const st = h.st;
@@ -256,7 +257,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
     const renderActivity = h.renderActivity;
@@ -305,5 +306,5 @@
     );
   }
 
-  window.CBV2.adminSections["command-center"] = { render: render };
+  window.CBAdmin.sections["command-center"] = { render: render };
 })();

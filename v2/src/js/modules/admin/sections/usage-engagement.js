@@ -6,7 +6,8 @@
 // inside this IIFE because no other section uses them.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function syntheticDailyActive(retention) {
     const today = Number(retention.activeToday || 0);
@@ -25,7 +26,7 @@
   }
 
   function renderUsageTrend(retention) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
     const compactNumber = h.compactNumber;
@@ -81,7 +82,7 @@
   }
 
   function renderRetentionCohorts(retention) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
     const progressTone = h.progressTone;
@@ -125,7 +126,7 @@
   }
 
   function renderModuleEngagement(rows) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
     const moduleStatusTone = h.moduleStatusTone;
@@ -170,7 +171,7 @@
   }
 
   function renderActivationFunnel(activation) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
     const clampPct = h.clampPct;
@@ -206,7 +207,7 @@
   }
 
   function renderUsageKpiStrip(data, activation, retention, avgSessionSeconds) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const formatDuration = h.formatDuration;
 
@@ -226,7 +227,7 @@
   }
 
   function renderTopDropOffs(activation, modules, retention) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
 
@@ -286,7 +287,7 @@
   }
 
   function renderSessionQuality(retention, deviceMix, pathMix, avgSessionSeconds) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const formatDuration = h.formatDuration;
     const clampPct = h.clampPct;
@@ -320,7 +321,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const safeArray = h.safeArray;
     const progressTone = h.progressTone;
@@ -389,5 +390,5 @@
     );
   }
 
-  window.CBV2.adminSections.usage = { render: render };
+  window.CBAdmin.sections.usage = { render: render };
 })();

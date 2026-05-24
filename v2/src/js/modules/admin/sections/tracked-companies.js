@@ -14,11 +14,12 @@
 
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   // ----- state cache (lives on adminHelpers so refresh dispatcher works) ---
   function ensureState() {
-    const h = window.CBV2.adminHelpers || (window.CBV2.adminHelpers = {});
+    const h = window.CBAdmin.helpers || (window.CBAdmin.helpers = {});
     if (!h.adminTrackedCompaniesRemote) {
       h.adminTrackedCompaniesRemote = {
         status: "idle",
@@ -99,7 +100,7 @@
   // ----- renderers -------------------------------------------------------
 
   function renderToolbar(state) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const all = state.data || [];
     const counts = {
       all: all.length,
@@ -396,7 +397,7 @@
     bind();
   }
 
-  window.CBV2.adminSections["tracked-companies"] = {
+  window.CBAdmin.sections["tracked-companies"] = {
     render: function (data) { return renderView(); },
     refresh: fetchList
   };

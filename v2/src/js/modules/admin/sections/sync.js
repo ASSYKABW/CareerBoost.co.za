@@ -1,10 +1,11 @@
 // Phase D: Sync health section renderer (split from admin.route.js).
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const renderStat = h.renderStat;
 
@@ -25,5 +26,5 @@
     );
   }
 
-  window.CBV2.adminSections.sync = { render: render };
+  window.CBAdmin.sections.sync = { render: render };
 })();
