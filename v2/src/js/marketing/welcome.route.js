@@ -6,7 +6,7 @@
 //   3. Trust strip — 4 stat chips (no credit card, etc.)
 //   4. Features — 3-up large cards, clean icons, no decorative chrome
 //   5. How it works — 4 numbered steps in a row
-//   6. Pricing — 4-card grid (Free / Plus / Pro / Career)
+//   6. Pricing — 3-card grid (Free / Plus / Pro)
 //   7. FAQ — collapsible details
 //   8. Final CTA — gradient panel, single bold button
 //   9. Footer — minimal
@@ -147,8 +147,8 @@
       id: "plus",
       name: "Plus",
       fit: "For active job seekers.",
-      zar: { monthly: 179, label: "R179" },
-      usd: { monthly: 9.99, label: "$9.99" },
+      zar: { monthly: 210, label: "R210" },
+      usd: { monthly: 11.99, label: "$11.99" },
       features: [
         "10 resume tailorings / mo",
         "15 cover letters / mo",
@@ -163,36 +163,20 @@
     {
       id: "pro",
       name: "Pro",
-      fit: "Daily applications + voice mock.",
-      zar: { monthly: 349, label: "R349" },
-      usd: { monthly: 19.99, label: "$19.99" },
+      fit: "Unlimited everything + priority.",
+      zar: { monthly: 380, label: "R380" },
+      usd: { monthly: 21.99, label: "$21.99" },
       features: [
         "<b>Unlimited</b> resumes + covers",
-        "10 voice mock interviews / mo",
-        "<b>Unlimited</b> research",
-        "<b>Unlimited</b> saved jobs",
-        "Voice mode + all personas",
+        "<b>Unlimited</b> voice mocks",
+        "<b>Unlimited</b> research + saved jobs",
         "Personal analytics",
+        "Priority AI (faster + smarter)",
+        "Priority support (&lt;24h)",
       ],
       cta: "Get Pro",
       featured: true,
       badge: "Most popular",
-    },
-    {
-      id: "career",
-      name: "Career",
-      fit: "Executives + career changers.",
-      zar: { monthly: 699, label: "R699" },
-      usd: { monthly: 39.99, label: "$39.99" },
-      features: [
-        "Everything unlimited",
-        "Unlimited voice mocks",
-        "Priority AI (faster + smarter)",
-        "Personal analytics",
-        "Priority support (&lt;24h)",
-      ],
-      cta: "Get Career",
-      featured: false,
     },
   ];
 
@@ -240,7 +224,7 @@
     },
     {
       q: "Do you have voice mock interviews?",
-      a: "Yes — on the Pro and Career plans. Pick a persona (friendly recruiter, technical lead, executive panel, or hostile skeptic), then speak your answers and hear the AI respond in real time."
+      a: "Yes — on the Pro plan. Pick a persona (friendly recruiter, technical lead, executive panel, or hostile skeptic), then speak your answers and hear the AI respond in real time."
     }
   ];
 
@@ -458,17 +442,17 @@
   // line items. Values use ✓ / ✗ / numbers — short enough that all
   // four columns stay readable at narrow widths.
   const COMPARE_ROWS = [
-    { label: "AI resume tailorings / mo", values: ["1", "10", "Unlimited", "Unlimited"] },
-    { label: "Cover letters / mo",        values: ["2", "15", "Unlimited", "Unlimited"] },
-    { label: "Mock interviews / mo",      values: ["1 (text)", "3", "10 voice", "Unlimited voice"] },
-    { label: "Company research / mo",     values: ["1", "5", "Unlimited", "Unlimited"] },
-    { label: "Saved jobs",                values: ["5", "100", "Unlimited", "Unlimited"] },
-    { label: "Voice mock interviews",     values: ["—", "—", "✓", "✓"] },
-    { label: "All 4 interviewer personas",values: ["—", "✓ (text)", "✓ (voice)", "✓ (voice)"] },
-    { label: "Personal analytics",        values: ["—", "—", "✓", "✓"] },
-    { label: "Priority AI (faster)",      values: ["—", "—", "—", "✓"] },
-    { label: "Priority support (<24h)",   values: ["—", "—", "—", "✓"] },
-    { label: "Pipeline + extension",      values: ["✓", "✓", "✓", "✓"] },
+    { label: "AI resume tailorings / mo", values: ["1", "10", "Unlimited"] },
+    { label: "Cover letters / mo",        values: ["2", "15", "Unlimited"] },
+    { label: "Mock interviews / mo",      values: ["1 (text)", "3", "Unlimited voice"] },
+    { label: "Company research / mo",     values: ["1", "5", "Unlimited"] },
+    { label: "Saved jobs",                values: ["5", "100", "Unlimited"] },
+    { label: "Voice mock interviews",     values: ["—", "—", "✓"] },
+    { label: "All 4 interviewer personas",values: ["—", "✓ (text)", "✓ (voice)"] },
+    { label: "Personal analytics",        values: ["—", "—", "✓"] },
+    { label: "Priority AI (faster)",      values: ["—", "—", "✓"] },
+    { label: "Priority support (<24h)",   values: ["—", "—", "✓"] },
+    { label: "Pipeline + extension",      values: ["✓", "✓", "✓"] },
   ];
 
   function renderComparisonTable() {
