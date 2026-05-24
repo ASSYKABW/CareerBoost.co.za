@@ -16,7 +16,8 @@
 // while we build the campaign delivery infrastructure.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function renderSegmentCards(userSegments, activeSegment, h) {
     const st = h.st;
@@ -662,7 +663,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const activeSegment = h.adminUserTimelineRemote.activeSegment || "";
     return (
       renderSegmentCards(data.userSegments, activeSegment, h) +
@@ -670,8 +671,8 @@
     );
   }
 
-  window.CBV2.adminSections.users = { render: render };
+  window.CBAdmin.sections.users = { render: render };
   // Phase E3: user-support is now an alias for users (consolidated board).
   // The old section ID still works so legacy links/bookmarks don't 404.
-  window.CBV2.adminSections["user-support"] = { render: render };
+  window.CBAdmin.sections["user-support"] = { render: render };
 })();

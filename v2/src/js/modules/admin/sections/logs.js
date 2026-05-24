@@ -1,10 +1,11 @@
 // Phase D: System logs section renderer (split from admin.route.js).
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const renderStat = h.renderStat;
     const renderAlerts = h.renderAlerts;
     const renderActivity = h.renderActivity;
@@ -27,5 +28,5 @@
     );
   }
 
-  window.CBV2.adminSections.logs = { render: render };
+  window.CBAdmin.sections.logs = { render: render };
 })();

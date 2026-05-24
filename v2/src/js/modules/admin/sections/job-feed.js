@@ -1,10 +1,11 @@
 // Phase D: Job feed health section renderer (split from admin.route.js).
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const renderStat = h.renderStat;
     const safeArray = h.safeArray;
@@ -42,5 +43,5 @@
     );
   }
 
-  window.CBV2.adminSections["job-feed"] = { render: render };
+  window.CBAdmin.sections["job-feed"] = { render: render };
 })();

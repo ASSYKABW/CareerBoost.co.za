@@ -2,10 +2,11 @@
 // Reads incident lifecycle state from helpers.adminIncidentsRemote (Phase C.2).
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const st = h.st;
     const renderStat = h.renderStat;
     const safeArray = h.safeArray;
@@ -169,5 +170,5 @@
     );
   }
 
-  window.CBV2.adminSections["risk-center"] = { render: render };
+  window.CBAdmin.sections["risk-center"] = { render: render };
 })();

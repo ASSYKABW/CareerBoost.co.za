@@ -10,7 +10,8 @@
 //   6. "Where to invest" recommendations
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function renderSummary(growth, h) {
     const st = h.st;
@@ -226,7 +227,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const growth = data && data.growth;
     if (!growth) {
       const st = h.st;
@@ -261,5 +262,5 @@
     );
   }
 
-  window.CBV2.adminSections.growth = { render: render };
+  window.CBAdmin.sections.growth = { render: render };
 })();

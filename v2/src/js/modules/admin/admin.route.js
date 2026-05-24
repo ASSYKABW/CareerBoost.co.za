@@ -19,20 +19,21 @@
 //     adminIncidentsRemote, adminAuditRemote)
 //
 // What lives in sections/*.js:
-//   - Per-section renderers — each calls helpers via window.CBV2.adminHelpers
-//     and registers as window.CBV2.adminSections[id] = { render(data) }.
+//   - Per-section renderers — each calls helpers via window.CBAdmin.helpers
+//     and registers as window.CBAdmin.sections[id] = { render(data) }.
 //
 // Load order in index.html (critical):
 //   1. admin-helpers.js   — state caches + shared helpers
-//   2. sections/*.js      — register on window.CBV2.adminSections
+//   2. sections/*.js      — register on window.CBAdmin.sections
 //   3. admin.route.js     — this file (dispatcher + fetchers + bindings)
 (function () {
   window.CBV2 = window.CBV2 || {};
+  window.CBAdmin = window.CBAdmin || {};
   window.CBV2.routes = window.CBV2.routes || {};
   window.CBV2.afterRender = window.CBV2.afterRender || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
-  const helpers = window.CBV2.adminHelpers;
+  const helpers = window.CBAdmin.helpers;
   const st = helpers.st;
   const safeArray = helpers.safeArray;
   const numberOr = helpers.numberOr;
@@ -183,7 +184,7 @@
     // (getAuthedAdmin) enforces the same requirement so this isn't a
     // pure UI guard. Skipped when the caller only needs the role check
     // (see opts.skipMfa above).
-    const mfa = !skipMfa && window.CBV2.adminMfa;
+    const mfa = !skipMfa && window.CBAdmin.mfa;
     if (mfa && typeof mfa.getSnapshot === "function") {
       const snap = mfa.getSnapshot();
       if (!snap.loaded) {
@@ -222,7 +223,7 @@
     };
   }
 
-  window.CBV2.adminAccess = {
+  window.CBAdmin.access = {
     state: adminAccessState,
     // Menu-visibility helper: only asks "is this user an admin at all?"
     // The MFA elevation happens at /admin entry, not at menu render
@@ -487,7 +488,7 @@
     // Day 3.2 — MFA-related access states delegate to the adminMfa
     // module which owns the challenge form + enroll nudge UI.
     if (access) {
-      const mfa = window.CBV2.adminMfa;
+      const mfa = window.CBAdmin.mfa;
       if (access.reason === "mfa-loading" && mfa) return mfa.renderLoadingScreen();
       if (access.reason === "mfa-challenge" && mfa) return mfa.renderChallengeScreen();
       if (access.reason === "mfa-enroll" && mfa) return mfa.renderEnrollNudge();
@@ -602,7 +603,7 @@
   // the Supabase Realtime channel for admin_incidents + admin_audit_log
   // is currently subscribed and receiving events.
   function renderRealtimeChip() {
-    const rt = window.CBV2.adminRealtime;
+    const rt = window.CBAdmin.realtime;
     if (!rt) return '<span class="chip subtle"><i class="fa-solid fa-circle"></i> Realtime off</span>';
     const s = rt.state();
     if (s.status === "live") {
@@ -651,7 +652,7 @@
     if (!access.ok) return renderAccessDenied(access);
     const active = currentSection();
     const data = getAdminData();
-    const registry = window.CBV2.adminSections || {};
+    const registry = window.CBAdmin.sections || {};
     const section = registry[active] || registry.overview;
 
     // P3: when the user first lands on /admin (cold load) the
@@ -862,7 +863,7 @@
     }
   }
 
-  window.CBV2.adminMetrics = {
+  window.CBAdmin.metrics = {
     fetch: fetchAdminMetrics,
     applyRemoteSnapshot: applyRemoteSnapshot,
     state: function () { return Object.assign({}, adminRemote); }
@@ -946,7 +947,7 @@
     }
   }
 
-  window.CBV2.adminUsers = {
+  window.CBAdmin.users = {
     fetch: fetchAdminUsers,
     state: function () { return Object.assign({}, adminUsersRemote); },
   };
@@ -1076,7 +1077,7 @@
     }
   }
 
-  window.CBV2.adminOperators = {
+  window.CBAdmin.operators = {
     fetch: fetchAdminOperators,
     promote: promoteOperator,
     state: function () { return Object.assign({}, adminOperatorsRemote); }
@@ -1117,7 +1118,7 @@
     }
   }
 
-  window.CBV2.adminIncidents = {
+  window.CBAdmin.incidents = {
     mutate: mutateIncident,
     state: function () { return Object.assign({}, adminIncidentsRemote); }
   };
@@ -1192,7 +1193,7 @@
     }
   }
 
-  window.CBV2.adminUserAdjust = {
+  window.CBAdmin.userAdjust = {
     apply: adjustUserAccount,
     state: function () { return Object.assign({}, adminUserTimelineRemote); }
   };
@@ -1250,7 +1251,7 @@
     }
   }
 
-  window.CBV2.adminAudit = {
+  window.CBAdmin.audit = {
     fetch: fetchAdminAudit,
     state: function () { return Object.assign({}, adminAuditRemote); }
   };
@@ -1295,7 +1296,7 @@
     window.CBV2.renderCurrentRoute();
   }
 
-  window.CBV2.adminUserTimeline = {
+  window.CBAdmin.userTimeline = {
     fetch: fetchAdminUserTimeline,
     close: closeAdminUserTimeline,
     state: function () { return Object.assign({}, adminUserTimelineRemote); }
@@ -1387,7 +1388,7 @@
     // loading placeholder resolves to either the challenge form, the
     // enroll nudge, or the actual admin console. Also bind the form
     // submit handler whenever the form is in the DOM (idempotent).
-    const mfa = window.CBV2.adminMfa;
+    const mfa = window.CBAdmin.mfa;
     if (mfa) {
       const snap = mfa.getSnapshot();
       if (!snap.loaded && !snap.loading) {
@@ -1506,8 +1507,8 @@
     // Phase 8: subscribe to Supabase Realtime postgres_changes for
     // admin_incidents + admin_audit_log so the admin sees updates
     // without manual refresh.
-    if (window.CBV2.adminRealtime && typeof window.CBV2.adminRealtime.setup === "function") {
-      window.CBV2.adminRealtime.setup();
+    if (window.CBAdmin.realtime && typeof window.CBAdmin.realtime.setup === "function") {
+      window.CBAdmin.realtime.setup();
     }
   };
 
@@ -1536,7 +1537,7 @@
       case "tracked-companies": {
         // Phase 2.5: the tracked-companies section owns its own fetcher
         // because it has CRUD operations beyond a simple read.
-        const tcSection = window.CBV2.adminSections && window.CBV2.adminSections["tracked-companies"];
+        const tcSection = window.CBAdmin.sections && window.CBAdmin.sections["tracked-companies"];
         if (tcSection && typeof tcSection.refresh === "function") return tcSection.refresh();
         return null;
       }
@@ -2002,7 +2003,7 @@
         const id = ids[i];
         const meta = selectedMap[id] || {};
         try {
-          await window.CBV2.adminUserAdjust.apply({
+          await window.CBAdmin.userAdjust.apply({
             action: action,
             targetUserId: id,
             targetEmail: meta.email || "",
@@ -2171,7 +2172,7 @@
         : confirm("Grant " + amount + " " + quota + " to " + who + "?");
       if (!proceed) return;
 
-      await window.CBV2.adminUserAdjust.apply({
+      await window.CBAdmin.userAdjust.apply({
         action: "grant_quota",
         targetUserId: targetUserId,
         targetEmail: targetEmail,
@@ -2190,7 +2191,7 @@
           })
         : confirm("Reset all 5 quota counters for " + who + "?");
       if (!proceed) return;
-      await window.CBV2.adminUserAdjust.apply({
+      await window.CBAdmin.userAdjust.apply({
         action: "reset_quota",
         targetUserId: targetUserId,
         targetEmail: targetEmail,
@@ -2237,7 +2238,7 @@
           })
         : confirm("Change plan to " + planId + "?");
       if (!proceed) return;
-      await window.CBV2.adminUserAdjust.apply({
+      await window.CBAdmin.userAdjust.apply({
         action: "change_plan",
         targetUserId: targetUserId,
         targetEmail: targetEmail,
@@ -2263,7 +2264,7 @@
           })
         : (prompt("Admin note (max 2000 chars):", "") || "");
       if (note == null || !String(note).trim()) return;
-      await window.CBV2.adminUserAdjust.apply({
+      await window.CBAdmin.userAdjust.apply({
         action: "add_note",
         targetUserId: targetUserId,
         targetEmail: targetEmail,

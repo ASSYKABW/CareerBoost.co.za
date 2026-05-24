@@ -17,7 +17,8 @@
 
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   const SHIPPED_PHASES = [
     { id: "1",   label: "Phase 1 — Apply Profile schema + Settings tab",     commit: "7827c26" },
@@ -205,5 +206,5 @@
   }
   bindToggleHandlers();
 
-  window.CBV2.adminSections["apply-assist"] = { render: render };
+  window.CBAdmin.sections["apply-assist"] = { render: render };
 })();

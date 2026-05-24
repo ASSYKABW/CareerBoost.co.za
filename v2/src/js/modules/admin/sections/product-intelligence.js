@@ -13,7 +13,8 @@
 // the executive lens; usage-engagement is the analyst lens.
 (function () {
   window.CBV2 = window.CBV2 || {};
-  window.CBV2.adminSections = window.CBV2.adminSections || {};
+  window.CBAdmin = window.CBAdmin || {};
+  window.CBAdmin.sections = window.CBAdmin.sections || {};
 
   function renderEconomicsHero(econ, h) {
     const st = h.st;
@@ -198,7 +199,7 @@
   }
 
   function render(data) {
-    const h = window.CBV2.adminHelpers;
+    const h = window.CBAdmin.helpers;
     const pi = data && data.productIntelligence;
     if (!pi) {
       return (
@@ -231,5 +232,5 @@
     );
   }
 
-  window.CBV2.adminSections["product-intelligence"] = { render: render };
+  window.CBAdmin.sections["product-intelligence"] = { render: render };
 })();
