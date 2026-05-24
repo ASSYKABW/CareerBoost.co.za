@@ -84,15 +84,6 @@
         { id: "tracked-companies", icon: "fa-building", label: "Tracked companies" }
       ]
     },
-    {
-      // Roadmap — deferred-feature reminders. Keeps shipped-but-hidden
-      // work visible to operators so we don't forget to re-enable it
-      // when prerequisites land.
-      group: "Roadmap",
-      items: [
-        { id: "apply-assist", icon: "fa-paper-plane", label: "Apply Assist (deferred)", badge: "V1 hidden" }
-      ]
-    }
   ];
 
   // Legacy section IDs that pre-date the E5 consolidation. They are
@@ -110,6 +101,7 @@
     "logs",          // folded into operations
     "settings",      // folded into operations
     "user-support",  // folded into users
+    "apply-assist",  // removed from nav; direct URL still resolves
   ];
 
   // -- Access gate ----------------------------------------------------------
