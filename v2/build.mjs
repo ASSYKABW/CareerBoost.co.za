@@ -138,6 +138,7 @@ const SCRIPTS = [
   "./src/js/modules/admin/sections/credentials.js",
   "./src/js/modules/admin/sections/tracked-companies.js",
   "./src/js/modules/admin/sections/apply-assist.js",
+  "./src/js/modules/admin/sections/testimonials.js",
   "./src/js/modules/admin/admin.mfa.js",
   "./src/js/modules/admin/admin.route.js",
   "./src/js/app/router.js",

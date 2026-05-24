@@ -85,6 +85,12 @@
         { id: "tracked-companies", icon: "fa-building", label: "Tracked companies" }
       ]
     },
+    {
+      group: "Content",
+      items: [
+        { id: "testimonials", icon: "fa-star", label: "Testimonials" }
+      ]
+    },
   ];
 
   // Legacy section IDs that pre-date the E5 consolidation. They are
@@ -1494,6 +1500,12 @@
         fetchAdminOperators(false);
       }
       bindOperatorManagementControls();
+    }
+
+    // Testimonials: lazy-fetch on first visit (bind is auto-attached at script load).
+    if (activeSection === "testimonials") {
+      const tSection = window.CBAdmin.sections && window.CBAdmin.sections.testimonials;
+      if (tSection && typeof tSection.fetch === "function") tSection.fetch();
     }
 
     // A5: generic refresh dispatcher — any [data-admin-refresh="<key>"]
