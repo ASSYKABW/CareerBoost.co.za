@@ -30,13 +30,24 @@
   function renderProfileNudge(roleProfile) {
     const score = getProfileCompletionState(roleProfile);
     if (score >= 80) return "";
+    try {
+      const ts = localStorage.getItem("cb_profile_nudge_dismissed");
+      if (ts && (Date.now() - parseInt(ts, 10)) < 7 * 24 * 60 * 60 * 1000) return "";
+    } catch (e) { /* private mode */ }
     return (
-      '<section class="ai-notice" style="margin-top:8px;">' +
-      '<i class="fa-solid fa-user-check"></i>' +
-      '<div>Profile completeness is <strong>' + score + '%</strong>. ' +
-      'Finish profile basics and role targets to improve match quality. ' +
-      '<a href="#/settings?tab=me">Complete profile</a></div>' +
-      "</section>"
+      '<section class="ai-notice" style="margin-top:8px; justify-content:space-between;">' +
+        '<div style="display:flex; align-items:center; gap:10px; min-width:0;">' +
+          '<i class="fa-solid fa-user-check" style="flex-shrink:0;"></i>' +
+          '<div>Profile completeness is <strong>' + score + '%</strong>. ' +
+          'Finish profile basics and role targets to improve match quality. ' +
+          '<a href="#/settings?tab=me">Complete profile</a></div>' +
+        '</div>' +
+        '<button type="button" data-dismiss-nudge aria-label="Dismiss profile nudge" ' +
+          'style="flex-shrink:0; background:none; border:none; color:inherit; opacity:0.45; ' +
+          'cursor:pointer; font-size:18px; line-height:1; padding:0 2px;">' +
+          '&times;' +
+        '</button>' +
+      '</section>'
     );
   }
 
@@ -1379,6 +1390,15 @@
     const refresh = document.getElementById("refresh-digest");
     if (refresh) {
       refresh.addEventListener("click", function () { scanDigest(true); });
+    }
+
+    const dismissNudge = document.querySelector("[data-dismiss-nudge]");
+    if (dismissNudge) {
+      dismissNudge.addEventListener("click", function () {
+        try { localStorage.setItem("cb_profile_nudge_dismissed", String(Date.now())); } catch (e) {}
+        const nudge = dismissNudge.closest(".ai-notice");
+        if (nudge) nudge.remove();
+      });
     }
 
     // Next-best-action CTAs bound to a specific app → open the drawer
