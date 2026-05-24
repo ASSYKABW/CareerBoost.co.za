@@ -147,8 +147,8 @@
       id: "plus",
       name: "Plus",
       fit: "For active job seekers.",
-      zar: { monthly: 210, label: "R210" },
-      usd: { monthly: 11.99, label: "$11.99" },
+      zar: { monthly: 210, label: "R210", annual: 175, annualLabel: "R175", annualTotal: "R2,100" },
+      usd: { monthly: 11.99, label: "$11.99", annual: 9.92, annualLabel: "$9.92", annualTotal: "$119" },
       features: [
         "10 resume tailorings / mo",
         "15 cover letters / mo",
@@ -164,8 +164,8 @@
       id: "pro",
       name: "Pro",
       fit: "Unlimited everything + priority.",
-      zar: { monthly: 380, label: "R380" },
-      usd: { monthly: 21.99, label: "$21.99" },
+      zar: { monthly: 380, label: "R380", annual: 317, annualLabel: "R317", annualTotal: "R3,800" },
+      usd: { monthly: 21.99, label: "$21.99", annual: 18.25, annualLabel: "$18.25", annualTotal: "$219" },
       features: [
         "<b>Unlimited</b> resumes + covers",
         "<b>Unlimited</b> voice mocks",
@@ -199,6 +199,14 @@
       if (region === "ZA") return "zar";
     } catch (e) { /* old browser */ }
     return "usd";
+  }
+
+  function detectDefaultPeriod() {
+    try {
+      const saved = localStorage.getItem("cb_pricing_period");
+      if (saved === "annual" || saved === "monthly") return saved;
+    } catch (e) { /* private mode */ }
+    return "monthly";
   }
 
   const FAQS = [
@@ -366,8 +374,13 @@
 
   // Render a single pricing card. Pulls amount + label from the
   // currency-specific block (zar / usd) on the tier.
-  function renderPricingCard(tier, currency) {
+  function renderPricingCard(tier, currency, period) {
+    const isAnnual = period === "annual" && tier.id !== "free";
     const price = tier[currency] || tier.usd;
+    const priceLabel = isAnnual && price.annualLabel ? price.annualLabel : price.label;
+    const billingNote = isAnnual && price.annualTotal
+      ? '<small class="lp-price-billing-note">Billed ' + price.annualTotal + '/yr</small>'
+      : '';
     const featured = tier.featured ? " lp-price-card--featured" : "";
     const badge = tier.featured && tier.badge
       ? '<span class="lp-price-badge">' + tier.badge + '</span>'
@@ -385,8 +398,9 @@
         '<h3>' + tier.name + '</h3>' +
         '<p class="lp-price-fit">' + tier.fit + '</p>' +
         '<div class="lp-price-amount" data-price-amount="' + tier.id + '">' +
-          '<strong>' + price.label + '</strong>' +
+          '<strong>' + priceLabel + '</strong>' +
           '<span>/month</span>' +
+          billingNote +
         '</div>' +
         '<ul class="lp-price-list">' + features + '</ul>' +
         '<a class="lp-btn ' + ctaCls + ' lp-btn--block" href="' + href + '" data-plan-cta="' + tier.id + '">' + tier.cta + '</a>' +
@@ -494,6 +508,15 @@
     );
   }
 
+  function renderBillingToggle(active) {
+    return (
+      '<div class="lp-billing-toggle" role="tablist" aria-label="Billing period">' +
+        '<button type="button" class="lp-billing-btn' + (active === "monthly" ? " is-active" : "") + '" data-period="monthly" role="tab" aria-selected="' + (active === "monthly") + '">Monthly</button>' +
+        '<button type="button" class="lp-billing-btn' + (active === "annual" ? " is-active" : "") + '" data-period="annual" role="tab" aria-selected="' + (active === "annual") + '">Annual <span class="lp-save-badge">Save 17%</span></button>' +
+      '</div>'
+    );
+  }
+
   // ─── Page render ───────────────────────────────────────────────────
 
   function renderView() {
@@ -594,7 +617,8 @@
         // switch on demand.
         (function () {
           const activeCcy = detectDefaultCurrency();
-          const cards = PRICING_TIERS.map(function (t) { return renderPricingCard(t, activeCcy); }).join("");
+          const activePeriod = detectDefaultPeriod();
+          const cards = PRICING_TIERS.map(function (t) { return renderPricingCard(t, activeCcy, activePeriod); }).join("");
           return (
             '<section class="lp-section" id="pricing">' +
               '<div class="lp-container">' +
@@ -602,7 +626,10 @@
                   '<span class="lp-eyebrow">Pricing</span>' +
                   '<h2>Start free. Upgrade when your search needs more power.</h2>' +
                   '<p>All paid plans unlock more AI tailoring and voice mock interviews.</p>' +
-                  renderCurrencyToggle(activeCcy) +
+                  '<div class="lp-pricing-controls">' +
+                    renderBillingToggle(activePeriod) +
+                    renderCurrencyToggle(activeCcy) +
+                  '</div>' +
                 '</header>' +
                 '<div class="lp-pricing-grid">' + cards + '</div>' +
                 renderComparisonTable() +
@@ -696,21 +723,34 @@
     );
   }
 
-  // Swap each pricing card's amount in place when the user toggles
-  // currency. Pure DOM patch so we don't re-render the whole page.
-  function applyPricingCurrency(currency) {
+  // Swap pricing card amounts in place when billing period or currency toggles.
+  // Pure DOM patch — no full re-render.
+  function applyPricingDisplay(period, currency) {
+    const isAnnual = period === "annual";
     PRICING_TIERS.forEach(function (tier) {
       const node = document.querySelector('[data-price-amount="' + tier.id + '"]');
       if (!node) return;
       const price = tier[currency] || tier.usd;
-      node.innerHTML = '<strong>' + price.label + '</strong><span>/month</span>';
+      const label = isAnnual && tier.id !== "free" && price.annualLabel ? price.annualLabel : price.label;
+      const billingNote = isAnnual && tier.id !== "free" && price.annualTotal
+        ? '<small class="lp-price-billing-note">Billed ' + price.annualTotal + '/yr</small>'
+        : '';
+      node.innerHTML = '<strong>' + label + '</strong><span>/month</span>' + billingNote;
     });
     document.querySelectorAll(".lp-ccy-btn").forEach(function (btn) {
       const isActive = btn.getAttribute("data-ccy") === currency;
       btn.classList.toggle("is-active", isActive);
       btn.setAttribute("aria-selected", isActive ? "true" : "false");
     });
-    try { localStorage.setItem("cb_pricing_ccy", currency); } catch (e) { /* ignore */ }
+    document.querySelectorAll(".lp-billing-btn").forEach(function (btn) {
+      const isActive = btn.getAttribute("data-period") === period;
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    try {
+      localStorage.setItem("cb_pricing_ccy", currency);
+      localStorage.setItem("cb_pricing_period", period);
+    } catch (e) { /* ignore */ }
   }
 
   // Animate the hero product mock so it doesn't feel static.
@@ -777,15 +817,39 @@
       }
     } catch (error) { /* never block landing on telemetry */ }
 
+    // Local state for toggles — keeps period + currency in sync.
+    let _activePeriod = detectDefaultPeriod();
+    let _activeCcy = detectDefaultCurrency();
+
     // Currency toggle: switch all pricing amounts + save preference.
     document.querySelectorAll(".lp-ccy-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
         const ccy = btn.getAttribute("data-ccy");
-        if (ccy === "zar" || ccy === "usd") applyPricingCurrency(ccy);
+        if (ccy === "zar" || ccy === "usd") {
+          _activeCcy = ccy;
+          applyPricingDisplay(_activePeriod, _activeCcy);
+        }
         try {
           const tel = window.CBAI && window.CBAI.telemetry;
           if (tel && typeof tel.track === "function") {
             tel.track({ type: "landing", event: "pricing_ccy_toggle", currency: ccy, status: "success" });
+          }
+        } catch (e) { /* ignore */ }
+      });
+    });
+
+    // Billing toggle: switch between monthly and annual pricing.
+    document.querySelectorAll(".lp-billing-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const period = btn.getAttribute("data-period");
+        if (period === "monthly" || period === "annual") {
+          _activePeriod = period;
+          applyPricingDisplay(_activePeriod, _activeCcy);
+        }
+        try {
+          const tel = window.CBAI && window.CBAI.telemetry;
+          if (tel && typeof tel.track === "function") {
+            tel.track({ type: "landing", event: "pricing_period_toggle", period: period, status: "success" });
           }
         } catch (e) { /* ignore */ }
       });
