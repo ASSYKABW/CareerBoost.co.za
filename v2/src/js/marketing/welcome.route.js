@@ -551,7 +551,7 @@
             '<div class="lp-hero-copy">' +
               '<span class="lp-eyebrow"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Private by design &nbsp;·&nbsp; <i class="fa-solid fa-user-check" aria-hidden="true"></i> Human in control</span>' +
               '<h1>Your job search, in one calm place.</h1>' +
-              '<p class="lp-hero-sub">Stop juggling 12 tabs across job boards, ATS forms, and AI prompts. Research roles, tailor every resume, rehearse interviews out loud, and track every follow-up — all in one workspace. For serious job seekers, not auto-apply spam.</p>' +
+              '<p class="lp-hero-sub">Research roles, tailor every resume, rehearse interviews, and track every follow-up — one workspace, no auto-spam.</p>' +
               '<div class="lp-hero-actions">' +
                 '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
                 '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#how">See how it works <i class="fa-solid fa-arrow-down"></i></a>' +
@@ -575,28 +575,22 @@
             '<header class="lp-section-head">' +
               '<span class="lp-eyebrow">Features</span>' +
               '<h2>Everything your job search needs, in one place.</h2>' +
-              '<p>Stop juggling tabs, spreadsheets, and AI prompts. CareerBoost is the workspace where research, tailoring, practice, and tracking actually connect.</p>' +
+              '<p>Six features that work together — research, tailoring, practice, tracking, and follow-ups all in the same flow.</p>' +
             '</header>' +
             '<div class="lp-feature-grid">' + features + '</div>' +
           '</div>' +
         '</section>' +
 
-        // ── Testimonials (only renders when TESTIMONIALS has content) ─
-        (TESTIMONIALS.length
-          ? (
-            '<section class="lp-section lp-section--alt" id="testimonials">' +
-              '<div class="lp-container">' +
-                '<header class="lp-section-head">' +
-                  '<span class="lp-eyebrow">What people say</span>' +
-                  '<h2>Real job seekers, real outcomes.</h2>' +
-                '</header>' +
-                '<div class="lp-testimonials-grid">' +
-                  TESTIMONIALS.map(renderTestimonial).join("") +
-                '</div>' +
-              '</div>' +
-            '</section>'
-          )
-          : '') +
+        // ── Testimonials (populated async; hidden until content arrives) ─
+        '<section class="lp-section lp-section--alt" id="testimonials" style="display:none;">' +
+          '<div class="lp-container">' +
+            '<header class="lp-section-head">' +
+              '<span class="lp-eyebrow">What people say</span>' +
+              '<h2>Real job seekers, real outcomes.</h2>' +
+            '</header>' +
+            '<div class="lp-testimonials-grid" id="lp-testimonials-grid"></div>' +
+          '</div>' +
+        '</section>' +
 
         // ── How it works ───────────────────────────────────────────
         '<section class="lp-section lp-section--alt" id="how">' +
@@ -676,7 +670,7 @@
                 '<h2>Run your job search<br/>like a professional.</h2>' +
                 '<p>One calm workspace for research, tailoring, mock interviews, and follow-ups. Free to start — upgrade only when you need more.</p>' +
                 '<div class="lp-final-actions">' +
-                  '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
+                  '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Create my workspace</a>' +
                   '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#pricing">See pricing</a>' +
                 '</div>' +
               '</div>' +
@@ -860,6 +854,30 @@
     // is moving. Both honour prefers-reduced-motion (no animation runs
     // if the user has the system pref set).
     animateHeroMock();
+
+    // Testimonials: async fetch from edge function — no deploy needed
+    // when new testimonials are approved. Hidden until content arrives
+    // so the section never shows as an empty placeholder.
+    (function fetchTestimonials() {
+      var cfg = window.CB_CONFIG || {};
+      var base = (cfg.functionsUrl || (cfg.supabaseUrl || "").replace(/\.supabase\.co$/, ".functions.supabase.co")) || "";
+      if (!base) return;
+      var url = base.replace(/\/$/, "") + "/testimonials-public";
+      fetch(url, {
+        headers: { "apikey": cfg.supabaseAnon || "", "Content-Type": "application/json" }
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var list = (data && data.testimonials) || [];
+          if (!list.length) return;
+          var grid = document.getElementById("lp-testimonials-grid");
+          var wrap = document.getElementById("testimonials");
+          if (!grid || !wrap) return;
+          grid.innerHTML = list.map(renderTestimonial).join("");
+          wrap.style.display = "";
+        })
+        .catch(function () { /* degraded silently — section stays hidden */ });
+    })();
 
     // Pricing CTA: if signed in + paid plan clicked, route straight to
     // Stripe Checkout. Otherwise fall through to the signup link.
