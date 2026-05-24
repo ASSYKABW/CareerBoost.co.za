@@ -547,7 +547,7 @@
               '<p class="lp-hero-sub">Stop juggling 12 tabs across job boards, ATS forms, and AI prompts. Research roles, tailor every resume, rehearse interviews out loud, and track every follow-up — all in one workspace. For serious job seekers, not auto-apply spam.</p>' +
               '<div class="lp-hero-actions">' +
                 '<a class="lp-btn lp-btn--primary lp-btn--lg" href="#/auth?mode=signup"><i class="fa-solid fa-rocket"></i> Start free</a>' +
-                '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#features">See how it works <i class="fa-solid fa-arrow-down"></i></a>' +
+                '<a class="lp-btn lp-btn--ghost lp-btn--lg" href="#how">See how it works <i class="fa-solid fa-arrow-down"></i></a>' +
               '</div>' +
               '<p class="lp-hero-meta">Free forever plan &nbsp;·&nbsp; No card needed &nbsp;·&nbsp; ZAR + USD pricing</p>' +
             '</div>' +
@@ -617,7 +617,7 @@
                 '<header class="lp-section-head">' +
                   '<span class="lp-eyebrow">Pricing</span>' +
                   '<h2>Start free. Upgrade when your search needs more power.</h2>' +
-                  '<p>Annual billing saves ~17%. All paid plans unlock more AI tailoring and voice mock interviews.</p>' +
+                  '<p>All paid plans unlock more AI tailoring and voice mock interviews.</p>' +
                   renderCurrencyToggle(activeCcy) +
                 '</header>' +
                 '<div class="lp-pricing-grid">' + cards + '</div>' +
