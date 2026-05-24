@@ -6621,10 +6621,69 @@ a.settings-status-card:hover {
   .lp-mock-stages span.is-rotating { transition: none; }
 }
 
+/* ── Pricing controls row (wraps billing + currency toggles) ────── */
+.lp-pricing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+/* ── Billing period toggle ───────────────────────────────────────── */
+.lp-billing-toggle {
+  display: inline-flex;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  padding: 3px;
+  background: var(--lp-bg-alt);
+}
+.lp-billing-btn {
+  border: 0;
+  background: transparent;
+  color: var(--lp-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lp-billing-btn:hover { color: var(--lp-text); }
+.lp-billing-btn.is-active {
+  background: var(--lp-accent);
+  color: #062018;
+}
+.lp-save-badge {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--lp-accent);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.lp-billing-btn.is-active .lp-save-badge {
+  background: rgba(6, 32, 24, 0.15);
+  color: #062018;
+}
+
+/* ── Per-card annual billing note ───────────────────────────────── */
+.lp-price-billing-note {
+  display: block;
+  font-size: 12px;
+  color: var(--lp-text-muted);
+  margin-top: 2px;
+  font-weight: 400;
+}
+
 /* ── Currency toggle in pricing header ──────────────────────────── */
 .lp-ccy-toggle {
   display: inline-flex;
-  margin-top: 18px;
   border: 1px solid var(--lp-border);
   border-radius: 999px;
   padding: 3px;
