@@ -5,6 +5,28 @@
  * its own maintenance surface.
  * ========================================================================== */
 
+/* -- NBA quiet banner: collapsed state when no actions are queued ---------- */
+.nba-quiet-banner {
+  grid-column: span 2; /* mirrors .nba-card layout span in .dashboard-layout */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-8, 8px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-muted, rgba(200, 210, 240, 0.45));
+  font-size: 13px;
+}
+.nba-quiet-banner i {
+  font-size: 14px;
+  color: rgba(34, 197, 94, 0.6); /* muted green check */
+  flex-shrink: 0;
+}
+@media (max-width: 820px) {
+  .nba-quiet-banner { grid-column: auto; }
+}
+
 .app-shell select,
 #app select {
   /* Force a clear dropdown affordance across module-specific overrides. */
