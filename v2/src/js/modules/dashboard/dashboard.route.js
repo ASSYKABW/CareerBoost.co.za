@@ -813,26 +813,11 @@
   function renderNextBestActions(apps, events, derived) {
     const items = buildActionItems(apps, events, derived);
     if (!items.length) {
-      const empty = window.CBV2.ui && window.CBV2.ui.emptyState
-        ? window.CBV2.ui.emptyState({
-            className: "empty-state--compact",
-            icon: "fa-compass",
-            title: "Nothing urgent right now.",
-            body: "A good moment to add a few new roles to your pipeline or tailor your resume for a specific target.",
-            actions: [
-              { label: "Discover roles", href: "#/job-search", icon: "fa-magnifying-glass", className: "btn-primary" },
-              { label: "Refresh resume", href: "#/resume", icon: "fa-file-lines", className: "btn-secondary" }
-            ]
-          })
-        : "";
       return `
-        <article class="card panel-lg nba-card">
-          <div class="panel-head">
-            <h2>Next best actions</h2>
-            <span class="chip cyan">Quiet queue</span>
-          </div>
-          ${empty}
-        </article>
+        <div class="nba-quiet-banner" role="status" aria-label="Next best actions">
+          <i class="fa-solid fa-check-circle" aria-hidden="true"></i>
+          <span>You're up to date — nothing urgent in your queue.</span>
+        </div>
       `;
     }
     return `

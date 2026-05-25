@@ -65,7 +65,7 @@
       //   → Pipeline (candidate progression).
       group: "Analytics",
       items: [
-        { id: "product-intelligence", icon: "fa-chart-mixed", label: "Product intelligence", badge: "ROI" },
+        { id: "product-intelligence", icon: "fa-chart-mixed", label: "Product intelligence" },
         { id: "growth", icon: "fa-chart-line", label: "Growth & acquisition" },
         { id: "funnel", icon: "fa-filter-circle-dollar", label: "Pipeline funnel" }
       ]
