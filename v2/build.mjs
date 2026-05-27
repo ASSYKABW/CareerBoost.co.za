@@ -141,6 +141,7 @@ const SCRIPTS = [
   "./src/js/modules/admin/sections/testimonials.js",
   "./src/js/modules/admin/admin.mfa.js",
   "./src/js/modules/admin/admin.route.js",
+  "./src/js/app/share-handler.js",
   "./src/js/app/router.js",
   "./src/js/app/bootstrap.js",
 ];

@@ -12,6 +12,15 @@
   "lang": "en",
   "dir": "ltr",
   "categories": ["productivity", "business"],
+  "share_target": {
+    "action": "/?share=1",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "/favicon-16.png",

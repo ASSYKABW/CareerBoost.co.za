@@ -283,6 +283,13 @@
           } else {
             window.CBV2.renderCurrentRoute();
           }
+
+          // PWA Web Share Target: if the user signed in WITH a pending
+          // share intent stashed, finish the import now. consumePending()
+          // routes them to #/applications and shows a confirmation toast.
+          if (window.CBV2.shareHandler && window.CBV2.shareHandler.hasPending && window.CBV2.shareHandler.hasPending()) {
+            setTimeout(function () { window.CBV2.shareHandler.consumePending(); }, 80);
+          }
         }
       } catch (err) {
         console.warn("[bootstrap] post-signin hydrate failed:", err);
@@ -339,6 +346,16 @@
 
     window.addEventListener("hashchange", renderForCurrentMode);
     wireAuthStateTransitions();
+
+    // PWA Web Share Target: if the user arrived via a share intent
+    // (manifest.json share_target), share-handler.js has already stashed
+    // the URL in sessionStorage. Process it now that auth + store are
+    // settled. If they shared while signed out, consumePending() will
+    // bail and try again from onChange() once they sign in.
+    if (window.CBV2.shareHandler && typeof window.CBV2.shareHandler.consumePending === "function") {
+      // Defer slightly so the route render and toast host both exist.
+      setTimeout(function () { window.CBV2.shareHandler.consumePending(); }, 60);
+    }
   }
 
   init();
