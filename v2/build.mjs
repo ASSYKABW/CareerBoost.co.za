@@ -63,6 +63,7 @@ const SCRIPTS = [
   "./src/js/services/jobs/job.notes.js",
   "./src/js/components/modal-service.js",
   "./src/js/components/cookie-banner.js",
+  "./src/js/components/install-banner.js",
   "./src/js/services/entitlements/entitlements.js",
   "./src/js/components/upgrade-modal.js",
   "./src/js/components/deletion-banner.js",
