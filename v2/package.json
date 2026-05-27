@@ -4,6 +4,7 @@
   "scripts": {
     "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
+    "icons": "node scripts/gen-pwa-icons.mjs",
     "test": "node tests/run-all.mjs",
     "test:browser": "node tests/run-all.mjs --browser",
     "test:visual": "node tests/run-all.mjs --visual",
@@ -11,6 +12,7 @@
     "test:all": "node tests/run-all.mjs --all"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.0",
+    "sharp": "^0.34.5"
   }
 }
