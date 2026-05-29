@@ -242,5 +242,20 @@
        Source order is maintained in build.mjs (SCRIPTS array).
        To rebuild after editing a source file: npm run build -->
   <script src="./src/js/bundle.min.js"></script>
+
+  <!-- Service worker registration. Required for Chrome to fire
+       beforeinstallprompt (which powers the install nudge) and to make the
+       PWA installable, which in turn enables the Web Share Target feature.
+       sw.js is a network passthrough — no offline/caching behavior. -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function (err) {
+          // Non-fatal: the app works fine without it, just not installable.
+          console.warn("[cb] service worker registration failed:", err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>
