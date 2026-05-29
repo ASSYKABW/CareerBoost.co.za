@@ -6,6 +6,7 @@
  *   - favicon-512.png     (large/splash, "any" purpose)
  *   - favicon-192-maskable.png  (Android adaptive icon, with safe zone)
  *   - favicon-512-maskable.png  (same, larger)
+ *   - apple-touch-icon.png (iOS home screen, full-bleed 180×180)
  *
  * Maskable icons need ~10% safe-zone padding on each edge because Android
  * masks them into device-specific shapes (circle, squircle, teardrop). We
@@ -60,8 +61,22 @@ async function renderMaskable(size) {
   console.log(`[icon] wrote ${out} (${size}×${size}, maskable)`);
 }
 
+async function renderAppleTouch() {
+  // iOS home-screen icon. iOS applies its own rounded-corner mask, so we
+  // render a full-bleed icon (no safe-zone padding) at the standard 180×180,
+  // padded with the brand background so there's no transparency.
+  const size = 180;
+  const out = join(root, 'apple-touch-icon.png');
+  await sharp(svgBuf, { density: 384 })
+    .resize(size, size, { fit: 'contain', background: BG })
+    .png({ compressionLevel: 9 })
+    .toFile(out);
+  console.log(`[icon] wrote ${out} (${size}×${size}, apple-touch)`);
+}
+
 await renderAny(192);
 await renderAny(512);
 await renderMaskable(192);
 await renderMaskable(512);
+await renderAppleTouch();
 console.log('[icon] done.');
