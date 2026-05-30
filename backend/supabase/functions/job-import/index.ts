@@ -23,7 +23,7 @@
 //     logo?: string | null
 //   }
 // }
-import { corsHeaders, errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 const DESCRIPTION_LIMIT = 24_000;

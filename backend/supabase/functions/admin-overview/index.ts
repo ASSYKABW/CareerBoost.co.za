@@ -368,7 +368,6 @@ Deno.serve(async (req) => {
   const warnings: string[] = [];
   const since30 = isoDaysAgo(30);
   const since120 = isoDaysAgo(120);
-  const since7 = isoDaysAgo(7);
 
   const users: Array<Record<string, unknown>> = [];
   try {
@@ -485,7 +484,7 @@ Deno.serve(async (req) => {
     .limit(1000);
   if (savedSearchRowsError) warnings.push("saved_searches.detail: " + savedSearchRowsError.message);
 
-  const { data: eventRows, error: eventRowsError } = await svc
+  const { error: eventRowsError } = await svc
     .from("events")
     .select("user_id, type, event_date, completed, created_at")
     .order("event_date", { ascending: false })
@@ -541,7 +540,6 @@ Deno.serve(async (req) => {
   const coverLetters = (coverRows || []) as Array<Record<string, unknown>>;
   const interviews = (interviewRows || []) as Array<Record<string, unknown>>;
   const savedSearches = (savedSearchRows || []) as Array<Record<string, unknown>>;
-  const events = (eventRows || []) as Array<Record<string, unknown>>;
   const usageEvents = (usageRows || []) as Array<Record<string, unknown>>;
   const usageSessions = (usageSessionRows || []) as Array<Record<string, unknown>>;
   const cohortSessions = ((cohortSessionRows || usageSessionRows || []) as Array<Record<string, unknown>>)
@@ -841,21 +839,21 @@ Deno.serve(async (req) => {
     ]);
     const inactiveDays = daysSince(lastActivityAt);
     const blockers: string[] = [];
-    if (!Boolean(userProfile.onboarding_completed)) blockers.push("Onboarding not complete");
+    if (!userProfile.onboarding_completed) blockers.push("Onboarding not complete");
     if (!hasResume) blockers.push("Resume not ready");
     if (!hasSavedSearch && !userJobs.length && !hasPipeline) blockers.push("No job captured");
     if (hasPipeline && !hasApplied) blockers.push("Saved roles not moved forward");
     if (inactiveDays !== null && inactiveDays > 14) blockers.push("Inactive for 14+ days");
     if (userAiFailures) blockers.push("AI failures encountered");
     let health = 100;
-    if (!Boolean(userProfile.onboarding_completed)) health -= 15;
+    if (!userProfile.onboarding_completed) health -= 15;
     if (!hasResume) health -= 22;
     if (!hasSavedSearch && !userJobs.length && !hasPipeline) health -= 20;
     if (hasPipeline && !hasApplied) health -= 10;
     if (inactiveDays !== null && inactiveDays > 14) health -= 18;
     if (userAiFailures) health -= 10;
     health = Math.max(0, Math.min(100, health));
-    const stage = !Boolean(userProfile.onboarding_completed)
+    const stage = !userProfile.onboarding_completed
       ? "onboarding"
       : !hasResume
         ? "resume-needed"

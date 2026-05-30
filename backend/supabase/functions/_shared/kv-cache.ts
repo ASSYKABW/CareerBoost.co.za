@@ -72,8 +72,7 @@ export async function readKvCache<T = unknown>(
     // Best-effort hit-count bump — don't await, don't throw.
     admin
       .rpc("kv_cache_increment_hit", { p_namespace: namespace, p_cache_key: cacheKey })
-      .then(() => {})
-      .catch(() => {});
+      .then(() => {}, () => {});
     const created = new Date(data.created_at as string).getTime();
     return {
       payload: data.payload as T,
