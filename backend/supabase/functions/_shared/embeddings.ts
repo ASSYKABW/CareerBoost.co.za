@@ -84,8 +84,7 @@ async function readCacheBatch(keys: string[]): Promise<Map<string, number[]>> {
     keys.forEach((k) => {
       if (out.has(k)) {
         admin.rpc("embeddings_cache_increment_hit", { p_cache_key: k })
-          .then(() => {})
-          .catch(() => {});
+          .then(() => {}, () => {});
       }
     });
   } catch {

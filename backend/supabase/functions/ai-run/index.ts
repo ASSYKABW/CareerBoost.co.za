@@ -395,7 +395,7 @@ async function tryProviders(
 // Streaming handler (interview-session-step only, opt-in via body.stream).
 // ---------------------------------------------------------------------------
 async function streamResponse(
-  req: Request,
+  _req: Request,
   spec: typeof prompts[Skill],
   input: unknown,
   skill: Skill,

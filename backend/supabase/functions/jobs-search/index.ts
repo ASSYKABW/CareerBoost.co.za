@@ -814,7 +814,7 @@ async function runRemotive(body: Body): Promise<CanonicalJobOut[]> {
   }));
 }
 
-async function runArbeitnow(body: Body): Promise<CanonicalJobOut[]> {
+async function runArbeitnow(_body: Body): Promise<CanonicalJobOut[]> {
   const data = await fetchJson("https://www.arbeitnow.com/api/job-board-api") as {
     data?: Record<string, unknown>[];
   };
