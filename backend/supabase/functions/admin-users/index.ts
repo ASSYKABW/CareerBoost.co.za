@@ -35,11 +35,6 @@ interface Body {
   query?: string;
 }
 
-function pct(part: number, whole: number): number {
-  if (!whole) return 0;
-  return Math.round((part / whole) * 100);
-}
-
 function daysSince(value: unknown): number | null {
   const parsed = Date.parse(String(value || ""));
   if (!Number.isFinite(parsed)) return null;
@@ -176,7 +171,7 @@ Deno.serve(async (req) => {
   // pattern. The result is a Set we can O(1)-check in the filter loop.
   // ---------------------------------------------------------------------------
   const companyMatchedUserIds = new Set<string>();
-  let companyHitsByUser = new Map<string, string[]>();
+  const companyHitsByUser = new Map<string, string[]>();
   if (query) {
     try {
       // Escape % and _ in the query so user input "100%" doesn't become
@@ -228,7 +223,6 @@ Deno.serve(async (req) => {
     } as StatsRow;
 
     const inactiveDays = daysSince(stats.last_activity_at);
-    const hasResume = false; // resume readiness lives in the resumes table; admin-overview still computes it.
     const blockers: string[] = [];
     if (!stats.onboarding_completed) blockers.push("Onboarding not complete");
     if (!stats.saved_job_count && !stats.pipeline_count) blockers.push("No job captured");
