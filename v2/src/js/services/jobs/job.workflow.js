@@ -42,31 +42,13 @@
     };
   }
 
-  // The full posting lives on job.descriptionText (providers store up to
-  // 24k chars). Cap what we forward so token cost stays bounded — the
-  // backend prompts further slice the JD (6k for cover letter / interview).
-  function getJobDescription(job) {
-    const text = String((job && (job.descriptionText || job.description)) || "").trim();
-    if (!text) return "";
-    return text.length > 8000 ? text.slice(0, 8000) : text;
-  }
-
   function buildInput(skill, job, roleProfile) {
     const roleCtx = roleProfileContext(roleProfile);
-    // The candidate's real resume + the actual job posting are the two
-    // signals that turn tailoring from generic into role-specific. The
-    // backend prompts already read `resume`/`candidate`/`background` and
-    // `jobDescription` — the one-click "Apply with AI" path just never sent
-    // them before, so it tailored blind off the job title alone.
-    const resumeText = getResumeText();
-    const jobDescription = getJobDescription(job);
     if (skill === "resume-tailor") {
       return {
         targetRole: job.title || "",
         marketFocus: job.company || "",
         strengths: getStrengths(),
-        resume: resumeText,
-        jobDescription: jobDescription,
         roleProfile: roleCtx
       };
     }
@@ -75,20 +57,14 @@
         company: job.company || "",
         role: job.title || "",
         tone: "Professional, warm, and concise",
-        strengths: getStrengths(),
-        candidate: resumeText,
-        jobDescription: jobDescription,
         roleProfile: roleCtx
       };
     }
     if (skill === "interview-coach") {
       return {
         role: job.title || "",
-        company: job.company || "",
         stage: "First interview",
         focus: "Behavioral + technical communication",
-        background: resumeText,
-        jobDescription: jobDescription,
         roleProfile: roleCtx
       };
     }
