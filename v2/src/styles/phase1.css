@@ -6907,6 +6907,57 @@ button.topbar-search-button,
   gap: 16px;
 }
 
+/* Resume Lab #1: single "Resume diagnostics" disclosure that holds the
+   detailed scoreboards (Completeness / ATS / Version lab), collapsed by
+   default so the command bar is the only scoreboard shown up front. */
+.resume-diagnostics-card {
+  padding: 0;
+  overflow: hidden;
+}
+.resume-diagnostics-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-text, #fff);
+  font: inherit;
+  text-align: left;
+}
+.resume-diagnostics-toggle:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.resume-diagnostics-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.resume-diagnostics-label i {
+  color: var(--color-accent, #7cf0ff);
+}
+.resume-diagnostics-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.resume-diagnostics-meta .fa-chevron-down,
+.resume-diagnostics-meta .fa-chevron-up {
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.5));
+  font-size: 12px;
+}
+.resume-diagnostics-hint {
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .resume-scorecard {
   padding: 18px 20px;
 }
