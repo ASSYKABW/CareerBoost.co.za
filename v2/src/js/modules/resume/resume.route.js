@@ -32,6 +32,11 @@
     critiqueTargetRole: "",
     assetSuggestions: [],
     atsDetailsOpen: false,
+    // Resume Lab #1: the detailed scoreboards (Completeness, ATS Simulation,
+    // Version & Submit Lab) live behind one disclosure, collapsed by default —
+    // the command bar already shows the headline scores, so this kills the
+    // duplicate-scoreboard clutter. In-memory UI pref (resets per load).
+    diagnosticsOpen: false,
     // Phase 3 — Two workflows
     workMode: "edit", // edit | tailor
     jdText: "",
@@ -1038,14 +1043,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     const ats = computeAtsSimulation(r, view.jdAnalyzed);
     const health = getResumeHealth(r);
 
-    return `
-      <aside class="resume-sidebar">
-        ${renderLabInspectorCard(health)}
-        ${renderPhase4ResumeIntelligence(r, health)}
-        ${renderFixQueueCard(health)}
-        ${renderAiReviewQueueCard(r)}
-        ${renderMissingInfoCard(health)}
-
+    const completenessCard = `
         <article class="card resume-scorecard">
           <div class="resume-scorecard-head">
             <div>
@@ -1064,10 +1062,33 @@ Built analytics dashboard used by 3 teams"></textarea>
             <div><span class="num-font">${comp.totalBullets || 0}</span> bullets</div>
             <div><span class="num-font">${comp.quantifiedBullets || 0}</span> with metrics</div>
           </div>
-        </article>
+        </article>`;
 
-        ${renderAtsCard(ats)}
-        ${renderReadyChecklistCard(ats)}
+    // Resume Lab #1: the headline scores already live in the command bar at
+    // the top of the page, so the detailed scoreboards collapse behind one
+    // disclosure instead of stacking three duplicate score cards.
+    const diagnosticsBody = view.diagnosticsOpen
+      ? renderPhase4ResumeIntelligence(r, health) + completenessCard + renderAtsCard(ats)
+      : "";
+    const diagnostics = `
+        <article class="card resume-diagnostics-card">
+          <button type="button" class="resume-diagnostics-toggle" id="resume-diagnostics-toggle" aria-expanded="${view.diagnosticsOpen ? "true" : "false"}">
+            <span class="resume-diagnostics-label"><i class="fa-solid fa-gauge-high"></i> Resume diagnostics</span>
+            <span class="resume-diagnostics-meta">
+              <span class="chip ${scoreTone(health.score)}">${health.score}/100</span>
+              <i class="fa-solid fa-chevron-${view.diagnosticsOpen ? "up" : "down"}" aria-hidden="true"></i>
+            </span>
+          </button>
+          <p class="muted resume-diagnostics-hint">${view.diagnosticsOpen ? "Completeness, ATS simulation, and saved versions." : "Completeness, ATS &amp; version details — your headline scores are summarised above."}</p>
+        </article>
+        ${diagnosticsBody}`;
+
+    return `
+      <aside class="resume-sidebar">
+        ${diagnostics}
+        ${renderFixQueueCard(health)}
+        ${renderAiReviewQueueCard(r)}
+        ${renderMissingInfoCard(health)}
         ${renderAiAssetSuggestionsCard(r)}
         ${renderCareerAssetCard()}
 
@@ -1381,29 +1402,6 @@ Built analytics dashboard used by 3 teams"></textarea>
     `;
   }
 
-  function renderReadyChecklistCard(ats) {
-    const checks = [
-      { ok: ats.score >= 80, label: "ATS score 80+" },
-      { ok: ats.longBullets === 0, label: "No overlong bullets" },
-      { ok: ats.quantifiedBullets >= 3, label: "At least 3 quantified bullets" },
-      { ok: (ats.missingRequiredSkills || []).length === 0 || !view.jdAnalyzed, label: view.jdAnalyzed ? "Required JD skills represented" : "JD alignment optional (analyze JD to check)" }
-    ];
-    const okCount = checks.filter(function (c) { return c.ok; }).length;
-    return `
-      <article class="card resume-ready-card">
-        <div class="resume-section-head">
-          <h3><i class="fa-solid fa-list-check"></i> Ready-to-submit</h3>
-          <span class="chip ${okCount === checks.length ? "green" : "warning"}">${okCount}/${checks.length}</span>
-        </div>
-        <ul class="ready-checks">
-          ${checks.map(function (c) {
-            return '<li class="' + (c.ok ? "ok" : "todo") + '"><i class="fa-solid ' + (c.ok ? "fa-check" : "fa-circle") + '"></i> ' + st(c.label) + "</li>";
-          }).join("")}
-        </ul>
-      </article>
-    `;
-  }
-
   function getPhase4ResumeIntel(r, health) {
     const svc = window.CBV2.productIntel;
     if (!svc || typeof svc.resumeLab !== "function") return null;
@@ -1458,34 +1456,6 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${improvements ? '<ul class="phase4-improvement-list">' + improvements + "</ul>" : ""}
         <div class="phase4-diagnostic-grid">${diagnostics}</div>
         <ul class="ready-checks phase4-ready-checks">${checks}</ul>
-      </article>
-    `;
-  }
-
-  function renderLabInspectorCard(health) {
-    const role = health.roleMatch === null ? "Add JD" : (health.roleMatch + "%");
-    const readyText = health.ready ? "Submission ready" : "Improvement needed";
-    return `
-      <article class="card resume-lab-inspector">
-        <div class="resume-section-head">
-          <h3><i class="fa-solid fa-chart-simple"></i> Lab Diagnosis</h3>
-          <span class="chip ${scoreTone(health.score)}">${st(readyText)}</span>
-        </div>
-        <div class="resume-inspector-grid">
-          <div>
-            <span class="num-font">${health.score}</span>
-            <small>Readiness</small>
-          </div>
-          <div>
-            <span class="num-font">${health.ats.score}</span>
-            <small>ATS</small>
-          </div>
-          <div>
-            <span class="num-font">${role}</span>
-            <small>Role match</small>
-          </div>
-        </div>
-        <p class="resume-inspector-note">${st(health.status)} - ${health.fixes.length ? st(health.fixes[0].detail) : "Your resume is ready for final export review."}</p>
       </article>
     `;
   }
@@ -4081,6 +4051,11 @@ Built analytics dashboard used by 3 teams"></textarea>
       side.addEventListener("click", function (e) {
         const btn = e.target.closest("button");
         if (!btn) return;
+        if (btn.id === "resume-diagnostics-toggle") {
+          view.diagnosticsOpen = !view.diagnosticsOpen;
+          rerenderSidebar();
+          return;
+        }
         if (btn.matches("[data-mode-switch]")) {
           switchWorkMode(btn.getAttribute("data-mode-switch"));
           return;
