@@ -46,6 +46,18 @@
     tailorDismissedIds: {},
     summaryApplied: false,
     appliedSkills: {},
+    // #2 draft-and-review: deep clone of the structured resume taken BEFORE
+    // the first tailor change of this plan session. "Undo all" restores it.
+    // null until the first apply; persisted so undo survives a refresh.
+    tailorPreApplySnapshot: null,
+    // Ordered log of changes applied via the tailor plan (bulk OR per-item),
+    // newest last. Each entry carries enough to render + individually undo:
+    //   summary: { type:"summary", before, after }
+    //   bullet:  { type:"bullet", id, before, after, label }
+    //   skill:   { type:"skill", key, skill, group }
+    tailorChangeLog: [],
+    // Whether the per-change list inside the review card is expanded.
+    tailorReviewOpen: false,
     // R1: union of bullet IDs the user has already accepted an AI rewrite
     // for, via critique OR tailor. Sent to the AI on the next critique /
     // tailor-plan call so the model can skip them and avoid suggesting the
@@ -107,6 +119,8 @@
     if (saved.dismissedIds) view.tailorDismissedIds = saved.dismissedIds;
     if (typeof saved.summaryApplied === "boolean") view.summaryApplied = saved.summaryApplied;
     if (saved.appliedSkills) view.appliedSkills = saved.appliedSkills;
+    if (Array.isArray(saved.tailorChangeLog)) view.tailorChangeLog = saved.tailorChangeLog;
+    if (saved.tailorPreApplySnapshot) view.tailorPreApplySnapshot = saved.tailorPreApplySnapshot;
   }
 
   function persistTailorView() {
@@ -119,7 +133,9 @@
       appliedIds: view.tailorAppliedIds || {},
       dismissedIds: view.tailorDismissedIds || {},
       summaryApplied: !!view.summaryApplied,
-      appliedSkills: view.appliedSkills || {}
+      appliedSkills: view.appliedSkills || {},
+      tailorChangeLog: view.tailorChangeLog || [],
+      tailorPreApplySnapshot: view.tailorPreApplySnapshot || null
     });
   }
 
@@ -2761,12 +2777,61 @@ Built analytics dashboard used by 3 teams"></textarea>
   function renderTailorWorkspace(r) {
     return `
       <aside class="resume-tailor-workspace">
+        ${renderTailorReviewCard()}
         ${renderTailorJdCard()}
         ${view.jdAnalyzed ? renderJdAnalysisCard(view.jdAnalyzed, r) : ""}
         ${view.tailorPlan ? renderTailorPlanCard(view.tailorPlan, r) : renderPlanEmptyCta()}
         ${renderAiAssetSuggestionsCard(r)}
       </aside>
     `;
+  }
+
+  // #2 Draft-and-review: shows after any tailor change is applied. Summarises
+  // what changed and offers Undo all + per-change undo, so one-click apply is
+  // safe — the user reviews instead of approving each item up front.
+  function renderTailorReviewCard() {
+    const log = view.tailorChangeLog || [];
+    if (!log.length) return "";
+    let nSummary = 0, nBullets = 0, nSkills = 0;
+    log.forEach(function (e) {
+      if (e.type === "summary") nSummary += 1;
+      else if (e.type === "bullet") nBullets += 1;
+      else if (e.type === "skill") nSkills += 1;
+    });
+    const parts = [];
+    if (nSummary) parts.push("summary");
+    if (nBullets) parts.push(nBullets + (nBullets === 1 ? " bullet" : " bullets"));
+    if (nSkills) parts.push(nSkills + (nSkills === 1 ? " skill" : " skills"));
+    const open = view.tailorReviewOpen;
+    const rows = log.map(function (e, i) {
+      let title, detail;
+      if (e.type === "summary") { title = "Summary rewritten"; detail = e.after; }
+      else if (e.type === "bullet") { title = e.label ? (e.label + " — bullet") : "Bullet rewritten"; detail = e.after; }
+      else { title = "Added skill: " + e.skill; detail = e.group ? ("in " + e.group) : ""; }
+      return (
+        '<li class="tailor-review-row">' +
+          '<div class="tailor-review-row-main">' +
+            '<strong>' + st(title) + '</strong>' +
+            (detail ? '<p class="ai-meta">' + st(String(detail).slice(0, 180)) + '</p>' : '') +
+          '</div>' +
+          '<button type="button" class="btn-ghost btn-sm" data-undo-one-tailor data-index="' + i + '" title="Undo this change" aria-label="Undo this change"><i class="fa-solid fa-rotate-left"></i></button>' +
+        '</li>'
+      );
+    }).join("");
+    return (
+      '<article class="card tailor-review-card">' +
+        '<div class="resume-section-head">' +
+          '<h3><i class="fa-solid fa-clipboard-check"></i> ' + log.length + ' change' + (log.length === 1 ? '' : 's') + ' applied</h3>' +
+          '<span class="chip green"><i class="fa-solid fa-check"></i> Tailored</span>' +
+        '</div>' +
+        '<p class="muted">Updated ' + st(parts.join(" · ")) + '. Review below, or undo anything you don\'t like — your original is safe.</p>' +
+        '<div class="critique-actions">' +
+          '<button type="button" class="btn-secondary btn-sm" id="toggle-tailor-review">' + (open ? "Hide changes" : "Review changes") + '</button>' +
+          '<button type="button" class="btn-ghost btn-sm" id="undo-all-tailor"><i class="fa-solid fa-arrow-rotate-left"></i> Undo all</button>' +
+        '</div>' +
+        (open ? '<ul class="tailor-review-list">' + rows + '</ul>' : '') +
+      '</article>'
+    );
   }
 
   function renderTailorJdCard() {
@@ -2963,19 +3028,30 @@ Built analytics dashboard used by 3 teams"></textarea>
 
     const provider = plan.provider ? '<span class="chip subtle">' + st(plan.provider) + "</span>" : "";
 
+    const hasPending = visibleBullets.length || visibleSkills.length || (!view.summaryApplied && summaryOpts.length);
+
     return `
       <article class="card tailor-plan-card">
         <div class="resume-section-head">
           <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Tailoring plan</h3>
           ${provider}
         </div>
+        ${hasPending ? `
+          <div class="tailor-apply-hero">
+            <div class="tailor-apply-hero-copy">
+              <strong>Tailor everything in one step</strong>
+              <p class="muted">Applies every grounded rewrite and skill at once. You then review and can undo any of them — nothing is locked in.</p>
+            </div>
+            <button class="btn-primary" type="button" data-apply-tailor-all><i class="fa-solid fa-wand-magic-sparkles"></i> Apply all &amp; review</button>
+          </div>
+        ` : ""}
         ${fit ? '<p class="tailor-fit-notes"><i class="fa-solid fa-gauge-high"></i> ' + st(fit) + '</p>' : ''}
         ${summaryBlock}
         ${bulletsBlock}
         ${skillsBlock}
         ${(!visibleBullets.length && !visibleSkills.length && view.summaryApplied) ? '<p class="muted">All suggestions applied or dismissed. Regenerate the plan to see more.</p>' : ''}
         <div class="critique-actions">
-          <button class="btn-primary btn-sm" type="button" id="apply-tailor-safe"><i class="fa-solid fa-check-double"></i> Apply all safe</button>
+          <button class="btn-primary btn-sm" type="button" id="apply-tailor-safe"><i class="fa-solid fa-check-double"></i> Apply all &amp; review</button>
           <button class="btn-ghost btn-sm" type="button" id="regen-tailor-plan"><i class="fa-solid fa-rotate"></i> Regenerate</button>
           <button class="btn-ghost btn-sm" type="button" id="clear-tailor-plan"><i class="fa-solid fa-xmark"></i> Clear plan</button>
         </div>
@@ -4950,6 +5026,9 @@ Built analytics dashboard used by 3 teams"></textarea>
         view.tailorDismissedIds = {};
         view.summaryApplied = false;
         view.appliedSkills = {};
+        view.tailorChangeLog = [];
+        view.tailorPreApplySnapshot = null;
+        view.tailorReviewOpen = false;
         persistTailorView();
         rerenderTailorSide();
         return;
@@ -4967,8 +5046,21 @@ Built analytics dashboard used by 3 teams"></textarea>
         }
         return;
       }
-      if (btn.id === "apply-tailor-safe") {
+      if (btn.id === "apply-tailor-safe" || btn.matches("[data-apply-tailor-all]")) {
         applyAllSafeTailorSuggestions();
+        return;
+      }
+      if (btn.id === "undo-all-tailor") {
+        undoAllTailorChanges();
+        return;
+      }
+      if (btn.matches("[data-undo-one-tailor]")) {
+        undoOneTailorChange(btn.getAttribute("data-index"));
+        return;
+      }
+      if (btn.id === "toggle-tailor-review") {
+        view.tailorReviewOpen = !view.tailorReviewOpen;
+        rerenderTailorSide();
         return;
       }
       if (btn.id === "clear-tailor-plan") {
@@ -4977,6 +5069,9 @@ Built analytics dashboard used by 3 teams"></textarea>
         view.tailorDismissedIds = {};
         view.summaryApplied = false;
         view.appliedSkills = {};
+        view.tailorChangeLog = [];
+        view.tailorPreApplySnapshot = null;
+        view.tailorReviewOpen = false;
         persistTailorView();
         rerenderTailorSide();
         return;
@@ -5097,6 +5192,9 @@ Built analytics dashboard used by 3 teams"></textarea>
       view.tailorDismissedIds = {};
       view.summaryApplied = false;
       view.appliedSkills = {};
+      view.tailorChangeLog = [];
+      view.tailorPreApplySnapshot = null;
+      view.tailorReviewOpen = false;
       persistTailorView();
       toast("success", "Tailoring plan ready.");
     } catch (err) {
@@ -5108,6 +5206,112 @@ Built analytics dashboard used by 3 teams"></textarea>
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // #2 Draft-and-review: snapshot + change log so every applied tailor change
+  // is reversible. The snapshot is taken once per plan session (first apply);
+  // "Undo all" restores it. Each change is also logged for per-item undo.
+  // ---------------------------------------------------------------------------
+  function cloneResumeSnapshot(r) {
+    try { return JSON.parse(JSON.stringify(r)); } catch (e) { return null; }
+  }
+
+  function ensureTailorSnapshot() {
+    if (view.tailorPreApplySnapshot) return;
+    const r = currentResume();
+    if (r) view.tailorPreApplySnapshot = cloneResumeSnapshot(r);
+  }
+
+  function logTailorChange(entry) {
+    if (!entry) return;
+    view.tailorChangeLog = view.tailorChangeLog || [];
+    view.tailorChangeLog.push(entry);
+  }
+
+  // Human label for which experience/project a bullet belongs to, for the
+  // review list (e.g. "Senior Engineer · Acme"). Falls back to "Bullet".
+  function tailorBulletLabel(r, id) {
+    if (!r || !id) return "Bullet";
+    const exps = r.experience || [];
+    for (let i = 0; i < exps.length; i += 1) {
+      const bullets = (exps[i] && exps[i].bullets) || [];
+      if (bullets.some(function (b) { return b && b.id === id; })) {
+        const role = String((exps[i] && exps[i].role) || "").trim();
+        const co = String((exps[i] && exps[i].company) || "").trim();
+        return [role, co].filter(Boolean).join(" · ") || "Experience bullet";
+      }
+    }
+    const projects = r.projects || [];
+    for (let i = 0; i < projects.length; i += 1) {
+      const bullets = (projects[i] && projects[i].bullets) || [];
+      if (bullets.some(function (b) { return b && b.id === id; })) {
+        return String((projects[i] && projects[i].name) || "Project bullet").trim() || "Project bullet";
+      }
+    }
+    return "Bullet";
+  }
+
+  function removeSkillFromResume(r, skill, group) {
+    if (!r || !r.skills || !Array.isArray(r.skills.groups)) return;
+    const target = String(skill || "").toLowerCase();
+    if (!target) return;
+    r.skills.groups.forEach(function (g) {
+      if (!g || !Array.isArray(g.items)) return;
+      if (group && String(g.label || "").toLowerCase() !== String(group).toLowerCase()) return;
+      g.items = g.items.filter(function (it) { return String(it || "").toLowerCase() !== target; });
+    });
+  }
+
+  // Restore the pre-apply snapshot, wiping every tailor change in one step.
+  function undoAllTailorChanges() {
+    const snap = view.tailorPreApplySnapshot;
+    if (!snap) { toast("warning", "Nothing to undo."); return; }
+    const restored = cloneResumeSnapshot(snap);
+    if (!restored) { toast("error", "Could not restore the original."); return; }
+    saveResume(restored);
+    view.tailorChangeLog = [];
+    view.tailorPreApplySnapshot = null;
+    view.tailorReviewOpen = false;
+    view.summaryApplied = false;
+    view.tailorAppliedIds = {};
+    Object.keys(view.appliedSkills || {}).forEach(function (k) {
+      if (view.appliedSkills[k] === "applied") delete view.appliedSkills[k];
+    });
+    persistTailorView();
+    toast("success", "Reverted all tailoring changes — your original is back.");
+    rerenderEditor();
+  }
+
+  // Revert a single logged change and drop it from the log.
+  function undoOneTailorChange(index) {
+    const log = view.tailorChangeLog || [];
+    const i = Number(index);
+    const entry = log[i];
+    if (!entry) return;
+    const r = currentResume();
+    if (!r) return;
+    if (entry.type === "summary") {
+      r.summary = entry.before || "";
+      view.summaryApplied = false;
+    } else if (entry.type === "bullet") {
+      const bullet = findBulletById(r, entry.id);
+      if (bullet) bullet.text = entry.before || "";
+      delete view.tailorAppliedIds[entry.id];
+    } else if (entry.type === "skill") {
+      removeSkillFromResume(r, entry.skill, entry.group);
+      if (entry.key) delete view.appliedSkills[entry.key];
+    }
+    saveResume(r);
+    log.splice(i, 1);
+    view.tailorChangeLog = log;
+    if (!log.length) {
+      view.tailorPreApplySnapshot = null;
+      view.tailorReviewOpen = false;
+    }
+    persistTailorView();
+    toast("success", "Change reverted.");
+    rerenderEditor();
+  }
+
   function applyTailorSummary(optionIndex) {
     if (!view.tailorPlan) return;
     const data = view.tailorPlan.data || view.tailorPlan;
@@ -5116,9 +5320,12 @@ Built analytics dashboard used by 3 teams"></textarea>
     const idx = Math.max(0, Math.min(Number(optionIndex) || 0, Math.max(0, opts.length - 1)));
     const chosen = opts[idx];
     if (!r || !chosen) return;
+    ensureTailorSnapshot();
+    const before = r.summary || "";
     r.summary = chosen;
     saveResume(r);
     view.summaryApplied = true;
+    logTailorChange({ type: "summary", before: before, after: chosen });
     persistTailorView();
     toast("success", "Summary applied.");
     rerenderEditor();
@@ -5140,10 +5347,13 @@ Built analytics dashboard used by 3 teams"></textarea>
     const options = getRewriteOptions(match.rewrite, match.alternatives);
     const selected = options[Math.max(0, Number(optionIndex) || 0)] || options[0] || "";
     if (!selected) return;
+    ensureTailorSnapshot();
+    const before = bullet.text || "";
     bullet.text = selected;
     saveResume(r);
     view.tailorAppliedIds[id] = true;
     recordAppliedAiBulletId(id);
+    logTailorChange({ type: "bullet", id: id, before: before, after: selected, label: tailorBulletLabel(r, id) });
     persistTailorView();
     toast("success", "Bullet rewritten.");
     rerenderEditor();
@@ -5159,15 +5369,21 @@ Built analytics dashboard used by 3 teams"></textarea>
     let targetGroup = r.skills.groups.find(function (g) {
       return (g.label || "").toLowerCase() === groupName.toLowerCase();
     });
-    if (!targetGroup) {
-      targetGroup = { id: model.newId("skg"), label: groupName, items: [] };
-      r.skills.groups.push(targetGroup);
-    }
-    // Avoid duplicates (case-insensitive)
-    const exists = (targetGroup.items || []).some(function (s) {
+    // Avoid duplicates (case-insensitive). Check before mutating so we only
+    // snapshot when we'll actually add — and snapshot before creating the
+    // group, so Undo all restores without leaving an empty group behind.
+    const exists = !!targetGroup && (targetGroup.items || []).some(function (s) {
       return String(s).toLowerCase() === String(skill).toLowerCase();
     });
-    if (!exists) targetGroup.items.push(skill);
+    if (!exists) {
+      ensureTailorSnapshot();
+      if (!targetGroup) {
+        targetGroup = { id: model.newId("skg"), label: groupName, items: [] };
+        r.skills.groups.push(targetGroup);
+      }
+      targetGroup.items.push(skill);
+      logTailorChange({ type: "skill", key: key || String(skill).toLowerCase(), skill: skill, group: groupName });
+    }
     saveResume(r);
     view.appliedSkills[key] = "applied";
     persistTailorView();
@@ -5180,6 +5396,12 @@ Built analytics dashboard used by 3 teams"></textarea>
     const r = currentResume();
     if (!r) return;
     const data = view.tailorPlan.data || view.tailorPlan;
+    // Snapshot BEFORE any mutation — `r` is the live reference we're about to
+    // edit, so we clone it up front and only commit the snapshot + change log
+    // if something actually changed.
+    const hadSnapshot = !!view.tailorPreApplySnapshot;
+    const preClone = hadSnapshot ? null : cloneResumeSnapshot(r);
+    const pendingLog = [];
     let appliedSummary = false;
     let appliedBullets = 0;
     let appliedSkills = 0;
@@ -5187,9 +5409,11 @@ Built analytics dashboard used by 3 teams"></textarea>
     if (!view.summaryApplied) {
       const sumOpts = getTailorSummaryOptions(data);
       if (sumOpts.length) {
+        const before = r.summary || "";
         r.summary = sumOpts[0];
         view.summaryApplied = true;
         appliedSummary = true;
+        pendingLog.push({ type: "summary", before: before, after: sumOpts[0] });
       }
     }
 
@@ -5199,10 +5423,12 @@ Built analytics dashboard used by 3 teams"></textarea>
       const bullet = findBulletById(r, id);
       const options = getRewriteOptions(b && b.rewrite, b && b.alternatives);
       if (!bullet || !options.length) return;
+      const before = bullet.text || "";
       bullet.text = options[0];
       view.tailorAppliedIds[id] = true;
       recordAppliedAiBulletId(id);
       appliedBullets += 1;
+      pendingLog.push({ type: "bullet", id: id, before: before, after: options[0], label: tailorBulletLabel(r, id) });
     });
 
     r.skills = r.skills || { groups: [] };
@@ -5230,15 +5456,19 @@ Built analytics dashboard used by 3 teams"></textarea>
       group.items.push(skill);
       view.appliedSkills[key] = "applied";
       appliedSkills += 1;
+      pendingLog.push({ type: "skill", key: key, skill: skill, group: groupName });
     });
 
     if (!appliedSummary && !appliedBullets && !appliedSkills) {
       toast("warning", "No safe tailoring suggestions available.");
       return;
     }
+    if (!hadSnapshot && preClone) view.tailorPreApplySnapshot = preClone;
+    pendingLog.forEach(logTailorChange);
+    view.tailorReviewOpen = true;
     saveResume(r);
     persistTailorView();
-    toast("success", "Applied safe suggestions: " + [appliedSummary ? "summary" : "", appliedBullets ? (appliedBullets + " bullets") : "", appliedSkills ? (appliedSkills + " skills") : ""].filter(Boolean).join(", ") + ".");
+    toast("success", "Applied " + [appliedSummary ? "summary" : "", appliedBullets ? (appliedBullets + " bullets") : "", appliedSkills ? (appliedSkills + " skills") : ""].filter(Boolean).join(", ") + " — review or undo below.");
     rerenderEditor();
   }
 

@@ -7830,6 +7830,80 @@ button.topbar-search-button,
   color: #f6c15a;
 }
 
+/* #2 Draft-and-review: one-click apply hero + post-apply review card */
+.tailor-apply-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(124, 240, 255, 0.10), rgba(168, 136, 255, 0.06));
+  border: 1px solid rgba(124, 240, 255, 0.22);
+}
+.tailor-apply-hero-copy {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.tailor-apply-hero-copy strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--color-text, #fff);
+  margin-bottom: 2px;
+}
+.tailor-apply-hero-copy p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.tailor-apply-hero .btn-primary {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tailor-review-card {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.07), rgba(124, 240, 255, 0.04));
+  border: 1px solid rgba(74, 222, 128, 0.24);
+}
+.tailor-review-card .resume-section-head h3 i {
+  color: #4ade80;
+}
+.tailor-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tailor-review-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(16, 22, 32, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.tailor-review-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tailor-review-row-main strong {
+  font-size: 12.5px;
+  color: var(--color-text, #fff);
+}
+.tailor-review-row-main p.ai-meta {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.62));
+}
+.tailor-review-row .btn-ghost.btn-sm {
+  flex: 0 0 auto;
+}
+
 .resume-tailor-hint {
   background: linear-gradient(135deg, rgba(124, 240, 255, 0.06), rgba(168, 136, 255, 0.04));
   border: 1px solid rgba(124, 240, 255, 0.16);
