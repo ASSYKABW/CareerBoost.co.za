@@ -214,3 +214,8 @@ verify_jwt = false
 
 [functions.testimonials-public]
 verify_jwt = false
+
+# Server-side PDF export (PDFShift HTML->PDF). Authenticated; validates the
+# caller's JWT in-code. Recovered into the repo from the deployed version.
+[functions.resume-pdf]
+verify_jwt = false
