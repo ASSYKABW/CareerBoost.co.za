@@ -471,10 +471,10 @@
   function renderWorkflowRail(health) {
     const steps = [
       { id: "import", label: "Import", done: true, icon: "fa-file-arrow-up" },
-      { id: "diagnose", label: "Diagnose", done: health.score >= 45, icon: "fa-stethoscope" },
-      { id: "rebuild", label: "Rebuild", done: health.evidenceScore >= 35 && health.comp.score >= 75, icon: "fa-wand-magic-sparkles" },
+      { id: "diagnose", label: "Check", done: health.score >= 45, icon: "fa-stethoscope" },
+      { id: "rebuild", label: "Improve", done: health.evidenceScore >= 35 && health.comp.score >= 75, icon: "fa-wand-magic-sparkles" },
       { id: "match", label: "Role match", done: health.roleMatch !== null && health.roleMatch >= 65, icon: "fa-crosshairs" },
-      { id: "review", label: "Final review", done: health.ats.score >= 82 && health.fixes.length <= 2, icon: "fa-list-check" },
+      { id: "review", label: "Review", done: health.ats.score >= 82 && health.fixes.length <= 2, icon: "fa-list-check" },
       { id: "export", label: "Export", done: health.ready, icon: "fa-download" }
     ];
     let activeFound = false;
@@ -512,7 +512,7 @@
             <small>/100</small>
           </div>
           <div class="resume-command-title">
-            <p class="eyebrow">Resume transformation lab</p>
+            <p class="eyebrow">Resume Lab</p>
             <h2>${st(health.status)}</h2>
             <p>Convert a blank, weak, incomplete, or mismatched resume into a professional version built for ${st(targetRole)}.</p>
           </div>
@@ -1463,7 +1463,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     return `
       <article class="card resume-ats-card">
         <div class="resume-section-head">
-          <h3><i class="fa-solid fa-microchip"></i> ATS Simulation</h3>
+          <h3><i class="fa-solid fa-microchip"></i> ATS check</h3>
           <div class="ats-head-actions">
             <span class="chip ${tone}">${ats.confidence}</span>
             <button type="button" class="btn-ghost btn-sm" id="ats-toggle-details">${view.atsDetailsOpen ? "Hide details" : "Why this score?"}</button>
@@ -1517,7 +1517,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     return `
       <article class="card phase4-resume-card">
         <div class="resume-section-head">
-          <h3><i class="fa-solid fa-layer-group"></i> Version & Submit Lab</h3>
+          <h3><i class="fa-solid fa-layer-group"></i> Saved versions</h3>
           <span class="chip ${intel.readiness >= 88 ? "green" : intel.readiness >= 70 ? "warning" : "rose"}">${intel.readiness}/100</span>
         </div>
         <div class="phase4-version-list">
@@ -1558,7 +1558,7 @@ Built analytics dashboard used by 3 teams"></textarea>
       return (
         '<article class="card resume-review-queue-card resume-review-queue-card--empty">' +
           '<div class="resume-section-head">' +
-            '<h3><i class="fa-solid fa-list-check"></i> AI Review Queue</h3>' +
+            '<h3><i class="fa-solid fa-list-check"></i> AI rewrites</h3>' +
             '<span class="chip subtle">0 pending</span>' +
           '</div>' +
           '<p class="muted">' + st(emptyMsg) + '</p>' +
@@ -1621,7 +1621,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     return (
       '<article class="card resume-review-queue-card">' +
         '<div class="resume-section-head">' +
-          '<h3><i class="fa-solid fa-list-check"></i> AI Review Queue</h3>' +
+          '<h3><i class="fa-solid fa-list-check"></i> AI rewrites</h3>' +
           '<span class="chip ' + (total > 0 ? "cyan" : "subtle") + '">' + st(String(total)) + ' pending</span>' +
         '</div>' +
         walkthroughHeader +
