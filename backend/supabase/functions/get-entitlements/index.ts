@@ -28,10 +28,10 @@
 // auth.uid() resolves to their actual user ID inside the RPC.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST" && req.method !== "GET") {
@@ -61,4 +61,4 @@ Deno.serve(async (req) => {
   if (error) return errorResponse("Entitlements RPC failed: " + error.message, 502);
 
   return jsonResponse({ ok: true, entitlements: data });
-});
+}));

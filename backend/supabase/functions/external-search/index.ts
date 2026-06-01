@@ -10,7 +10,7 @@
 //   GOOGLE_CSE_CX — Programmable Search Engine id (cx)
 //
 // Request body matches the client contract (query, filters, nlq, provider).
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
 
 interface Filters {
@@ -1120,7 +1120,7 @@ function dedupeJobsByUrl(jobs: CanonicalJobOut[]): CanonicalJobOut[] {
   return out;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -1189,4 +1189,4 @@ Deno.serve(async (req) => {
     sources,
     warnings,
   });
-});
+}));

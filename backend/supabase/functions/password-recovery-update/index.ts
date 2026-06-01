@@ -17,14 +17,14 @@
 // Body: { password: string }
 // Auth: Any valid JWT (recovery sessions included).
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 interface Body {
   password?: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -88,4 +88,4 @@ Deno.serve(async (req) => {
 
   console.log("[password-recovery-update] success for user", user.id);
   return jsonResponse({ ok: true, updated: true });
-});
+}));

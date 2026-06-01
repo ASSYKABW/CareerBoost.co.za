@@ -17,7 +17,7 @@
 //   STRIPE_PRICE_CAREER_ANNUAL   price_...
 //   SITE_URL                     https://your-domain.com   (cors + success url)
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 interface Body { planId?: string; interval?: string; }
@@ -28,7 +28,7 @@ const PRICE_MAP: Record<string, Record<string, string | undefined>> = {
   career: { monthly: "STRIPE_PRICE_CAREER_MONTHLY", annual: "STRIPE_PRICE_CAREER_ANNUAL" },
 };
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -111,4 +111,4 @@ Deno.serve(async (req) => {
   }
 
   return jsonResponse({ ok: true, url: stripeJson.url, sessionId: stripeJson.id });
-});
+}));

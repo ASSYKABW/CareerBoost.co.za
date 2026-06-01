@@ -8,9 +8,9 @@
 // Cached for 5 minutes (CDN/browser); stale-while-revalidate for smooth UX.
 
 import { getServiceClient } from "../_shared/auth.ts";
-import { handleOptions } from "../_shared/cors.ts";
+import { handleOptions, withCors } from "../_shared/cors.ts";
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
 
@@ -59,4 +59,4 @@ Deno.serve(async (req) => {
       },
     },
   );
-});
+}));

@@ -23,7 +23,7 @@
 // Self-target safeguards:
 //   - All actions on yourself are allowed; audit log catches misuse.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
 import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
@@ -44,7 +44,7 @@ interface Body {
   payload?: Record<string, unknown>;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -210,4 +210,4 @@ Deno.serve(async (req) => {
     });
     return errorResponse(message, 502);
   }
-});
+}));

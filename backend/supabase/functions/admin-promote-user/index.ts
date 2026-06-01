@@ -16,7 +16,7 @@
 //   3. Caller cannot demote themselves (would lock them out instantly).
 //   4. Target lookup by email is service-role only.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
 import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
@@ -29,7 +29,7 @@ interface Body {
   note?: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -183,4 +183,4 @@ Deno.serve(async (req) => {
     });
     return errorResponse(message, 502);
   }
-});
+}));

@@ -6,13 +6,13 @@
 // The submitter never sees the DB row; they just get a thank-you message.
 // An operator approves/edits/rejects via admin-testimonials.
 
-import { handleOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getServiceClient } from "../_shared/auth.ts";
 
 const MAX_QUOTE = 800;
 const MIN_QUOTE = 20;
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
 
@@ -72,4 +72,4 @@ Deno.serve(async (req) => {
     ok: true,
     message: "Thank you! Your testimonial has been received and will be reviewed shortly.",
   });
-});
+}));

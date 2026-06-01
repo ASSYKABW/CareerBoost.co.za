@@ -31,7 +31,7 @@
 //   - Future-proof for adding more sophisticated rerankers (cross-encoder,
 //     learned-to-rank, etc.) without changing the client API.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 import { embedBatch, cosineSimilarity, type EmbeddingModel } from "../_shared/embeddings.ts";
 
@@ -51,7 +51,7 @@ interface Body {
   model?: unknown;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -167,4 +167,4 @@ Deno.serve(async (req) => {
     } catch { /* ignore */ }
     return errorResponse(message, 502);
   }
-});
+}));
