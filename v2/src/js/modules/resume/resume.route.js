@@ -1085,14 +1085,11 @@ Built analytics dashboard used by 3 teams"></textarea>
 
     return `
       <aside class="resume-sidebar">
-        ${diagnostics}
         ${renderFixQueueCard(health)}
+        ${diagnostics}
         ${renderAiReviewQueueCard(r)}
-        ${renderMissingInfoCard(health)}
-        ${renderAiAssetSuggestionsCard(r)}
-        ${renderCareerAssetCard()}
-
         ${renderCritiqueCard(r)}
+        ${renderCareerAssetCard(r)}
 
         <article class="card resume-tailor-hint">
           <div class="resume-section-head">
@@ -1117,7 +1114,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     `;
   }
 
-  function renderCareerAssetCard() {
+  function renderCareerAssetCard(r) {
     const store = window.CBV2.store;
     const items = (store && typeof store.getCareerAssets === "function")
       ? store.getCareerAssets()
@@ -1137,6 +1134,32 @@ Built analytics dashboard used by 3 teams"></textarea>
         "</li>"
       );
     }).join("");
+
+    // Resume Lab #2: the AI "Suggested Assets" card was folded into the Vault —
+    // suggestions to save live right next to the things you've already saved.
+    const suggestions = r ? getAiAssetSuggestions(r) : [];
+    view.assetSuggestions = suggestions;
+    const suggestionRows = suggestions.map(function (s) {
+      return (
+        '<li class="career-asset-row career-asset-suggestion-row">' +
+          '<div>' +
+            '<strong>' + st(s.name || "AI suggestion") + '</strong> ' +
+            '<span class="chip subtle">' + st(s.type || "bullet") + '</span>' +
+            '<p class="ai-meta">' + st((s.text || "").slice(0, 160)) + "</p>" +
+          "</div>" +
+          '<div class="career-asset-actions">' +
+            '<button class="btn-primary btn-sm" type="button" data-asset-suggest-action="save" data-asset-suggestion-id="' + st(s.id) + '"><i class="fa-solid fa-bookmark"></i> Save</button>' +
+          "</div>" +
+        "</li>"
+      );
+    }).join("");
+    const suggestionsBlock = suggestions.length
+      ? '<div class="career-asset-suggested">' +
+          '<p class="career-asset-suggested-head"><i class="fa-solid fa-sparkles"></i> Suggested to save <span class="ai-meta">— from Tailor Plan &amp; AI Critique</span></p>' +
+          '<ul class="career-asset-list">' + suggestionRows + "</ul>" +
+        "</div>"
+      : "";
+
     return `
       <article class="card resume-career-assets">
         <div class="resume-section-head">
@@ -1146,6 +1169,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${top.length
           ? '<ul class="career-asset-list">' + rows + "</ul>"
           : '<p class="muted">Save your strongest bullets and skills, then reuse them instantly across CV versions.</p>'}
+        ${suggestionsBlock}
       </article>
     `;
   }
@@ -1368,19 +1392,8 @@ Built analytics dashboard used by 3 teams"></textarea>
         }).join("")}
       </div>
     `;
-    const quickFixes = [];
-    if (ats.longBullets > 0) {
-      quickFixes.push('<button type="button" class="btn-ghost btn-sm" data-ats-fix="trim-long-bullets"><i class="fa-solid fa-scissors"></i> Shorten long bullets</button>');
-    }
-    if (ats.quantifiedBullets < 3) {
-      quickFixes.push('<button type="button" class="btn-ghost btn-sm" data-ats-fix="add-metrics"><i class="fa-solid fa-hashtag"></i> Add metric placeholders</button>');
-    }
-    if ((ats.missingRequiredSkills || []).length) {
-      quickFixes.push('<button type="button" class="btn-ghost btn-sm" data-ats-fix="add-jd-keywords"><i class="fa-solid fa-key"></i> Add missing JD keywords</button>');
-    }
-    const quickFixHtml = quickFixes.length
-      ? '<div class="ats-quick-fixes"><p class="muted">Quick fixes</p><div class="ats-quick-fix-row">' + quickFixes.join("") + "</div></div>"
-      : "";
+    // Quick-fix buttons removed in Resume Lab #2 — those actions (add metrics,
+    // shorten bullets, add JD keywords) now live once in the "Next steps" list.
     return `
       <article class="card resume-ats-card">
         <div class="resume-section-head">
@@ -1395,7 +1408,6 @@ Built analytics dashboard used by 3 teams"></textarea>
           <div><span class="num-font">${ats.quantifiedBullets}</span> quantified bullets</div>
           <div><span class="num-font">${ats.longBullets}</span> overlong bullets</div>
         </div>
-        ${quickFixHtml}
         ${view.atsDetailsOpen ? breakdownHtml : ""}
         ${issuesHtml}
       </article>
@@ -1634,29 +1646,14 @@ Built analytics dashboard used by 3 teams"></textarea>
         </li>
       `;
     }).join("");
+    const taskCount = (health.fixes || []).length;
     return `
-      <article class="card resume-fix-queue-card">
+      <article class="card resume-fix-queue-card resume-next-steps-card">
         <div class="resume-section-head">
-          <h3><i class="fa-solid fa-screwdriver-wrench"></i> Fix Queue</h3>
-          <span class="chip subtle">${(health.fixes || []).length} tasks</span>
+          <h3><i class="fa-solid fa-list-check"></i> Next steps</h3>
+          <span class="chip ${taskCount ? "cyan" : "green"}">${taskCount ? taskCount + (taskCount === 1 ? " task" : " tasks") : "All clear"}</span>
         </div>
-        ${rows ? '<ul class="resume-fix-queue">' + rows + "</ul>" : '<p class="muted">No urgent fixes. Run final export preflight when ready.</p>'}
-      </article>
-    `;
-  }
-
-  function renderMissingInfoCard(health) {
-    const prompts = (health.questions || []).map(function (q) {
-      return '<li><i class="fa-solid fa-circle-question"></i><span>' + st(q) + "</span></li>";
-    }).join("");
-    return `
-      <article class="card resume-question-card">
-        <div class="resume-section-head">
-          <h3><i class="fa-solid fa-comments"></i> Missing Evidence</h3>
-          <button class="btn-ghost btn-sm" type="button" data-lab-action="add-metrics"><i class="fa-solid fa-hashtag"></i> Add metrics</button>
-        </div>
-        <p class="muted">A strong resume is built from truthful proof. Answer these before polishing the final version.</p>
-        <ul class="resume-question-list">${prompts}</ul>
+        ${rows ? '<ul class="resume-fix-queue">' + rows + "</ul>" : '<p class="muted">No urgent fixes — your resume covers the essentials. Run the export preflight when ready.</p>'}
       </article>
     `;
   }
