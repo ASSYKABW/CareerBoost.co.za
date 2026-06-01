@@ -32,6 +32,20 @@
     critiqueTargetRole: "",
     assetSuggestions: [],
     atsDetailsOpen: false,
+    // Resume Lab #1: the detailed scoreboards (Completeness, ATS Simulation,
+    // Version & Submit Lab) live behind one disclosure, collapsed by default —
+    // the command bar already shows the headline scores, so this kills the
+    // duplicate-scoreboard clutter. In-memory UI pref (resets per load).
+    diagnosticsOpen: false,
+    // Resume Lab #3: simple-by-default editor. When false, the lab "power"
+    // surfaces (command metrics + workflow rail, diagnostics, Career Vault,
+    // Match-to-Role hint, Raw text) are hidden behind a "Show advanced tools"
+    // toggle. Persisted so power users who turn it on keep it on.
+    advancedOpen: readResumeAdvancedPref(),
+    // Resume Lab #4: secondary sections (projects/certifications/languages/
+    // interests/references) only render when they have content OR the user
+    // reveals them via the "Add another section" menu. Maps key -> true.
+    revealedSections: {},
     // Phase 3 — Two workflows
     workMode: "edit", // edit | tailor
     jdText: "",
@@ -121,6 +135,15 @@
       summaryApplied: !!view.summaryApplied,
       appliedSkills: view.appliedSkills || {}
     });
+  }
+
+  // Resume Lab #3: persist the "advanced tools" preference so a power user who
+  // opens it keeps it open across reloads. Default off = simple editor.
+  function readResumeAdvancedPref() {
+    try { return localStorage.getItem("cb_resume_advanced") === "1"; } catch (e) { return false; }
+  }
+  function writeResumeAdvancedPref(on) {
+    try { localStorage.setItem("cb_resume_advanced", on ? "1" : "0"); } catch (e) { /* private mode */ }
   }
 
   function st(s) {
@@ -448,10 +471,10 @@
   function renderWorkflowRail(health) {
     const steps = [
       { id: "import", label: "Import", done: true, icon: "fa-file-arrow-up" },
-      { id: "diagnose", label: "Diagnose", done: health.score >= 45, icon: "fa-stethoscope" },
-      { id: "rebuild", label: "Rebuild", done: health.evidenceScore >= 35 && health.comp.score >= 75, icon: "fa-wand-magic-sparkles" },
+      { id: "diagnose", label: "Check", done: health.score >= 45, icon: "fa-stethoscope" },
+      { id: "rebuild", label: "Improve", done: health.evidenceScore >= 35 && health.comp.score >= 75, icon: "fa-wand-magic-sparkles" },
       { id: "match", label: "Role match", done: health.roleMatch !== null && health.roleMatch >= 65, icon: "fa-crosshairs" },
-      { id: "review", label: "Final review", done: health.ats.score >= 82 && health.fixes.length <= 2, icon: "fa-list-check" },
+      { id: "review", label: "Review", done: health.ats.score >= 82 && health.fixes.length <= 2, icon: "fa-list-check" },
       { id: "export", label: "Export", done: health.ready, icon: "fa-download" }
     ];
     let activeFound = false;
@@ -470,24 +493,8 @@
     const targetRole = view.jdAnalyzed && (view.jdAnalyzed.role || view.jdRole)
       ? view.jdAnalyzed.role || view.jdRole
       : inferTargetRoleFromResume(r) || "Target role";
-    return `
-      <section class="resume-lab-command card">
-        <div class="resume-command-head">
-          <div class="resume-readiness-score ${scoreTone(health.score)}">
-            <span class="num-font">${health.score}</span>
-            <small>/100</small>
-          </div>
-          <div class="resume-command-title">
-            <p class="eyebrow">Resume transformation lab</p>
-            <h2>${st(health.status)}</h2>
-            <p>Convert a blank, weak, incomplete, or mismatched resume into a professional version built for ${st(targetRole)}.</p>
-          </div>
-          <button class="btn-primary resume-next-action" type="button" data-lab-action="${st(firstFix.action)}" data-section="${st(firstFix.section || "")}">
-            <i class="fa-solid ${st(firstFix.icon || "fa-wand-magic-sparkles")}"></i>
-            <span>${st(firstFix.label)}</span>
-          </button>
-        </div>
-
+    const advanced = view.advancedOpen;
+    const advancedBlock = advanced ? `
         <div class="resume-command-metrics">
           <div><span class="num-font">${health.comp.score}</span><small>Completeness</small></div>
           <div><span class="num-font">${health.ats.score}</span><small>ATS health</small></div>
@@ -496,6 +503,30 @@
         </div>
 
         ${renderWorkflowRail(health)}
+    ` : "";
+    return `
+      <section class="resume-lab-command card${advanced ? "" : " is-simple"}">
+        <div class="resume-command-head">
+          <div class="resume-readiness-score ${scoreTone(health.score)}">
+            <span class="num-font">${health.score}</span>
+            <small>/100</small>
+          </div>
+          <div class="resume-command-title">
+            <p class="eyebrow">Resume Lab</p>
+            <h2>${st(health.status)}</h2>
+            <p>Convert a blank, weak, incomplete, or mismatched resume into a professional version built for ${st(targetRole)}.</p>
+          </div>
+          <button class="btn-primary resume-next-action" type="button" data-lab-action="${st(firstFix.action)}" data-section="${st(firstFix.section || "")}">
+            <i class="fa-solid ${st(firstFix.icon || "fa-wand-magic-sparkles")}"></i>
+            <span>${st(firstFix.label)}</span>
+          </button>
+        </div>
+        ${advancedBlock}
+        <button type="button" class="resume-advanced-toggle" data-lab-action="toggle-advanced" aria-expanded="${advanced ? "true" : "false"}">
+          <i class="fa-solid fa-sliders"></i>
+          <span>${advanced ? "Hide advanced tools" : "Show advanced tools"}</span>
+          <i class="fa-solid fa-chevron-${advanced ? "up" : "down"}" aria-hidden="true"></i>
+        </button>
       </section>
     `;
   }
@@ -1027,6 +1058,36 @@ Built analytics dashboard used by 3 teams"></textarea>
     `;
   }
 
+  // Resume Lab #4: the optional sections only show when they hold content or
+  // the user reveals them; empty ones collapse into a single "Add another
+  // section" menu so the editor isn't padded with five empty cards.
+  function renderSecondarySections(r) {
+    const defs = [
+      { key: "projects",       label: "Projects",       icon: "fa-rocket",       has: !!(r.projects && r.projects.length),             render: renderProjectsSection },
+      { key: "certifications", label: "Certifications", icon: "fa-certificate",  has: !!(r.certifications && r.certifications.length), render: renderCertificationsSection },
+      { key: "languages",      label: "Languages",      icon: "fa-language",     has: !!(r.languages && r.languages.length),           render: renderLanguagesSection },
+      { key: "interests",      label: "Interests",      icon: "fa-heart",        has: !!(r.interests && r.interests.length),           render: renderInterestsSection },
+      { key: "references",     label: "References",     icon: "fa-address-card", has: !!(r.references && r.references.length),          render: renderReferencesSection }
+    ];
+    const shown = [];
+    const hidden = [];
+    defs.forEach(function (d) {
+      if (d.has || view.revealedSections[d.key]) shown.push(d.render(r));
+      else hidden.push(d);
+    });
+    const menu = hidden.length ? `
+      <div class="resume-add-section">
+        <span class="resume-add-section-label"><i class="fa-solid fa-plus"></i> Add another section</span>
+        <div class="resume-add-section-buttons">
+          ${hidden.map(function (d) {
+            return '<button type="button" class="btn-ghost btn-sm" data-lab-action="reveal-section" data-section="' + d.key + '"><i class="fa-solid ' + d.icon + '"></i> ' + st(d.label) + "</button>";
+          }).join("")}
+        </div>
+      </div>
+    ` : "";
+    return shown.join("\n") + menu;
+  }
+
   function renderSidebar(r) {
     const comp = model.completeness(r);
     const missingHtml = comp.missing.length
@@ -1038,14 +1099,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     const ats = computeAtsSimulation(r, view.jdAnalyzed);
     const health = getResumeHealth(r);
 
-    return `
-      <aside class="resume-sidebar">
-        ${renderLabInspectorCard(health)}
-        ${renderPhase4ResumeIntelligence(r, health)}
-        ${renderFixQueueCard(health)}
-        ${renderAiReviewQueueCard(r)}
-        ${renderMissingInfoCard(health)}
-
+    const completenessCard = `
         <article class="card resume-scorecard">
           <div class="resume-scorecard-head">
             <div>
@@ -1064,15 +1118,28 @@ Built analytics dashboard used by 3 teams"></textarea>
             <div><span class="num-font">${comp.totalBullets || 0}</span> bullets</div>
             <div><span class="num-font">${comp.quantifiedBullets || 0}</span> with metrics</div>
           </div>
+        </article>`;
+
+    // Resume Lab #1: the headline scores already live in the command bar at
+    // the top of the page, so the detailed scoreboards collapse behind one
+    // disclosure instead of stacking three duplicate score cards.
+    const diagnosticsBody = view.diagnosticsOpen
+      ? renderPhase4ResumeIntelligence(r, health) + completenessCard + renderAtsCard(ats)
+      : "";
+    const diagnostics = `
+        <article class="card resume-diagnostics-card">
+          <button type="button" class="resume-diagnostics-toggle" id="resume-diagnostics-toggle" aria-expanded="${view.diagnosticsOpen ? "true" : "false"}">
+            <span class="resume-diagnostics-label"><i class="fa-solid fa-gauge-high"></i> Resume diagnostics</span>
+            <span class="resume-diagnostics-meta">
+              <span class="chip ${scoreTone(health.score)}">${health.score}/100</span>
+              <i class="fa-solid fa-chevron-${view.diagnosticsOpen ? "up" : "down"}" aria-hidden="true"></i>
+            </span>
+          </button>
+          <p class="muted resume-diagnostics-hint">${view.diagnosticsOpen ? "Completeness, ATS simulation, and saved versions." : "Completeness, ATS &amp; version details — your headline scores are summarised above."}</p>
         </article>
+        ${diagnosticsBody}`;
 
-        ${renderAtsCard(ats)}
-        ${renderReadyChecklistCard(ats)}
-        ${renderAiAssetSuggestionsCard(r)}
-        ${renderCareerAssetCard()}
-
-        ${renderCritiqueCard(r)}
-
+    const tailorHintHtml = `
         <article class="card resume-tailor-hint">
           <div class="resume-section-head">
             <h3><i class="fa-solid fa-bullseye"></i> Match to Role</h3>
@@ -1081,8 +1148,9 @@ Built analytics dashboard used by 3 teams"></textarea>
           <button class="btn-primary btn-sm" type="button" data-mode-switch="tailor">
             <i class="fa-solid fa-arrow-right"></i> Open role-match workspace
           </button>
-        </article>
+        </article>`;
 
+    const rawCardHtml = `
         <article class="card resume-raw-card">
           <div class="resume-section-head">
             <h3><i class="fa-solid fa-file-lines"></i> Raw text</h3>
@@ -1091,12 +1159,28 @@ Built analytics dashboard used by 3 teams"></textarea>
             </button>
           </div>
           ${view.rawTextPreviewOpen ? '<pre class="resume-raw-text">' + st(r.rawText || "(no raw text saved)") + "</pre>" : '<p class="muted">The original text we extracted from your upload.</p>'}
-        </article>
+        </article>`;
+
+    // Resume Lab #3: simple by default. Next steps + the AI rewrite engine
+    // (Review Queue + Critique) stay visible; everything else (diagnostics,
+    // Career Vault, Match-to-Role hint, Raw text) only renders in advanced mode.
+    const cards = [
+      renderFixQueueCard(health),
+      renderAiReviewQueueCard(r),
+      renderCritiqueCard(r)
+    ];
+    if (view.advancedOpen) {
+      cards.splice(1, 0, diagnostics);
+      cards.push(renderCareerAssetCard(r), tailorHintHtml, rawCardHtml);
+    }
+    return `
+      <aside class="resume-sidebar">
+        ${cards.join("\n")}
       </aside>
     `;
   }
 
-  function renderCareerAssetCard() {
+  function renderCareerAssetCard(r) {
     const store = window.CBV2.store;
     const items = (store && typeof store.getCareerAssets === "function")
       ? store.getCareerAssets()
@@ -1116,6 +1200,32 @@ Built analytics dashboard used by 3 teams"></textarea>
         "</li>"
       );
     }).join("");
+
+    // Resume Lab #2: the AI "Suggested Assets" card was folded into the Vault —
+    // suggestions to save live right next to the things you've already saved.
+    const suggestions = r ? getAiAssetSuggestions(r) : [];
+    view.assetSuggestions = suggestions;
+    const suggestionRows = suggestions.map(function (s) {
+      return (
+        '<li class="career-asset-row career-asset-suggestion-row">' +
+          '<div>' +
+            '<strong>' + st(s.name || "AI suggestion") + '</strong> ' +
+            '<span class="chip subtle">' + st(s.type || "bullet") + '</span>' +
+            '<p class="ai-meta">' + st((s.text || "").slice(0, 160)) + "</p>" +
+          "</div>" +
+          '<div class="career-asset-actions">' +
+            '<button class="btn-primary btn-sm" type="button" data-asset-suggest-action="save" data-asset-suggestion-id="' + st(s.id) + '"><i class="fa-solid fa-bookmark"></i> Save</button>' +
+          "</div>" +
+        "</li>"
+      );
+    }).join("");
+    const suggestionsBlock = suggestions.length
+      ? '<div class="career-asset-suggested">' +
+          '<p class="career-asset-suggested-head"><i class="fa-solid fa-sparkles"></i> Suggested to save <span class="ai-meta">— from Tailor Plan &amp; AI Critique</span></p>' +
+          '<ul class="career-asset-list">' + suggestionRows + "</ul>" +
+        "</div>"
+      : "";
+
     return `
       <article class="card resume-career-assets">
         <div class="resume-section-head">
@@ -1125,6 +1235,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${top.length
           ? '<ul class="career-asset-list">' + rows + "</ul>"
           : '<p class="muted">Save your strongest bullets and skills, then reuse them instantly across CV versions.</p>'}
+        ${suggestionsBlock}
       </article>
     `;
   }
@@ -1347,23 +1458,12 @@ Built analytics dashboard used by 3 teams"></textarea>
         }).join("")}
       </div>
     `;
-    const quickFixes = [];
-    if (ats.longBullets > 0) {
-      quickFixes.push('<button type="button" class="btn-ghost btn-sm" data-ats-fix="trim-long-bullets"><i class="fa-solid fa-scissors"></i> Shorten long bullets</button>');
-    }
-    if (ats.quantifiedBullets < 3) {
-      quickFixes.push('<button type="button" class="btn-ghost btn-sm" data-ats-fix="add-metrics"><i class="fa-solid fa-hashtag"></i> Add metric placeholders</button>');
-    }
-    if ((ats.missingRequiredSkills || []).length) {
-      quickFixes.push('<button type="button" class="btn-ghost btn-sm" data-ats-fix="add-jd-keywords"><i class="fa-solid fa-key"></i> Add missing JD keywords</button>');
-    }
-    const quickFixHtml = quickFixes.length
-      ? '<div class="ats-quick-fixes"><p class="muted">Quick fixes</p><div class="ats-quick-fix-row">' + quickFixes.join("") + "</div></div>"
-      : "";
+    // Quick-fix buttons removed in Resume Lab #2 — those actions (add metrics,
+    // shorten bullets, add JD keywords) now live once in the "Next steps" list.
     return `
       <article class="card resume-ats-card">
         <div class="resume-section-head">
-          <h3><i class="fa-solid fa-microchip"></i> ATS Simulation</h3>
+          <h3><i class="fa-solid fa-microchip"></i> ATS check</h3>
           <div class="ats-head-actions">
             <span class="chip ${tone}">${ats.confidence}</span>
             <button type="button" class="btn-ghost btn-sm" id="ats-toggle-details">${view.atsDetailsOpen ? "Hide details" : "Why this score?"}</button>
@@ -1374,32 +1474,8 @@ Built analytics dashboard used by 3 teams"></textarea>
           <div><span class="num-font">${ats.quantifiedBullets}</span> quantified bullets</div>
           <div><span class="num-font">${ats.longBullets}</span> overlong bullets</div>
         </div>
-        ${quickFixHtml}
         ${view.atsDetailsOpen ? breakdownHtml : ""}
         ${issuesHtml}
-      </article>
-    `;
-  }
-
-  function renderReadyChecklistCard(ats) {
-    const checks = [
-      { ok: ats.score >= 80, label: "ATS score 80+" },
-      { ok: ats.longBullets === 0, label: "No overlong bullets" },
-      { ok: ats.quantifiedBullets >= 3, label: "At least 3 quantified bullets" },
-      { ok: (ats.missingRequiredSkills || []).length === 0 || !view.jdAnalyzed, label: view.jdAnalyzed ? "Required JD skills represented" : "JD alignment optional (analyze JD to check)" }
-    ];
-    const okCount = checks.filter(function (c) { return c.ok; }).length;
-    return `
-      <article class="card resume-ready-card">
-        <div class="resume-section-head">
-          <h3><i class="fa-solid fa-list-check"></i> Ready-to-submit</h3>
-          <span class="chip ${okCount === checks.length ? "green" : "warning"}">${okCount}/${checks.length}</span>
-        </div>
-        <ul class="ready-checks">
-          ${checks.map(function (c) {
-            return '<li class="' + (c.ok ? "ok" : "todo") + '"><i class="fa-solid ' + (c.ok ? "fa-check" : "fa-circle") + '"></i> ' + st(c.label) + "</li>";
-          }).join("")}
-        </ul>
       </article>
     `;
   }
@@ -1441,7 +1517,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     return `
       <article class="card phase4-resume-card">
         <div class="resume-section-head">
-          <h3><i class="fa-solid fa-layer-group"></i> Version & Submit Lab</h3>
+          <h3><i class="fa-solid fa-layer-group"></i> Saved versions</h3>
           <span class="chip ${intel.readiness >= 88 ? "green" : intel.readiness >= 70 ? "warning" : "rose"}">${intel.readiness}/100</span>
         </div>
         <div class="phase4-version-list">
@@ -1458,34 +1534,6 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${improvements ? '<ul class="phase4-improvement-list">' + improvements + "</ul>" : ""}
         <div class="phase4-diagnostic-grid">${diagnostics}</div>
         <ul class="ready-checks phase4-ready-checks">${checks}</ul>
-      </article>
-    `;
-  }
-
-  function renderLabInspectorCard(health) {
-    const role = health.roleMatch === null ? "Add JD" : (health.roleMatch + "%");
-    const readyText = health.ready ? "Submission ready" : "Improvement needed";
-    return `
-      <article class="card resume-lab-inspector">
-        <div class="resume-section-head">
-          <h3><i class="fa-solid fa-chart-simple"></i> Lab Diagnosis</h3>
-          <span class="chip ${scoreTone(health.score)}">${st(readyText)}</span>
-        </div>
-        <div class="resume-inspector-grid">
-          <div>
-            <span class="num-font">${health.score}</span>
-            <small>Readiness</small>
-          </div>
-          <div>
-            <span class="num-font">${health.ats.score}</span>
-            <small>ATS</small>
-          </div>
-          <div>
-            <span class="num-font">${role}</span>
-            <small>Role match</small>
-          </div>
-        </div>
-        <p class="resume-inspector-note">${st(health.status)} - ${health.fixes.length ? st(health.fixes[0].detail) : "Your resume is ready for final export review."}</p>
       </article>
     `;
   }
@@ -1510,7 +1558,7 @@ Built analytics dashboard used by 3 teams"></textarea>
       return (
         '<article class="card resume-review-queue-card resume-review-queue-card--empty">' +
           '<div class="resume-section-head">' +
-            '<h3><i class="fa-solid fa-list-check"></i> AI Review Queue</h3>' +
+            '<h3><i class="fa-solid fa-list-check"></i> AI rewrites</h3>' +
             '<span class="chip subtle">0 pending</span>' +
           '</div>' +
           '<p class="muted">' + st(emptyMsg) + '</p>' +
@@ -1573,7 +1621,7 @@ Built analytics dashboard used by 3 teams"></textarea>
     return (
       '<article class="card resume-review-queue-card">' +
         '<div class="resume-section-head">' +
-          '<h3><i class="fa-solid fa-list-check"></i> AI Review Queue</h3>' +
+          '<h3><i class="fa-solid fa-list-check"></i> AI rewrites</h3>' +
           '<span class="chip ' + (total > 0 ? "cyan" : "subtle") + '">' + st(String(total)) + ' pending</span>' +
         '</div>' +
         walkthroughHeader +
@@ -1664,29 +1712,14 @@ Built analytics dashboard used by 3 teams"></textarea>
         </li>
       `;
     }).join("");
+    const taskCount = (health.fixes || []).length;
     return `
-      <article class="card resume-fix-queue-card">
+      <article class="card resume-fix-queue-card resume-next-steps-card">
         <div class="resume-section-head">
-          <h3><i class="fa-solid fa-screwdriver-wrench"></i> Fix Queue</h3>
-          <span class="chip subtle">${(health.fixes || []).length} tasks</span>
+          <h3><i class="fa-solid fa-list-check"></i> Next steps</h3>
+          <span class="chip ${taskCount ? "cyan" : "green"}">${taskCount ? taskCount + (taskCount === 1 ? " task" : " tasks") : "All clear"}</span>
         </div>
-        ${rows ? '<ul class="resume-fix-queue">' + rows + "</ul>" : '<p class="muted">No urgent fixes. Run final export preflight when ready.</p>'}
-      </article>
-    `;
-  }
-
-  function renderMissingInfoCard(health) {
-    const prompts = (health.questions || []).map(function (q) {
-      return '<li><i class="fa-solid fa-circle-question"></i><span>' + st(q) + "</span></li>";
-    }).join("");
-    return `
-      <article class="card resume-question-card">
-        <div class="resume-section-head">
-          <h3><i class="fa-solid fa-comments"></i> Missing Evidence</h3>
-          <button class="btn-ghost btn-sm" type="button" data-lab-action="add-metrics"><i class="fa-solid fa-hashtag"></i> Add metrics</button>
-        </div>
-        <p class="muted">A strong resume is built from truthful proof. Answer these before polishing the final version.</p>
-        <ul class="resume-question-list">${prompts}</ul>
+        ${rows ? '<ul class="resume-fix-queue">' + rows + "</ul>" : '<p class="muted">No urgent fixes — your resume covers the essentials. Run the export preflight when ready.</p>'}
       </article>
     `;
   }
@@ -3178,11 +3211,7 @@ Built analytics dashboard used by 3 teams"></textarea>
           ${renderExperienceSection(r)}
           ${renderEducationSection(r)}
           ${renderSkillsSection(r)}
-          ${renderProjectsSection(r)}
-          ${renderCertificationsSection(r)}
-          ${renderLanguagesSection(r)}
-          ${renderInterestsSection(r)}
-          ${renderReferencesSection(r)}
+          ${renderSecondarySections(r)}
         </div>
         ${rightPanel}
       </div>
@@ -3435,6 +3464,20 @@ Built analytics dashboard used by 3 teams"></textarea>
 
   function handleLabAction(action, btn) {
     const section = btn && btn.getAttribute("data-section");
+    if (action === "toggle-advanced") {
+      view.advancedOpen = !view.advancedOpen;
+      writeResumeAdvancedPref(view.advancedOpen);
+      rerender();
+      return;
+    }
+    if (action === "reveal-section") {
+      if (section) {
+        view.revealedSections[section] = true;
+        rerender();
+        jumpToSection(section);
+      }
+      return;
+    }
     if (action === "jump") {
       if (section) jumpToSection(section);
       return;
@@ -4081,6 +4124,11 @@ Built analytics dashboard used by 3 teams"></textarea>
       side.addEventListener("click", function (e) {
         const btn = e.target.closest("button");
         if (!btn) return;
+        if (btn.id === "resume-diagnostics-toggle") {
+          view.diagnosticsOpen = !view.diagnosticsOpen;
+          rerenderSidebar();
+          return;
+        }
         if (btn.matches("[data-mode-switch]")) {
           switchWorkMode(btn.getAttribute("data-mode-switch"));
           return;

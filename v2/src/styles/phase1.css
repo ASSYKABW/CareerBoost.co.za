@@ -6271,6 +6271,33 @@ button.topbar-search-button,
 .resume-section {
   padding: 20px 22px;
 }
+/* Resume Lab #4: "Add another section" menu for the collapsed optional sections. */
+.resume-add-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+}
+.resume-add-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.62));
+}
+.resume-add-section-label i {
+  color: var(--color-accent, #7cf0ff);
+}
+.resume-add-section-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .resume-section-head {
   display: flex;
   align-items: center;
@@ -6905,6 +6932,57 @@ button.topbar-search-button,
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Resume Lab #1: single "Resume diagnostics" disclosure that holds the
+   detailed scoreboards (Completeness / ATS / Version lab), collapsed by
+   default so the command bar is the only scoreboard shown up front. */
+.resume-diagnostics-card {
+  padding: 0;
+  overflow: hidden;
+}
+.resume-diagnostics-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-text, #fff);
+  font: inherit;
+  text-align: left;
+}
+.resume-diagnostics-toggle:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.resume-diagnostics-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.resume-diagnostics-label i {
+  color: var(--color-accent, #7cf0ff);
+}
+.resume-diagnostics-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.resume-diagnostics-meta .fa-chevron-down,
+.resume-diagnostics-meta .fa-chevron-up {
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.5));
+  font-size: 12px;
+}
+.resume-diagnostics-hint {
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .resume-scorecard {
@@ -8544,6 +8622,28 @@ input[type="color"]#export-accent::-webkit-color-swatch { border-radius: 6px; bo
   display: grid;
   gap: 8px;
 }
+/* Resume Lab #2: AI "Suggested to save" subsection folded into the Vault. */
+.career-asset-suggested {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.career-asset-suggested-head {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text, #fff);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.career-asset-suggested-head i {
+  color: var(--color-accent, #7cf0ff);
+}
+.career-asset-suggested-head .ai-meta {
+  font-weight: 400;
+}
 .career-asset-row {
   display: flex;
   align-items: flex-start;
@@ -9363,6 +9463,40 @@ input[type="color"]#export-accent::-webkit-color-swatch { border-radius: 6px; bo
   background:
     linear-gradient(180deg, rgba(19, 30, 48, 0.9), rgba(8, 12, 22, 0.94)),
     linear-gradient(135deg, rgba(31, 226, 255, 0.08), rgba(113, 105, 255, 0.08), rgba(54, 211, 153, 0.04));
+}
+/* Resume Lab #3: tighter padding in the simple (collapsed) command bar. */
+.resume-lab-command.is-simple {
+  padding: 16px 20px;
+}
+/* Resume Lab #3: "Show advanced tools" toggle on the command bar. */
+.resume-advanced-toggle {
+  margin-top: 12px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.72));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.resume-advanced-toggle:hover {
+  background: rgba(124, 240, 255, 0.06);
+  border-color: rgba(124, 240, 255, 0.2);
+  color: var(--color-text, #fff);
+}
+.resume-advanced-toggle .fa-sliders {
+  color: var(--color-accent, #7cf0ff);
+}
+.resume-advanced-toggle .fa-chevron-down,
+.resume-advanced-toggle .fa-chevron-up {
+  font-size: 11px;
 }
 .resume-command-head {
   display: grid;
