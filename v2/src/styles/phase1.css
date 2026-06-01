@@ -8595,6 +8595,28 @@ input[type="color"]#export-accent::-webkit-color-swatch { border-radius: 6px; bo
   display: grid;
   gap: 8px;
 }
+/* Resume Lab #2: AI "Suggested to save" subsection folded into the Vault. */
+.career-asset-suggested {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.career-asset-suggested-head {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text, #fff);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.career-asset-suggested-head i {
+  color: var(--color-accent, #7cf0ff);
+}
+.career-asset-suggested-head .ai-meta {
+  font-weight: 400;
+}
 .career-asset-row {
   display: flex;
   align-items: flex-start;
