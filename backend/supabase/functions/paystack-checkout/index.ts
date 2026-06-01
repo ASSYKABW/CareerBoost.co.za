@@ -21,7 +21,7 @@
 // (not from the request body) — preventing a malicious caller from
 // charging someone else.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 const PAYSTACK_BASE = "https://api.paystack.co";
@@ -69,7 +69,7 @@ function pickPlanCodeAndPrice(plan: PlanRow, interval: string, currency: string)
   return { code: null, price: null };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -206,4 +206,4 @@ Deno.serve(async (req) => {
     currency,
     amountMinor: toMinorUnits(price),
   });
-});
+}));

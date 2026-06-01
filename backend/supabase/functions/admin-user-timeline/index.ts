@@ -8,12 +8,12 @@
 // function adds the standard cors/auth scaffolding and short-circuits
 // non-admin callers before even hitting Postgres.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 
 interface Body { userId?: string }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -46,4 +46,4 @@ Deno.serve(async (req) => {
     ok: true,
     timeline: data,
   });
-});
+}));

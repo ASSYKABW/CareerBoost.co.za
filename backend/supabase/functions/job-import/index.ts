@@ -23,7 +23,7 @@
 //     logo?: string | null
 //   }
 // }
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 const DESCRIPTION_LIMIT = 24_000;
@@ -122,7 +122,7 @@ function cleanDescriptionText(value: unknown, max = DESCRIPTION_LIMIT): string {
     .trim();
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") {
@@ -297,4 +297,4 @@ Deno.serve(async (req) => {
     savedJob,
     application,
   });
-});
+}));

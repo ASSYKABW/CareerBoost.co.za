@@ -6,7 +6,7 @@
 // Phase C: powers the Operator Management panel in Admin Settings so
 // existing admins can see who else has access without DB shell.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 
 function normalizedRoles(value: unknown): string[] {
@@ -16,7 +16,7 @@ function normalizedRoles(value: unknown): string[] {
     .filter(Boolean);
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "GET" && req.method !== "POST") {
@@ -94,4 +94,4 @@ Deno.serve(async (req) => {
     operatorCount: operators.length,
     warnings,
   });
-});
+}));

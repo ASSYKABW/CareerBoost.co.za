@@ -21,7 +21,7 @@
 // are rejected immediately. This is the only mutation path for
 // subscriptions; everything else (frontend, RPCs) is read-only.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getServiceClient } from "../_shared/auth.ts";
 
 // Map Stripe price IDs back to plan_id. We learn the price IDs from
@@ -88,7 +88,7 @@ async function fetchSubscription(stripeKey: string, subscriptionId: string): Pro
   return await res.json();
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -260,4 +260,4 @@ Deno.serve(async (req) => {
     console.error("stripe-webhook error", err);
     return errorResponse("Webhook handler error: " + ((err as Error).message || "unknown"), 500);
   }
-});
+}));

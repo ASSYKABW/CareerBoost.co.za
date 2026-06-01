@@ -32,7 +32,7 @@
 //   - Per-operator rate limit (30 mutations / 5 min)
 //   - Per-batch upper bound: 200 recipients to prevent runaway sends
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
 import { enforceAdminRate } from "../_shared/admin-rate-limit.ts";
@@ -86,7 +86,7 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -315,4 +315,4 @@ Deno.serve(async (req) => {
     failed: failedCount,
     results,
   });
-});
+}));

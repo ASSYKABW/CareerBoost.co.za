@@ -10,14 +10,14 @@
 //   reject  — set status=rejected, optional admin_note
 //   delete  — hard delete
 
-import { handleOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 
 type Action = "list" | "update" | "approve" | "reject" | "delete";
 
 const STATUS_ORDER: Record<string, number> = { pending: 0, approved: 1, rejected: 2 };
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
 
@@ -108,4 +108,4 @@ Deno.serve(async (req) => {
   }
 
   return errorResponse("Unknown action: " + String(action), 400);
-});
+}));

@@ -26,7 +26,7 @@
 // Every mutation writes to admin_audit_log so the team can see who
 // added/removed which company and when.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
 import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
@@ -92,7 +92,7 @@ async function probeAts(ats: string, token: string): Promise<{ ok: boolean; jobs
 
 // ----- handler -------------------------------------------------------------
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -246,4 +246,4 @@ Deno.serve(async (req) => {
   }
 
   return errorResponse(`Unsupported action: ${action}. Use list / probe / upsert / toggle / delete.`, 400);
-});
+}));

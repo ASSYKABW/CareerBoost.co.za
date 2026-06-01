@@ -11,7 +11,7 @@
 //     asking about the same company within 24h cost ONE Google CSE bill.
 //   - Cache key includes role since queries differ when role is set.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
 import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 
@@ -121,7 +121,7 @@ function cacheNormalize(s: string): string {
   return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -224,4 +224,4 @@ Deno.serve(async (req) => {
     warnings,
     cacheHit: false,
   }, { headers: { "X-Cache": "MISS" } });
-});
+}));

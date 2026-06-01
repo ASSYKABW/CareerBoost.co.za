@@ -2,7 +2,7 @@
 // Admin-only operational overview for the CareerBoost console.
 // Auth: Supabase user JWT, then protected app_metadata role verification.
 // Reads with service role after the caller is verified as admin.
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 
 type Stage = "saved" | "applied" | "interview" | "offer" | "rejected" | "withdrawn";
@@ -348,7 +348,7 @@ function buildFunnelStep(id: string, label: string, users: Set<string>, previous
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST" && req.method !== "GET") {
@@ -2816,4 +2816,4 @@ Deno.serve(async (req) => {
     reports,
     controlCenter,
   });
-});
+}));

@@ -27,7 +27,7 @@
 //   4. Easier to add new ATS providers (Workable, SmartRecruiters,
 //      Ashby) without bloating the main jobs-search function.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -269,7 +269,7 @@ function pickCompaniesForRequest(all: TrackedCompany[], filters: Filters): Track
 
 // ----- Handler -------------------------------------------------------------
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -360,4 +360,4 @@ Deno.serve(async (req) => {
       fanoutMs,
     },
   });
-});
+}));

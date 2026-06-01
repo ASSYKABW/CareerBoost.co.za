@@ -14,7 +14,7 @@
 //
 // Auth: same admin gate as admin-overview (getAuthedAdmin).
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -63,7 +63,7 @@ interface StatsRow {
   last_activity_at: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST" && req.method !== "GET") {
@@ -392,4 +392,4 @@ Deno.serve(async (req) => {
     ],
     privacy: "Support health excludes resume, cover-letter, and interview document body text. It uses only workflow metadata and readiness flags.",
   });
-});
+}));

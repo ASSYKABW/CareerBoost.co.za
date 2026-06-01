@@ -18,7 +18,7 @@
 //
 // Cost guard: capped at 32 texts per call. Each text capped at ~32K chars.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 import { embedBatch, type EmbeddingModel } from "../_shared/embeddings.ts";
 
@@ -29,7 +29,7 @@ interface Body {
   model?: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -112,4 +112,4 @@ Deno.serve(async (req) => {
     } catch { /* ignore */ }
     return errorResponse(message, 502);
   }
-});
+}));

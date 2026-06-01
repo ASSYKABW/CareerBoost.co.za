@@ -22,7 +22,7 @@
 // This function is a write-only sink. Reads happen via the admin
 // console which uses service_role.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getServiceClient } from "../_shared/auth.ts";
 
 interface TelemetryEvent {
@@ -157,7 +157,7 @@ function normalizeEvent(raw: TelemetryEvent, userId: string | null, anonId: stri
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -210,4 +210,4 @@ Deno.serve(async (req) => {
     invalid,
     rate_limited: rateDropped,
   });
-});
+}));

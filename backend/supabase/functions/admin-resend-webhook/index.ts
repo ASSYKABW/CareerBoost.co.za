@@ -18,7 +18,7 @@
 // HMAC-SHA256 of the body and comparing in constant time.
 // Reference: https://resend.com/docs/dashboard/webhooks/verify-webhooks
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getServiceClient } from "../_shared/auth.ts";
 
 // Resend uses Svix under the hood. Headers:
@@ -82,7 +82,7 @@ interface ResendEvent {
   created_at?: string;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -180,4 +180,4 @@ Deno.serve(async (req) => {
   }
 
   return jsonResponse({ ok: true, event: event.type, emailId });
-});
+}));
