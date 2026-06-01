@@ -42,6 +42,10 @@
     // Match-to-Role hint, Raw text) are hidden behind a "Show advanced tools"
     // toggle. Persisted so power users who turn it on keep it on.
     advancedOpen: readResumeAdvancedPref(),
+    // Resume Lab #4: secondary sections (projects/certifications/languages/
+    // interests/references) only render when they have content OR the user
+    // reveals them via the "Add another section" menu. Maps key -> true.
+    revealedSections: {},
     // Phase 3 — Two workflows
     workMode: "edit", // edit | tailor
     jdText: "",
@@ -1052,6 +1056,36 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${items || '<p class="muted">No references yet. Add 1-3 professional references, each with name, role, and contact details.</p>'}
       </article>
     `;
+  }
+
+  // Resume Lab #4: the optional sections only show when they hold content or
+  // the user reveals them; empty ones collapse into a single "Add another
+  // section" menu so the editor isn't padded with five empty cards.
+  function renderSecondarySections(r) {
+    const defs = [
+      { key: "projects",       label: "Projects",       icon: "fa-rocket",       has: !!(r.projects && r.projects.length),             render: renderProjectsSection },
+      { key: "certifications", label: "Certifications", icon: "fa-certificate",  has: !!(r.certifications && r.certifications.length), render: renderCertificationsSection },
+      { key: "languages",      label: "Languages",      icon: "fa-language",     has: !!(r.languages && r.languages.length),           render: renderLanguagesSection },
+      { key: "interests",      label: "Interests",      icon: "fa-heart",        has: !!(r.interests && r.interests.length),           render: renderInterestsSection },
+      { key: "references",     label: "References",     icon: "fa-address-card", has: !!(r.references && r.references.length),          render: renderReferencesSection }
+    ];
+    const shown = [];
+    const hidden = [];
+    defs.forEach(function (d) {
+      if (d.has || view.revealedSections[d.key]) shown.push(d.render(r));
+      else hidden.push(d);
+    });
+    const menu = hidden.length ? `
+      <div class="resume-add-section">
+        <span class="resume-add-section-label"><i class="fa-solid fa-plus"></i> Add another section</span>
+        <div class="resume-add-section-buttons">
+          ${hidden.map(function (d) {
+            return '<button type="button" class="btn-ghost btn-sm" data-lab-action="reveal-section" data-section="' + d.key + '"><i class="fa-solid ' + d.icon + '"></i> ' + st(d.label) + "</button>";
+          }).join("")}
+        </div>
+      </div>
+    ` : "";
+    return shown.join("\n") + menu;
   }
 
   function renderSidebar(r) {
@@ -3177,11 +3211,7 @@ Built analytics dashboard used by 3 teams"></textarea>
           ${renderExperienceSection(r)}
           ${renderEducationSection(r)}
           ${renderSkillsSection(r)}
-          ${renderProjectsSection(r)}
-          ${renderCertificationsSection(r)}
-          ${renderLanguagesSection(r)}
-          ${renderInterestsSection(r)}
-          ${renderReferencesSection(r)}
+          ${renderSecondarySections(r)}
         </div>
         ${rightPanel}
       </div>
@@ -3438,6 +3468,14 @@ Built analytics dashboard used by 3 teams"></textarea>
       view.advancedOpen = !view.advancedOpen;
       writeResumeAdvancedPref(view.advancedOpen);
       rerender();
+      return;
+    }
+    if (action === "reveal-section") {
+      if (section) {
+        view.revealedSections[section] = true;
+        rerender();
+        jumpToSection(section);
+      }
       return;
     }
     if (action === "jump") {
