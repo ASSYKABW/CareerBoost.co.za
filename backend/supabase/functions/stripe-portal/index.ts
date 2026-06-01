@@ -14,10 +14,10 @@
 // stripe-checkout / webhook). Without one we return 400 with a hint
 // to subscribe first.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -63,4 +63,4 @@ Deno.serve(async (req) => {
     return errorResponse("Stripe portal error: " + (json?.error?.message || "unknown"), 502);
   }
   return jsonResponse({ ok: true, url: json.url });
-});
+}));

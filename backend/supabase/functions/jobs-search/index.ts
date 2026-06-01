@@ -6,7 +6,7 @@
 // Phase 3: Adzuna fan-out (up to 8 country requests per query) is now cached
 // at the Edge layer with a 15-minute TTL keyed on (query + filters). Repeat
 // searches within that window skip the upstream HTTP fan-out entirely.
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
 import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 
@@ -1026,7 +1026,7 @@ async function runSource(
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -1079,4 +1079,4 @@ Deno.serve(async (req) => {
       urlsResolved: resolvedCount,
     },
   });
-});
+}));

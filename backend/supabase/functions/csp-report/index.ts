@@ -28,7 +28,7 @@
 // JSON blobs (~500 bytes typically). Worst case we get noise in
 // logs and pay a tiny bit of compute; nothing else is exposed.
 
-import { errorResponse, handleOptions } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, withCors } from "../_shared/cors.ts";
 
 // Some browsers send violations one at a time wrapped in
 // { "csp-report": {...} }; others (Report-To API) send arrays of
@@ -74,7 +74,7 @@ function summarize(entry: CspReportEntry): Record<string, unknown> {
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -132,4 +132,4 @@ Deno.serve(async (req) => {
   }
 
   return new Response(null, { status: 204 });
-});
+}));

@@ -12,7 +12,7 @@
 //
 // Every transition is audit-logged via admin_log_action.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
 import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
@@ -27,7 +27,7 @@ interface Body {
 
 const VALID_ACTIONS = new Set(["ack", "acknowledge", "resolve", "snooze", "reopen"]);
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -161,4 +161,4 @@ Deno.serve(async (req) => {
   });
 
   return jsonResponse({ ok: true, action: logAction, incident: updated });
-});
+}));

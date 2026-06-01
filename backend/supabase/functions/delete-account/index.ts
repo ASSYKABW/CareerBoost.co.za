@@ -25,7 +25,7 @@
 //   - Per-table failures are logged but don't abort the operation. The
 //     auth.users delete is the real safety net.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 // Tables that store user-scoped data, listed in dependency-friendly order.
@@ -128,7 +128,7 @@ interface DeleteBody {
   graceDays?: number;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -206,4 +206,4 @@ Deno.serve(async (req) => {
     failures: Object.keys(result.failures).length ? result.failures : null,
     completedAt: new Date().toISOString(),
   });
-});
+}));

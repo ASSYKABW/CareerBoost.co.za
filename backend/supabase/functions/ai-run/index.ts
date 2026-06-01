@@ -19,7 +19,7 @@
 //   4. SKILL_ROUTING.provider (Phase 1 smart default).
 //   5. DEFAULT_PROVIDER_ORDER (legacy fallback chain when key missing).
 
-import { corsHeaders, errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { corsHeaders, errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 import { validateSkillPayload, type Skill } from "../_shared/schemas.ts";
 import { prompts } from "../_shared/prompts.ts";
@@ -512,7 +512,7 @@ async function streamResponse(
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -749,4 +749,4 @@ Deno.serve(async (req) => {
       },
     );
   }
-});
+}));

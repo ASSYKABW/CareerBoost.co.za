@@ -18,12 +18,12 @@
 //
 // Auth: signed-in users only. Operates on the caller's own row.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 
 const PAYSTACK_BASE = "https://api.paystack.co";
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -110,4 +110,4 @@ Deno.serve(async (req) => {
     plan_id: "free",
     previousPlan: subData ? subData.plan_id : null,
   });
-});
+}));

@@ -7,7 +7,7 @@
 // All fields are operational metadata only — privacy guard at the DB
 // blocks sensitive keys from being written in the first place.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 
 interface Body {
@@ -23,7 +23,7 @@ interface Body {
 const MAX_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 50;
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST" && req.method !== "GET") {
@@ -129,4 +129,4 @@ Deno.serve(async (req) => {
     entries: data || [],
     actionMix,
   });
-});
+}));

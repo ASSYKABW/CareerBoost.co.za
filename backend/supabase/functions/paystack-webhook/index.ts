@@ -26,7 +26,7 @@
 // processed id on subscriptions.last_event_id (the same column Stripe
 // uses). If the same id arrives twice (network retry), we no-op.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getServiceClient } from "../_shared/auth.ts";
 
 // --- HMAC verification ---------------------------------------------------
@@ -247,7 +247,7 @@ async function handleInvoicePaymentFailed(svc: ReturnType<typeof getServiceClien
 
 // --- Handler -------------------------------------------------------------
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -304,4 +304,4 @@ Deno.serve(async (req) => {
   }
 
   return jsonResponse({ ok: true, event: event.event });
-});
+}));

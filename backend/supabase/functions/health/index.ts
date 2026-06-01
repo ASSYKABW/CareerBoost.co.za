@@ -19,10 +19,10 @@
 //
 // No auth required. Safe to expose publicly.
 
-import { handleOptions } from "../_shared/cors.ts";
+import { handleOptions, withCors } from "../_shared/cors.ts";
 import { getServiceClient } from "../_shared/auth.ts";
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   // Accept GET (uptime monitors) + HEAD (cheaper polling).
@@ -83,4 +83,4 @@ Deno.serve(async (req) => {
       "Access-Control-Allow-Origin": "*",
     },
   });
-});
+}));

@@ -16,7 +16,7 @@
 //   happens via the supabase CLI. This function is read-only and never
 //   returns secret values.
 
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin } from "../_shared/auth.ts";
 
 interface SecretSpec {
@@ -337,7 +337,7 @@ interface RequestBody {
   checkAll?: boolean;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -390,4 +390,4 @@ Deno.serve(async (req) => {
     })(),
     generatedAt: new Date().toISOString(),
   });
-});
+}));
