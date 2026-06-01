@@ -6271,6 +6271,33 @@ button.topbar-search-button,
 .resume-section {
   padding: 20px 22px;
 }
+/* Resume Lab #4: "Add another section" menu for the collapsed optional sections. */
+.resume-add-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+}
+.resume-add-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.62));
+}
+.resume-add-section-label i {
+  color: var(--color-accent, #7cf0ff);
+}
+.resume-add-section-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .resume-section-head {
   display: flex;
   align-items: center;
