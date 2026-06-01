@@ -97,7 +97,7 @@ function run() {
   });
   loadScript(ctx, "src/js/modules/admin/admin.route.js");
   assert.strictEqual(typeof ctx.window.CBV2.routes.admin, "function", "admin route should register");
-  assert.strictEqual(ctx.window.CBV2.adminAccess.canAccess(), true, "local preview should be allowed");
+  assert.strictEqual(ctx.window.CBAdmin.access.canAccess(), true, "local preview should be allowed");
   const html = ctx.window.CBV2.routes.admin();
   assert.ok(/CareerBoost Admin/.test(html), "admin shell should render brand");
   assert.ok(/cb-logo--admin/.test(html), "admin shell should use the CareerBoost logo lockup");
@@ -114,20 +114,20 @@ function run() {
     getUser: function () { return { email: "candidate@example.com", app_metadata: {}, user_metadata: {} }; }
   };
   ctx.window.CBV2.profile = { get: function () { return { preferences: {} }; } };
-  assert.strictEqual(ctx.window.CBV2.adminAccess.canAccess(), false, "candidate users should not open admin");
+  assert.strictEqual(ctx.window.CBAdmin.access.canAccess(), false, "candidate users should not open admin");
   assert.ok(/Admin access is locked/.test(ctx.window.CBV2.routes.admin()), "non-admin users should see the access guard");
 
   ctx.window.CBV2.auth.getUser = function () {
     return { email: "candidate@example.com", app_metadata: {}, user_metadata: { roles: ["admin"] } };
   };
-  assert.strictEqual(ctx.window.CBV2.adminAccess.canAccess(), false, "user metadata should not grant admin access");
+  assert.strictEqual(ctx.window.CBAdmin.access.canAccess(), false, "user metadata should not grant admin access");
 
   ctx.window.CBV2.auth.getUser = function () {
     return { email: "operator@example.com", app_metadata: { roles: ["admin"] }, user_metadata: {} };
   };
-  assert.strictEqual(ctx.window.CBV2.adminAccess.canAccess(), true, "admin role should open admin");
+  assert.strictEqual(ctx.window.CBAdmin.access.canAccess(), true, "admin role should open admin");
 
-  ctx.window.CBV2.adminMetrics.applyRemoteSnapshot({
+  ctx.window.CBAdmin.metrics.applyRemoteSnapshot({
     ok: true,
     generatedAt: "2026-05-10T10:00:00.000Z",
     totals: {
@@ -390,7 +390,7 @@ function run() {
   // the Command Center renders fully. The applyRemoteSnapshot above
   // doesn't include E1 blocks, so we patch them on the cached payload.
   (function () {
-    const remote = ctx.window.CBV2.adminMetrics.state();
+    const remote = ctx.window.CBAdmin.metrics.state();
     const enriched = Object.assign({}, remote.data, {
       northStar: {
         label: "Active placements",
@@ -426,7 +426,7 @@ function run() {
         target: 5, progressPct: 60, sourceNote: "From self-reported milestones"
       }
     });
-    ctx.window.CBV2.adminMetrics.applyRemoteSnapshot(enriched);
+    ctx.window.CBAdmin.metrics.applyRemoteSnapshot(enriched);
   })();
 
   const cloudHtml = ctx.window.CBV2.routes.admin();
@@ -477,7 +477,7 @@ function run() {
   // Phase E2: Growth board. Patch growth block onto the cached snapshot
   // so we can render the full board with real-shaped data.
   (function () {
-    const remote = ctx.window.CBV2.adminMetrics.state();
+    const remote = ctx.window.CBAdmin.metrics.state();
     const enriched = Object.assign({}, remote.data, {
       growth: {
         summary: {
@@ -552,7 +552,7 @@ function run() {
         extension: { captures: 2, jobImportCalls: 3, jobImportFailed: 0, sourceConflicts: 1, overallStatus: "watch" }
       }
     });
-    ctx.window.CBV2.adminMetrics.applyRemoteSnapshot(enriched);
+    ctx.window.CBAdmin.metrics.applyRemoteSnapshot(enriched);
   })();
 
   ctx.window.CBV2.getRouteParams = function () { return { section: "growth" }; };
