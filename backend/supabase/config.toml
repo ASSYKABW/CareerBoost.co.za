@@ -145,3 +145,72 @@ verify_jwt = false
 # Wraps the get_user_entitlements RPC.
 [functions.get-entitlements]
 verify_jwt = false
+
+# --- Completeness pass (Admin assessment) ----------------------------------
+# Every function in this project runs verify_jwt = false: the platform JWT
+# verifier can't validate our asymmetric ES256 signing keys, and webhooks /
+# public endpoints receive no Supabase JWT at all. The functions below were
+# already deployed with --no-verify-jwt; listing them here makes config-driven
+# deploys reproducible and prevents a flagless `functions deploy` from
+# accidentally gating (and breaking) them.
+
+# Admin mutations / reads — validate role (+ MFA) in-code.
+[functions.admin-credentials]
+verify_jwt = false
+
+[functions.admin-send-email]
+verify_jwt = false
+
+[functions.admin-testimonials]
+verify_jwt = false
+
+[functions.admin-tracked-companies]
+verify_jwt = false
+
+[functions.admin-user-adjust]
+verify_jwt = false
+
+# Resend delivery webhook — verifies its own signature, no Supabase JWT.
+[functions.admin-resend-webhook]
+verify_jwt = false
+
+# Account lifecycle — authenticated, validates the caller's token in-code.
+[functions.delete-account]
+verify_jwt = false
+
+[functions.restore-account]
+verify_jwt = false
+
+[functions.downgrade-to-free]
+verify_jwt = false
+
+[functions.password-recovery-update]
+verify_jwt = false
+
+# Paystack billing — checkout/portal authenticated; webhook verifies its own
+# signature (no Supabase JWT).
+[functions.paystack-checkout]
+verify_jwt = false
+
+[functions.paystack-portal]
+verify_jwt = false
+
+[functions.paystack-webhook]
+verify_jwt = false
+
+# Authenticated app endpoints.
+[functions.companies-search]
+verify_jwt = false
+
+[functions.testimonial-submit]
+verify_jwt = false
+
+# Public / unauthenticated endpoints (no Supabase JWT sent).
+[functions.csp-report]
+verify_jwt = false
+
+[functions.health]
+verify_jwt = false
+
+[functions.testimonials-public]
+verify_jwt = false
