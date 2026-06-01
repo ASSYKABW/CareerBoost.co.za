@@ -9437,6 +9437,40 @@ input[type="color"]#export-accent::-webkit-color-swatch { border-radius: 6px; bo
     linear-gradient(180deg, rgba(19, 30, 48, 0.9), rgba(8, 12, 22, 0.94)),
     linear-gradient(135deg, rgba(31, 226, 255, 0.08), rgba(113, 105, 255, 0.08), rgba(54, 211, 153, 0.04));
 }
+/* Resume Lab #3: tighter padding in the simple (collapsed) command bar. */
+.resume-lab-command.is-simple {
+  padding: 16px 20px;
+}
+/* Resume Lab #3: "Show advanced tools" toggle on the command bar. */
+.resume-advanced-toggle {
+  margin-top: 12px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.72));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.resume-advanced-toggle:hover {
+  background: rgba(124, 240, 255, 0.06);
+  border-color: rgba(124, 240, 255, 0.2);
+  color: var(--color-text, #fff);
+}
+.resume-advanced-toggle .fa-sliders {
+  color: var(--color-accent, #7cf0ff);
+}
+.resume-advanced-toggle .fa-chevron-down,
+.resume-advanced-toggle .fa-chevron-up {
+  font-size: 11px;
+}
 .resume-command-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

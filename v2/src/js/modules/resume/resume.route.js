@@ -37,6 +37,11 @@
     // the command bar already shows the headline scores, so this kills the
     // duplicate-scoreboard clutter. In-memory UI pref (resets per load).
     diagnosticsOpen: false,
+    // Resume Lab #3: simple-by-default editor. When false, the lab "power"
+    // surfaces (command metrics + workflow rail, diagnostics, Career Vault,
+    // Match-to-Role hint, Raw text) are hidden behind a "Show advanced tools"
+    // toggle. Persisted so power users who turn it on keep it on.
+    advancedOpen: readResumeAdvancedPref(),
     // Phase 3 — Two workflows
     workMode: "edit", // edit | tailor
     jdText: "",
@@ -126,6 +131,15 @@
       summaryApplied: !!view.summaryApplied,
       appliedSkills: view.appliedSkills || {}
     });
+  }
+
+  // Resume Lab #3: persist the "advanced tools" preference so a power user who
+  // opens it keeps it open across reloads. Default off = simple editor.
+  function readResumeAdvancedPref() {
+    try { return localStorage.getItem("cb_resume_advanced") === "1"; } catch (e) { return false; }
+  }
+  function writeResumeAdvancedPref(on) {
+    try { localStorage.setItem("cb_resume_advanced", on ? "1" : "0"); } catch (e) { /* private mode */ }
   }
 
   function st(s) {
@@ -475,8 +489,19 @@
     const targetRole = view.jdAnalyzed && (view.jdAnalyzed.role || view.jdRole)
       ? view.jdAnalyzed.role || view.jdRole
       : inferTargetRoleFromResume(r) || "Target role";
+    const advanced = view.advancedOpen;
+    const advancedBlock = advanced ? `
+        <div class="resume-command-metrics">
+          <div><span class="num-font">${health.comp.score}</span><small>Completeness</small></div>
+          <div><span class="num-font">${health.ats.score}</span><small>ATS health</small></div>
+          <div><span class="num-font">${roleText}</span><small>Role match</small></div>
+          <div><span class="num-font">${health.evidenceScore}</span><small>Evidence strength</small></div>
+        </div>
+
+        ${renderWorkflowRail(health)}
+    ` : "";
     return `
-      <section class="resume-lab-command card">
+      <section class="resume-lab-command card${advanced ? "" : " is-simple"}">
         <div class="resume-command-head">
           <div class="resume-readiness-score ${scoreTone(health.score)}">
             <span class="num-font">${health.score}</span>
@@ -492,15 +517,12 @@
             <span>${st(firstFix.label)}</span>
           </button>
         </div>
-
-        <div class="resume-command-metrics">
-          <div><span class="num-font">${health.comp.score}</span><small>Completeness</small></div>
-          <div><span class="num-font">${health.ats.score}</span><small>ATS health</small></div>
-          <div><span class="num-font">${roleText}</span><small>Role match</small></div>
-          <div><span class="num-font">${health.evidenceScore}</span><small>Evidence strength</small></div>
-        </div>
-
-        ${renderWorkflowRail(health)}
+        ${advancedBlock}
+        <button type="button" class="resume-advanced-toggle" data-lab-action="toggle-advanced" aria-expanded="${advanced ? "true" : "false"}">
+          <i class="fa-solid fa-sliders"></i>
+          <span>${advanced ? "Hide advanced tools" : "Show advanced tools"}</span>
+          <i class="fa-solid fa-chevron-${advanced ? "up" : "down"}" aria-hidden="true"></i>
+        </button>
       </section>
     `;
   }
@@ -1083,14 +1105,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         </article>
         ${diagnosticsBody}`;
 
-    return `
-      <aside class="resume-sidebar">
-        ${renderFixQueueCard(health)}
-        ${diagnostics}
-        ${renderAiReviewQueueCard(r)}
-        ${renderCritiqueCard(r)}
-        ${renderCareerAssetCard(r)}
-
+    const tailorHintHtml = `
         <article class="card resume-tailor-hint">
           <div class="resume-section-head">
             <h3><i class="fa-solid fa-bullseye"></i> Match to Role</h3>
@@ -1099,8 +1114,9 @@ Built analytics dashboard used by 3 teams"></textarea>
           <button class="btn-primary btn-sm" type="button" data-mode-switch="tailor">
             <i class="fa-solid fa-arrow-right"></i> Open role-match workspace
           </button>
-        </article>
+        </article>`;
 
+    const rawCardHtml = `
         <article class="card resume-raw-card">
           <div class="resume-section-head">
             <h3><i class="fa-solid fa-file-lines"></i> Raw text</h3>
@@ -1109,7 +1125,23 @@ Built analytics dashboard used by 3 teams"></textarea>
             </button>
           </div>
           ${view.rawTextPreviewOpen ? '<pre class="resume-raw-text">' + st(r.rawText || "(no raw text saved)") + "</pre>" : '<p class="muted">The original text we extracted from your upload.</p>'}
-        </article>
+        </article>`;
+
+    // Resume Lab #3: simple by default. Next steps + the AI rewrite engine
+    // (Review Queue + Critique) stay visible; everything else (diagnostics,
+    // Career Vault, Match-to-Role hint, Raw text) only renders in advanced mode.
+    const cards = [
+      renderFixQueueCard(health),
+      renderAiReviewQueueCard(r),
+      renderCritiqueCard(r)
+    ];
+    if (view.advancedOpen) {
+      cards.splice(1, 0, diagnostics);
+      cards.push(renderCareerAssetCard(r), tailorHintHtml, rawCardHtml);
+    }
+    return `
+      <aside class="resume-sidebar">
+        ${cards.join("\n")}
       </aside>
     `;
   }
@@ -3402,6 +3434,12 @@ Built analytics dashboard used by 3 teams"></textarea>
 
   function handleLabAction(action, btn) {
     const section = btn && btn.getAttribute("data-section");
+    if (action === "toggle-advanced") {
+      view.advancedOpen = !view.advancedOpen;
+      writeResumeAdvancedPref(view.advancedOpen);
+      rerender();
+      return;
+    }
     if (action === "jump") {
       if (section) jumpToSection(section);
       return;
