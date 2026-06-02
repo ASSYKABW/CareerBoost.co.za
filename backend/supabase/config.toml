@@ -230,3 +230,8 @@ verify_jwt = false
 
 [functions.content-public]
 verify_jwt = false
+
+# Marketing cadence job (Phase 2). Auth in-code: CRON_SECRET header (scheduler)
+# or admin JWT (manual "Run cadence now"). Generates drafts server-side.
+[functions.marketing-cron]
+verify_jwt = false
