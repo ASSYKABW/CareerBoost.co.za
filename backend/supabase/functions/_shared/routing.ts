@@ -69,6 +69,10 @@ export const SKILL_ROUTING: Record<Skill, SkillRoute> = {
   // bullet rewrites is meaningfully better than Haiku's so we pay the small
   // bump (output is capped at ~500 tokens anyway).
   "bullet-strengthen":        { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "mid" },
+
+  // ----- Marketing content generation --------------------------------------
+  // Long-form creative writing in the brand voice. Top tier for quality.
+  "content-generate":         { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true },
 };
 
 /** Per-tier max output token budget. */
@@ -89,7 +93,7 @@ export function temperatureFor(skill: Skill): number {
   // Deterministic for structured extraction.
   if (skill === "query-parse" || skill === "jd-analyze" || skill === "resume-parse") return 0.1;
   // High variance for creative rewrites — alternatives should genuinely differ.
-  if (skill === "resume-tailor" || skill === "tailor-plan" || skill === "resume-critique" || skill === "cover-letter-generate") return 0.7;
+  if (skill === "resume-tailor" || skill === "tailor-plan" || skill === "resume-critique" || skill === "cover-letter-generate" || skill === "content-generate") return 0.7;
   // Default conversational.
   return 0.4;
 }

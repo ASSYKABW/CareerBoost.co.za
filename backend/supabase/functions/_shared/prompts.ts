@@ -951,4 +951,61 @@ export const prompts: Record<Skill, PromptSpec> = {
       );
     },
   },
+
+  "content-generate": {
+    systemStable:
+      "You are a senior content marketer for CareerBoost, an AI job-search " +
+      "platform. Write publish-ready marketing content in the brand's voice. " +
+      "Adapt to the requested CONTENT TYPE:\n" +
+      "- blog: a 500-900 word article in markdown with ## headings, an intro, " +
+      "and a short CTA to try CareerBoost. Fill seo (metaTitle <=60 chars, " +
+      "metaDescription <=155 chars, 5-10 keywords).\n" +
+      "- social_linkedin: a LinkedIn post (80-200 words) with line breaks and " +
+      "3-6 hashtags.\n" +
+      "- social_x: one post under 270 characters with 1-3 hashtags.\n" +
+      "- social_ig: an Instagram caption (50-150 words) with 5-10 hashtags.\n" +
+      "- newsletter: a friendly email issue (subject as title, 2-4 short " +
+      "sections in body).\n" +
+      "- announcement: a short in-app message (1-2 sentences).\n" +
+      "- push: a notification under 120 characters (short title + body).\n" +
+      "Never fabricate statistics, names, or outcomes — use ONLY the facts " +
+      "provided. Avoid generic AI filler (game-changer, unlock, dive in, " +
+      "elevate, unleash, in today's fast-paced world). Match the supplied " +
+      "brand voice exactly." + JSON_ONLY +
+      ' Schema: { "title": string, "body": string, "excerpt": string, ' +
+      '"seo": { "metaTitle": string, "metaDescription": string, "keywords": string[] }, ' +
+      '"hashtags": string[] }. `excerpt` is a 1-2 sentence summary. For non-blog ' +
+      "types seo fields may be empty; for non-social types hashtags may be [].",
+    userTemplate: (input) => {
+      const type = pick(input, ["contentType", "type"]) || "blog";
+      const brief = pick(input, ["brief", "topic", "prompt"]);
+      const audience = pick(input, ["audience", "targetAudience"]);
+      const facts = pick(input, ["data", "facts", "keyFacts"]);
+      const voice = (input && typeof input === "object"
+        ? (input as Record<string, unknown>).brandVoice
+        : undefined) as Record<string, unknown> | undefined;
+      let voiceBlock = "";
+      if (voice && typeof voice === "object") {
+        const tone = typeof voice.tone === "string" ? voice.tone : "";
+        const readingLevel = typeof voice.readingLevel === "string" ? voice.readingLevel : "";
+        const dos = Array.isArray(voice.do) ? (voice.do as unknown[]).slice(0, 10).join("; ") : "";
+        const donts = Array.isArray(voice.dont) ? (voice.dont as unknown[]).slice(0, 10).join("; ") : "";
+        voiceBlock =
+          "\n\nBRAND VOICE (match this exactly):" +
+          (tone ? "\n- Tone: " + tone : "") +
+          (readingLevel ? "\n- Reading level: " + readingLevel : "") +
+          (dos ? "\n- Do: " + dos : "") +
+          (donts ? "\n- Don't: " + donts : "");
+      }
+      return (
+        "CONTENT TYPE: " + type +
+        "\nBRIEF / TOPIC: " + (brief || "Write something useful and on-brand for job seekers.") +
+        (audience ? "\nTARGET AUDIENCE: " + audience : "") +
+        (facts ? "\n\nFACTS YOU MAY USE (do not invent beyond these):\n" + String(facts).slice(0, 4000) : "") +
+        voiceBlock +
+        aiContextBlock(input) +
+        "\n\nReturn the JSON now."
+      );
+    },
+  },
 };
