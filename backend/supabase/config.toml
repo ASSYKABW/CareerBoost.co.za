@@ -219,3 +219,14 @@ verify_jwt = false
 # caller's JWT in-code. Recovered into the repo from the deployed version.
 [functions.resume-pdf]
 verify_jwt = false
+
+# Marketing & Brand engine (Phase 0). admin-* validate role+MFA in-code;
+# content-public is a public read (like testimonials-public).
+[functions.admin-brand]
+verify_jwt = false
+
+[functions.admin-content]
+verify_jwt = false
+
+[functions.content-public]
+verify_jwt = false
