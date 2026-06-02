@@ -86,8 +86,12 @@
       ]
     },
     {
-      group: "Content",
+      // Marketing & Brand engine (Phase 0): content lifecycle + brand kit.
+      // Testimonials moved here — it's social-proof marketing.
+      group: "Marketing & Brand",
       items: [
+        { id: "content-studio", icon: "fa-pen-nib", label: "Content Studio" },
+        { id: "brand-kit", icon: "fa-palette", label: "Brand Kit" },
         { id: "testimonials", icon: "fa-star", label: "Testimonials" }
       ]
     },

@@ -34,6 +34,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // for dependency notes; they are preserved there for reference).
 const SCRIPTS = [
   "./src/js/app/config.js",
+  "./src/js/services/brand/brand-boot.js",
   "./src/js/services/observability/observability.js",
   "./src/js/services/sync-monitor/sync-monitor.js",
   "./src/js/auth/auth.service.js",
@@ -140,6 +141,8 @@ const SCRIPTS = [
   "./src/js/modules/admin/sections/tracked-companies.js",
   "./src/js/modules/admin/sections/apply-assist.js",
   "./src/js/modules/admin/sections/testimonials.js",
+  "./src/js/modules/admin/sections/marketing-brand.js",
+  "./src/js/modules/admin/sections/content-studio.js",
   "./src/js/modules/admin/admin.mfa.js",
   "./src/js/modules/admin/admin.route.js",
   "./src/js/app/share-handler.js",
