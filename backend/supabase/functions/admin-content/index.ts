@@ -82,14 +82,17 @@ Deno.serve(withCors(async (req) => {
       body: clampStr(body.body, 200_000),
       excerpt: clampStr(body.excerpt, 600).trim(),
       channel: body.channel !== undefined ? clampStr(body.channel, 80).trim() || null : null,
-      status: "draft",
-      created_by: "operator",
+      // AI-generated drafts land in needs_review; manual ones default to draft.
+      status: STATUSES.includes(String(body.status)) ? String(body.status) : "draft",
+      created_by: String(body.created_by) === "ai" ? "ai" : "operator",
     };
     if (body.slug !== undefined) {
       const slug = clampStr(body.slug, 200).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       if (slug) row.slug = slug;
     }
     if (body.seo && typeof body.seo === "object") row.seo = body.seo;
+    if (body.prompt_version !== undefined) row.prompt_version = clampStr(body.prompt_version, 80);
+    if (body.source_data && typeof body.source_data === "object") row.source_data = body.source_data;
     const { data, error } = await svc.from("content_pieces").insert(row).select().maybeSingle();
     if (error) return errorResponse("Create failed: " + error.message, 500);
     return jsonResponse({ ok: true, piece: data });

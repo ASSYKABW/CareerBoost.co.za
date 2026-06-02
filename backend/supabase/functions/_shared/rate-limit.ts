@@ -41,6 +41,8 @@ const DEFAULT_DAILY_LIMITS: Record<Skill, number> = {
   // may invoke it dozens of times in a single resume polish session, so
   // the cap is set generously. Output is small (3 rewrites + meta).
   "bullet-strengthen":         60,
+  // Marketing content generation — operator-only, a handful per day.
+  "content-generate":         100,
 };
 
 const DEFAULT_DAILY_COST_CAP_USD = Number(

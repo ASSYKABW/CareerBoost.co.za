@@ -19,7 +19,8 @@ export type Skill =
   | "tailor-plan"
   | "skill-action-plan"
   | "chat-assist"
-  | "bullet-strengthen";
+  | "bullet-strengthen"
+  | "content-generate";
 
 type Validator = (data: unknown) => boolean;
 
@@ -134,6 +135,9 @@ export const schemas: Record<Skill, Validator> = {
     isArr(d.rewrites) &&
     d.rewrites.every(function (x) { return typeof x === "string"; }) &&
     (d.rewrites as unknown[]).length >= 1,
+  // Marketing content: lenient — title + body are the only hard requirements;
+  // excerpt/seo/hashtags vary by content type.
+  "content-generate": (d) => isObj(d) && isStr(d.title) && isStr(d.body),
 };
 
 export function validateSkillPayload(skill: string, data: unknown): void {
