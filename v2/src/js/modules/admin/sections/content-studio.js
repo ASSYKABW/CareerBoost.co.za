@@ -57,6 +57,22 @@
     return Promise.reject(new Error("Supabase client unavailable."));
   }
 
+  // Manual trigger of the marketing-cron cadence (admin JWT path). The
+  // scheduler hits the same function with X-Cron-Secret.
+  function callCron(task) {
+    var auth = window.CBV2.auth;
+    var client = auth && auth.getClient && auth.getClient();
+    if (!(client && client.functions && typeof client.functions.invoke === "function")) {
+      return Promise.reject(new Error("Supabase client unavailable."));
+    }
+    return client.functions.invoke("marketing-cron", { body: { task: task || "draft" }, headers: { "X-CB-Admin-Nonce": getCsrfNonce() } })
+      .then(function (res) {
+        if (res.error) throw res.error;
+        if (res.data && res.data.ok === false) throw new Error(res.data.error || "Cadence failed");
+        return res.data;
+      });
+  }
+
   function fetchList() {
     var state = ensureState();
     if (state.busy) return Promise.resolve();
@@ -250,6 +266,7 @@
           '<div style="display:flex;gap:8px;">' +
             '<button class="btn btn--primary btn--sm" data-content-action="gen-open"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate with AI</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="new">+ New content</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="cadence"><i class="fa-solid fa-bolt"></i> Run cadence now</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -276,6 +293,18 @@
       if (action === "gen-open") { state.generating = true; state.creating = false; state.editing = null; rerender(); return; }
       if (action === "gen-cancel") { state.generating = false; rerender(); return; }
       if (action === "gen-run") { doGenerate(); return; }
+      if (action === "cadence") {
+        if (window.CBV2.toast) window.CBV2.toast.info("Running cadence — generating a fresh draft…");
+        callCron("draft")
+          .then(function () {
+            if (window.CBV2.toast) window.CBV2.toast.success("Cadence ran — a new AI draft is in your review queue.");
+            return fetchList();
+          })
+          .catch(function (err) {
+            if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Cadence failed.");
+          });
+        return;
+      }
       if (action === "edit") {
         callApi("get", { id: id }).then(function (data) { state.editing = data.piece; state.creating = false; rerender(); })
           .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Load failed."); });

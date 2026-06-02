@@ -1,0 +1,64 @@
+# Marketing & Brand engine — automated content cadence (Phase 2).
+#
+# Triggers the marketing-cron Edge Function on a schedule so the content engine
+# produces drafts ~3×/week and a weekly newsletter draft, plus publishes any
+# scheduled pieces. Everything lands as `needs_review` — nothing emails users.
+#
+# ── To enable (one-time) ─────────────────────────────────────────────────────
+#   1. Set a CRON_SECRET env var on the Supabase `marketing-cron` function:
+#        npx supabase secrets set CRON_SECRET=<a-long-random-string> --project-ref kddffkhwpbngiupfmcse
+#   2. Add two GitHub repo secrets (Settings → Secrets and variables → Actions):
+#        SUPABASE_FUNCTIONS_URL = https://kddffkhwpbngiupfmcse.functions.supabase.co
+#        MARKETING_CRON_SECRET  = <the same string as CRON_SECRET above>
+#   Until both are set, the scheduled runs no-op (the function returns 403) and
+#   you can still trigger generation manually from Content Studio → "Run cadence now".
+#
+# Times are UTC. SAST is UTC+2, so 06:00 UTC ≈ 08:00 SAST.
+
+name: Marketing cadence
+
+on:
+  schedule:
+    - cron: "0 6 * * 1,3,5"   # Mon/Wed/Fri 06:00 UTC — 3×/week content drafts
+    - cron: "0 7 * * 1"       # Mon 07:00 UTC — weekly "SA Job Market Pulse" newsletter draft
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task to run (draft | newsletter-draft | publish-due)"
+        required: false
+        default: "draft"
+
+jobs:
+  cadence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run marketing-cron task
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.MARKETING_CRON_SECRET }}
+          SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_TASK: ${{ github.event.inputs.task }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / MARKETING_CRON_SECRET not set — skipping (see workflow header)."
+            exit 0
+          fi
+          run_task () {
+            echo "→ marketing-cron task=$1"
+            curl -fsS -X POST "$FN_URL/marketing-cron" \
+              -H "X-Cron-Secret: $CRON_SECRET" \
+              -H "Content-Type: application/json" \
+              -d "{\"task\":\"$1\"}"
+            echo ""
+          }
+          # Always publish anything that's due.
+          run_task "publish-due"
+          if [ "${SCHEDULE:-}" = "0 7 * * 1" ]; then
+            run_task "newsletter-draft"
+          elif [ -n "${SCHEDULE:-}" ]; then
+            run_task "draft"
+          else
+            # Manual dispatch.
+            run_task "${DISPATCH_TASK:-draft}"
+          fi
