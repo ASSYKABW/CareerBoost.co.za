@@ -73,6 +73,85 @@
 
   function val(id) { var el = document.getElementById(id); return el ? el.value : ""; }
 
+  // ── AI generation (Phase 1) ─────────────────────────────────────────
+  function renderGenForm() {
+    var state = ensureState();
+    var typeOpts = TYPES.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + "</option>"; }).join("");
+    var lbl = 'style="display:block;font-size:12px;color:var(--col-muted,#999);margin-bottom:4px;"';
+    return (
+      '<article class="admin-panel" style="margin-bottom:16px;border:1px solid rgba(124,240,255,0.25);">' +
+        '<div class="admin-panel-head"><div><span>Content Studio</span><h2><i class="fa-solid fa-wand-magic-sparkles"></i> Generate with AI</h2></div></div>' +
+        '<p style="font-size:12.5px;color:var(--col-muted,#888);margin-bottom:10px;">Writes in your Brand Kit voice using only the facts you provide. Lands as a draft for your review — nothing goes live without approval.</p>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:10px;">' +
+          '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--col-muted,#999);">Type<select class="admin-input" id="cs-gen-type">' + typeOpts + "</select></label>" +
+        "</div>" +
+        "<label " + lbl + ">Brief / topic</label>" +
+        '<textarea class="admin-input" id="cs-gen-brief" style="width:100%;min-height:70px;margin-bottom:8px;" placeholder="e.g. 5 resume mistakes that cost South African grads interviews"></textarea>' +
+        "<label " + lbl + ">Key facts (optional — the AI only uses facts you give it)</label>" +
+        '<textarea class="admin-input" id="cs-gen-facts" style="width:100%;min-height:60px;margin-bottom:12px;" placeholder="Real stats / data points, one per line"></textarea>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button class="btn btn--primary btn--sm" data-content-action="gen-run"' + (state.genBusy ? " disabled" : "") + ">" + (state.genBusy ? "Generating…" : "Generate draft") + "</button>" +
+          '<button class="btn btn--ghost btn--sm" data-content-action="gen-cancel">Cancel</button>' +
+        "</div>" +
+      "</article>"
+    );
+  }
+
+  function fetchBrandVoice() {
+    // Best-effort: reuse Brand Kit's cached voice, else fetch admin-brand.
+    var h = window.CBAdmin.helpers || {};
+    if (h.adminBrandRemote && h.adminBrandRemote.data && h.adminBrandRemote.data.voice_tone) {
+      return Promise.resolve(h.adminBrandRemote.data.voice_tone);
+    }
+    var auth = window.CBV2.auth;
+    var client = auth && auth.getClient && auth.getClient();
+    if (!(client && client.functions && typeof client.functions.invoke === "function")) return Promise.resolve({});
+    return client.functions.invoke("admin-brand", { body: { action: "get" }, headers: { "X-CB-Admin-Nonce": getCsrfNonce() } })
+      .then(function (res) { return (res && res.data && res.data.brand && res.data.brand.voice_tone) || {}; })
+      .catch(function () { return {}; });
+  }
+
+  function doGenerate() {
+    var state = ensureState();
+    var contentType = val("cs-gen-type") || "blog";
+    var brief = val("cs-gen-brief");
+    var facts = val("cs-gen-facts");
+    if (!brief.trim()) { if (window.CBV2.toast) window.CBV2.toast.error("Add a brief / topic first."); return; }
+    if (!(window.CBAI && typeof window.CBAI.runSkill === "function")) { if (window.CBV2.toast) window.CBV2.toast.error("AI engine unavailable."); return; }
+    state.genBusy = true; rerender();
+    fetchBrandVoice()
+      .then(function (voice) {
+        return window.CBAI.runSkill("content-generate", { contentType: contentType, brief: brief, data: facts, brandVoice: voice });
+      })
+      .then(function (envelope) {
+        var d = (envelope && envelope.data) || {};
+        var bodyText = String(d.body || "");
+        var tags = Array.isArray(d.hashtags) ? d.hashtags : [];
+        if (tags.length && contentType.indexOf("social") === 0) bodyText += "\n\n" + tags.join(" ");
+        return callApi("create", {
+          type: contentType,
+          title: String(d.title || brief).slice(0, 240),
+          body: bodyText,
+          excerpt: String(d.excerpt || "").slice(0, 600),
+          seo: (d.seo && typeof d.seo === "object") ? d.seo : {},
+          created_by: "ai",
+          status: "needs_review",
+          prompt_version: (envelope && envelope.promptVersion) || "content-generate@v1.0.0",
+          source_data: { brief: brief, facts: facts, hashtags: tags },
+        });
+      })
+      .then(function () {
+        state.genBusy = false; state.generating = false;
+        if (window.CBV2.toast) window.CBV2.toast.success("AI draft created — review it below.");
+        return fetchList();
+      })
+      .catch(function (err) {
+        state.genBusy = false;
+        if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Generation failed.");
+        rerender();
+      });
+  }
+
   function renderForm(piece) {
     var p = piece || { type: "blog", title: "", excerpt: "", body: "", slug: "" };
     var typeOpts = TYPES.map(function (t) {
@@ -158,7 +237,8 @@
     ) : '';
 
     var formHtml = "";
-    if (state.creating) formHtml = renderForm(null);
+    if (state.generating) formHtml = renderGenForm();
+    else if (state.creating) formHtml = renderForm(null);
     else if (state.editing) formHtml = renderForm(state.editing);
 
     return (
@@ -168,7 +248,8 @@
         '<div class="admin-panel-head">' +
           '<div><span>Marketing &amp; Brand</span><h2>Content Studio</h2></div>' +
           '<div style="display:flex;gap:8px;">' +
-            '<button class="btn btn--primary btn--sm" data-content-action="new">+ New content</button>' +
+            '<button class="btn btn--primary btn--sm" data-content-action="gen-open"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate with AI</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="new">+ New content</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -190,8 +271,11 @@
       var id = btn.getAttribute("data-content-id");
 
       if (action === "refresh") { state.status = "idle"; state.data = null; fetchList(); return; }
-      if (action === "new") { state.creating = true; state.editing = null; rerender(); return; }
+      if (action === "new") { state.creating = true; state.editing = null; state.generating = false; rerender(); return; }
       if (action === "cancel") { state.creating = false; state.editing = null; rerender(); return; }
+      if (action === "gen-open") { state.generating = true; state.creating = false; state.editing = null; rerender(); return; }
+      if (action === "gen-cancel") { state.generating = false; rerender(); return; }
+      if (action === "gen-run") { doGenerate(); return; }
       if (action === "edit") {
         callApi("get", { id: id }).then(function (data) { state.editing = data.piece; state.creating = false; rerender(); })
           .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Load failed."); });

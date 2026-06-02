@@ -181,6 +181,9 @@
           data.rewrites.length >= 1 &&
           data.rewrites.every(function (x) { return typeof x === "string"; })
       );
+    },
+    "content-generate": function (data) {
+      return Boolean(data && typeof data.title === "string" && typeof data.body === "string");
     }
   };
 
@@ -202,7 +205,8 @@
     "tailor-plan": "tailor-plan@v1.0.0",
     "skill-action-plan": "skill-action-plan@v1.0.0",
     "chat-assist": "chat-assist@v1.0.0",
-    "bullet-strengthen": "bullet-strengthen@v1.0.0"
+    "bullet-strengthen": "bullet-strengthen@v1.0.0",
+    "content-generate": "content-generate@v1.0.0"
   };
 
   window.CBAI = window.CBAI || {};

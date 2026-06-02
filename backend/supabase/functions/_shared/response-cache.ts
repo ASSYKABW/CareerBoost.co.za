@@ -44,6 +44,8 @@ const DEFAULT_TTL_SECONDS: Record<Skill, number> = {
   // deterministic enough to cache. 24h matches the user's edit
   // cadence (they tweak a bullet, then often re-strengthen later).
   "bullet-strengthen":        60 * 60 * 24,
+  // Marketing content — each draft should be fresh; never serve a cached one.
+  "content-generate":         0,
 };
 
 // Stable JSON stringify that sorts object keys recursively.
