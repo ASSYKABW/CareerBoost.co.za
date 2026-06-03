@@ -50,6 +50,13 @@ Deno.serve(withCors(async (req) => {
   const action = String(body.action ?? "");
   const svc = getServiceClient();
 
+  // ── scorecard (Phase 4 attribution) ───────────────────────────────────
+  if (action === "scorecard") {
+    const { data, error } = await svc.rpc("marketing_content_scorecard");
+    if (error) return errorResponse("Scorecard failed: " + error.message, 500);
+    return jsonResponse({ ok: true, scorecard: data ?? [] });
+  }
+
   // ── list ────────────────────────────────────────────────────────────
   if (action === "list") {
     let q = svc.from("content_pieces")

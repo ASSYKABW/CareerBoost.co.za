@@ -235,3 +235,7 @@ verify_jwt = false
 # or admin JWT (manual "Run cadence now"). Generates drafts server-side.
 [functions.marketing-cron]
 verify_jwt = false
+
+# Public content view/click tracking (Phase 4). Unauthenticated insert.
+[functions.content-track]
+verify_jwt = false
