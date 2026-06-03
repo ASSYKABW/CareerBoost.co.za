@@ -54,7 +54,7 @@
 <body>
   <header class="site">
     <a class="brand" href="/">Career<span>Boost</span></a>
-    <a class="cta" href="/#/auth?mode=signup">Get started free</a>
+    <a class="cta" data-cta data-campaign="blog" href="/?utm_source=blog&amp;utm_medium=header&amp;utm_campaign=blog#/auth?mode=signup">Get started free</a>
   </header>
   <main class="wrap" id="root"><p class="loading">Loading…</p></main>
   <footer class="site">© <span id="yr"></span> CareerBoost · <a href="/blog">Blog</a> · <a href="/">Home</a></footer>
@@ -105,10 +105,32 @@
     function fetchJson(qs) {
       return fetch(FN + qs, { headers: { "Accept": "application/json" } }).then(function (r) { return r.json(); });
     }
-    var footerCta =
-      '<div class="footer-cta"><h3>Ready to land your next role?</h3>' +
-      '<p>CareerBoost helps you tailor your CV, find jobs, and prep for interviews — free to start.</p>' +
-      '<a class="cta" href="/#/auth?mode=signup">Create your free account</a></div>';
+    // ── attribution: anon id + view/click tracking + UTM-tagged CTAs ──────
+    var TRACK = "https://kddffkhwpbngiupfmcse.functions.supabase.co/content-track";
+    function anonId() {
+      try {
+        var k = localStorage.getItem("cb_anon");
+        if (!k) { k = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)); localStorage.setItem("cb_anon", k); }
+        return k;
+      } catch (e) { return ""; }
+    }
+    function track(slug, event, beacon) {
+      try {
+        var payload = JSON.stringify({ slug: slug, event: event, anon_id: anonId(), referrer: document.referrer || "" });
+        if (beacon && navigator.sendBeacon) { navigator.sendBeacon(TRACK, new Blob([payload], { type: "application/json" })); return; }
+        fetch(TRACK, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(function () {});
+      } catch (e) {}
+    }
+    // UTM in the real query string (before the hash) so the app's
+    // captureAttribution() picks it up from location.search on landing.
+    function ctaHref(campaign) {
+      return "/?utm_source=blog&utm_medium=content&utm_campaign=" + encodeURIComponent(campaign || "blog") + "#/auth?mode=signup";
+    }
+    function footerCtaHtml(campaign) {
+      return '<div class="footer-cta"><h3>Ready to land your next role?</h3>' +
+        '<p>CareerBoost helps you tailor your CV, find jobs, and prep for interviews — free to start.</p>' +
+        '<a class="cta" data-cta data-campaign="' + esc(campaign || "blog") + '" href="' + ctaHref(campaign) + '">Create your free account</a></div>';
+    }
 
     function renderList() {
       document.title = "Blog — CareerBoost";
@@ -123,7 +145,7 @@
             "</a>";
         }).join("");
         root.innerHTML = '<h1 class="page">Career advice &amp; job-market insights</h1>' +
-          '<p class="lead">Practical tips to land your next role in South Africa.</p>' + cards + footerCta;
+          '<p class="lead">Practical tips to land your next role in South Africa.</p>' + cards + footerCtaHtml("blog");
       }).catch(function () { root.innerHTML = '<h1 class="page">Blog</h1><p class="empty">Couldn\'t load posts right now.</p>'; });
     }
 
@@ -144,9 +166,15 @@
         root.innerHTML = '<a class="back" href="/blog">← All posts</a>' +
           '<article class="post"><h1>' + esc(p.title) + "</h1>" +
           (p.published_at ? '<div class="meta">' + esc(fmtDate(p.published_at)) + "</div>" : "") +
-          md(p.body) + "</article>" + footerCta;
+          md(p.body) + "</article>" + footerCtaHtml(slug);
+        track(slug, "view");
       }).catch(function () { root.innerHTML = '<a class="back" href="/blog">← All posts</a><p class="empty">Couldn\'t load this post.</p>'; });
     }
+
+    document.addEventListener("click", function (e) {
+      var a = e.target && e.target.closest ? e.target.closest("[data-cta]") : null;
+      if (a) track(a.getAttribute("data-campaign") || "blog", "click", true);
+    });
 
     var path = location.pathname.replace(/\/+$/, "");
     var m = path.match(/^\/blog\/(.+)$/);
