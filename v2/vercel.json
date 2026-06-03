@@ -45,6 +45,14 @@
       "destination": "/favicon-48.png"
     },
     {
+      "source": "/blog",
+      "destination": "/blog.html"
+    },
+    {
+      "source": "/blog/(.*)",
+      "destination": "/blog.html"
+    },
+    {
       "source": "/((?!src/|api/|.*\\.(?:js|css|svg|png|jpg|jpeg|webp|woff|woff2|ico|json|txt|xml|zip|map|webmanifest|html)).*)",
       "destination": "/index.html"
     }
