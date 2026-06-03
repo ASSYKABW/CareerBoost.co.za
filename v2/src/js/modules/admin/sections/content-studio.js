@@ -33,6 +33,34 @@
 
   function st(v) { return (window.CBV2.sanitizeText || String)(v == null ? "" : v); }
 
+  // Phase 4: per-post performance (views/clicks from content-track + attributed signups).
+  function renderScorecard() {
+    var state = ensureState();
+    var rows = state.scorecard || [];
+    var cell = 'style="padding:6px 8px;text-align:right;"';
+    var body = rows.length
+      ? rows.map(function (r) {
+          return "<tr><td style=\"padding:6px 8px;\">" + st(r.title || r.slug) + "</td>" +
+            "<td " + cell + ">" + (r.views || 0) + "</td>" +
+            "<td " + cell + ">" + (r.clicks || 0) + "</td>" +
+            "<td style=\"padding:6px 8px;text-align:right;color:var(--accent,#7cf0ff);font-weight:600;\">" + (r.signups || 0) + "</td></tr>";
+        }).join("")
+      : "<tr><td colspan=\"4\" style=\"padding:10px 8px;color:var(--col-muted,#888);\">No published posts yet, or no traffic recorded. Publish a post and share its link.</td></tr>";
+    return (
+      '<article class="admin-panel" style="margin-bottom:16px;">' +
+        '<div class="admin-panel-head"><div><span>Marketing &amp; Brand</span><h2>Content performance</h2></div>' +
+          '<button class="btn btn--ghost btn--sm" data-content-action="perf-close">Hide</button></div>' +
+        '<p style="font-size:12.5px;color:var(--col-muted,#888);margin-bottom:10px;">Blog views &amp; clicks, plus signups attributed to each post (utm_campaign = slug).</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="text-align:left;color:var(--col-muted,#999);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));">' +
+            '<th style="padding:6px 8px;">Post</th><th style="padding:6px 8px;text-align:right;">Views</th>' +
+            '<th style="padding:6px 8px;text-align:right;">Clicks</th><th style="padding:6px 8px;text-align:right;">Signups</th></tr></thead>' +
+          "<tbody>" + body + "</tbody>" +
+        "</table>" +
+      "</article>"
+    );
+  }
+
   function getCsrfNonce() {
     try {
       var n = sessionStorage.getItem("cb_admin_csrf_nonce");
@@ -260,6 +288,7 @@
     return (
       statsHtml +
       formHtml +
+      (state.showPerf ? renderScorecard() : "") +
       '<article class="admin-panel">' +
         '<div class="admin-panel-head">' +
           '<div><span>Marketing &amp; Brand</span><h2>Content Studio</h2></div>' +
@@ -267,6 +296,7 @@
             '<button class="btn btn--primary btn--sm" data-content-action="gen-open"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate with AI</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="new">+ New content</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="cadence"><i class="fa-solid fa-bolt"></i> Run cadence now</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="perf"><i class="fa-solid fa-chart-line"></i> Performance</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -305,6 +335,13 @@
           });
         return;
       }
+      if (action === "perf") {
+        callApi("scorecard")
+          .then(function (d) { state.scorecard = (d && d.scorecard) || []; state.showPerf = true; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Couldn't load performance."); });
+        return;
+      }
+      if (action === "perf-close") { state.showPerf = false; rerender(); return; }
       if (action === "edit") {
         callApi("get", { id: id }).then(function (data) { state.editing = data.piece; state.creating = false; rerender(); })
           .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Load failed."); });
