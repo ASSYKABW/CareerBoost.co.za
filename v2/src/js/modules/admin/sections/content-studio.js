@@ -17,6 +17,7 @@
     ["announcement", "In-app announcement"],
     ["push", "Push notification"],
     ["landing_variant", "Landing copy variant"],
+    ["landing_seo", "SEO landing page (role + city)"],
   ];
   var STATUSES = ["draft", "needs_review", "approved", "scheduled", "published", "archived"];
   var STATUS_TONE = { draft: "subtle", needs_review: "amber", approved: "blue", scheduled: "cyan", published: "green", archived: "red" };

@@ -53,6 +53,14 @@
       "destination": "/blog.html"
     },
     {
+      "source": "/jobs",
+      "destination": "/jobs.html"
+    },
+    {
+      "source": "/jobs/(.*)",
+      "destination": "/jobs.html"
+    },
+    {
       "source": "/((?!src/|api/|.*\\.(?:js|css|svg|png|jpg|jpeg|webp|woff|woff2|ico|json|txt|xml|zip|map|webmanifest|html)).*)",
       "destination": "/index.html"
     }
