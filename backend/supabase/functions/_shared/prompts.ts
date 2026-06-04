@@ -968,6 +968,13 @@ export const prompts: Record<Skill, PromptSpec> = {
       "sections in body).\n" +
       "- announcement: a short in-app message (1-2 sentences).\n" +
       "- push: a notification under 120 characters (short title + body).\n" +
+      "- landing_seo: a genuinely useful, unique SEO landing page for a role+" +
+      "city (e.g. 'Software Developer jobs in Cape Town'). 350-600 words, " +
+      "markdown ## sections covering what the role involves locally, typical " +
+      "skills/requirements, where to look, and a CTA to search live jobs + " +
+      "tailor a CV on CareerBoost. Title like '{Role} Jobs in {City}'. Fill " +
+      "seo (metaTitle <=60, metaDescription <=155, 5-10 keywords). Be specific " +
+      "and locally relevant — never thin or templated boilerplate.\n" +
       "Never fabricate statistics, names, or outcomes — use ONLY the facts " +
       "provided. Avoid generic AI filler (game-changer, unlock, dive in, " +
       "elevate, unleash, in today's fast-paced world). Match the supplied " +

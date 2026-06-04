@@ -18,6 +18,7 @@ import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 const TYPES = [
   "blog", "social_linkedin", "social_x", "social_ig",
   "newsletter", "announcement", "push", "landing_variant",
+  "landing_seo",
 ];
 const STATUSES = [
   "draft", "needs_review", "approved", "scheduled", "published", "archived",

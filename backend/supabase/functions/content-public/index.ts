@@ -82,6 +82,45 @@ Deno.serve(withCors(async (req) => {
     }
   }
 
+  // ── programmatic SEO landing pages (list) ────────────────────────────
+  if (resource === "landing-list") {
+    try {
+      const { data, error } = await svc
+        .from("content_pieces")
+        .select("title, slug, excerpt, published_at")
+        .eq("type", "landing_seo")
+        .eq("status", "published")
+        .not("slug", "is", null)
+        .order("title", { ascending: true })
+        .limit(500);
+      if (error) throw error;
+      return jsonOut({ ok: true, pages: data ?? [] });
+    } catch (err) {
+      console.error("[content-public] landing-list:", (err as Error).message);
+      return jsonOut({ ok: true, pages: [] });
+    }
+  }
+
+  // ── single programmatic SEO landing page ─────────────────────────────
+  if (resource === "landing") {
+    const slug = (url.searchParams.get("slug") || "").trim().toLowerCase();
+    if (!slug) return jsonOut({ ok: false, error: "slug required", page: null });
+    try {
+      const { data, error } = await svc
+        .from("content_pieces")
+        .select("title, slug, body, excerpt, og_image_url, published_at, seo")
+        .eq("type", "landing_seo")
+        .eq("status", "published")
+        .eq("slug", slug)
+        .maybeSingle();
+      if (error) throw error;
+      return jsonOut({ ok: true, page: data ?? null });
+    } catch (err) {
+      console.error("[content-public] landing:", (err as Error).message);
+      return jsonOut({ ok: true, page: null });
+    }
+  }
+
   // ── active in-app announcements ──────────────────────────────────────
   if (resource === "announcements") {
     try {
