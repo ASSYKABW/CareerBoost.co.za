@@ -61,6 +61,10 @@
       "destination": "/jobs.html"
     },
     {
+      "source": "/content-sitemap.xml",
+      "destination": "https://kddffkhwpbngiupfmcse.functions.supabase.co/content-public?resource=sitemap"
+    },
+    {
       "source": "/((?!src/|api/|.*\\.(?:js|css|svg|png|jpg|jpeg|webp|woff|woff2|ico|json|txt|xml|zip|map|webmanifest|html)).*)",
       "destination": "/index.html"
     }
