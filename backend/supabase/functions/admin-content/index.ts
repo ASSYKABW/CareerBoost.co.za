@@ -157,5 +157,65 @@ Deno.serve(withCors(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── A/B experiments (Phase 5b) ────────────────────────────────────────
+  if (action === "exp-list") {
+    const { data, error } = await svc
+      .from("marketing_experiments")
+      .select("key, name, hypothesis, status, target, variants, winner, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(200);
+    if (error) return errorResponse("Failed to load experiments: " + error.message, 500);
+    return jsonResponse({ ok: true, experiments: data ?? [] });
+  }
+
+  if (action === "exp-save") {
+    const key = clampStr(body.key, 64).trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    if (!key) return errorResponse("A valid key (slug) is required.", 400);
+    const status = ["draft", "running", "done"].includes(String(body.status)) ? String(body.status) : "draft";
+    // Normalize variants: [{ id, label, weight, text }].
+    const rawVariants = Array.isArray(body.variants) ? body.variants : [];
+    const variants = rawVariants.slice(0, 12).map((v, i) => {
+      const o = (v && typeof v === "object") ? v as Record<string, unknown> : {};
+      const id = clampStr(o.id, 32).trim().toLowerCase().replace(/[^a-z0-9-]/g, "-") || ("v" + (i + 1));
+      const weight = Number(o.weight);
+      return {
+        id,
+        label: clampStr(o.label, 80).trim() || id,
+        weight: Number.isFinite(weight) && weight > 0 ? weight : 1,
+        text: clampStr(o.text, 400),
+      };
+    });
+    const winner = body.winner ? clampStr(body.winner, 32).trim() : null;
+    const row: Record<string, unknown> = {
+      key,
+      name: clampStr(body.name, 120).trim() || key,
+      hypothesis: clampStr(body.hypothesis, 600).trim() || null,
+      status,
+      target: body.target !== undefined ? (clampStr(body.target, 200).trim() || null) : null,
+      variants,
+      winner,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await svc.from("marketing_experiments").upsert(row, { onConflict: "key" });
+    if (error) return errorResponse("Save failed: " + error.message, 500);
+    return jsonResponse({ ok: true, key });
+  }
+
+  if (action === "exp-results") {
+    const key = clampStr(body.key, 64).trim();
+    if (!key) return errorResponse("key is required.", 400);
+    const { data, error } = await svc.rpc("marketing_experiment_results", { p_key: key });
+    if (error) return errorResponse("Results failed: " + error.message, 500);
+    return jsonResponse({ ok: true, results: data ?? [] });
+  }
+
+  if (action === "exp-delete") {
+    const key = clampStr(body.key, 64).trim();
+    if (!key) return errorResponse("key is required.", 400);
+    const { error } = await svc.from("marketing_experiments").delete().eq("key", key);
+    if (error) return errorResponse("Delete failed: " + error.message, 500);
+    return jsonResponse({ ok: true });
+  }
+
   return errorResponse("Unknown action: " + action, 400);
 }));
