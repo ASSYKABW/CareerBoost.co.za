@@ -1,0 +1,53 @@
+# Lifecycle email — drip sender (POPIA-gated).
+#
+# Calls the email-drip Edge Function daily. It enrols consented users into
+# sequences, sends the steps that are due, and broadcasts the newest published
+# newsletter — ONLY to users who are consented and not suppressed, each with a
+# working one-click unsubscribe.
+#
+# ── Two safety gates ─────────────────────────────────────────────────────────
+#   1. EMAIL_DRIPS_ENABLED=true must be set on the email-drip function, or every
+#      call is a no-op. Set it only when you're ready to actually send:
+#        npx supabase secrets set EMAIL_DRIPS_ENABLED=true --project-ref kddffkhwpbngiupfmcse
+#      (Also requires the Resend secrets that admin-send-email already uses.)
+#   2. The same repo secrets as the content cadence:
+#        SUPABASE_FUNCTIONS_URL = https://kddffkhwpbngiupfmcse.functions.supabase.co
+#        MARKETING_CRON_SECRET  = <same value as the function's CRON_SECRET>
+#      Until both are set the scheduled run no-ops (function returns 403).
+#
+# Times are UTC. 08:00 UTC ≈ 10:00 SAST.
+
+name: Email drips
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # daily 08:00 UTC — send any due drip steps + newsletter
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task (run | drips | newsletter)"
+        required: false
+        default: "run"
+
+jobs:
+  drips:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run email-drip
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.MARKETING_CRON_SECRET }}
+          DISPATCH_TASK: ${{ github.event.inputs.task }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / MARKETING_CRON_SECRET not set — skipping (see workflow header)."
+            exit 0
+          fi
+          TASK="${DISPATCH_TASK:-run}"
+          echo "→ email-drip task=$TASK"
+          curl -fsS -X POST "$FN_URL/email-drip" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d "{\"task\":\"$TASK\"}"
+          echo ""
