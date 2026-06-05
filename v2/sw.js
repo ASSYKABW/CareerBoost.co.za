@@ -22,7 +22,7 @@
 
 // Bump this string whenever the SW logic changes, so the browser detects an
 // update and re-installs. (Not used for caching today — purely a change marker.)
-const SW_VERSION = "cb-sw-v1";
+const SW_VERSION = "cb-sw-v2";
 
 self.addEventListener("install", () => {
   // Activate this worker as soon as it finishes installing, instead of waiting
@@ -44,4 +44,42 @@ self.addEventListener("fetch", () => {
   // deliberate caching strategy — naive passthrough can break range/streaming
   // requests.
   return;
+});
+
+// ── Web Push ────────────────────────────────────────────────────────────────
+// The sender (push-send) delivers an encrypted JSON payload:
+//   { title, body, url?, tag?, icon? }
+// We display it as a notification; clicking focuses an existing tab (navigating
+// it to url) or opens a new one.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (_e) { data = {}; }
+  const title = data.title || "CareerBoost";
+  const options = {
+    body: data.body || "",
+    icon: data.icon || "/favicon-192.png",
+    badge: "/favicon-48.png",
+    tag: data.tag || undefined,
+    data: { url: data.url || "/" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  const absolute = new URL(target, self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      // Focus an existing CareerBoost tab and navigate it, if one is open.
+      for (const client of clients) {
+        if (client.url.indexOf(self.location.origin) === 0 && "focus" in client) {
+          client.navigate(absolute).catch(() => {});
+          return client.focus();
+        }
+      }
+      // Otherwise open a fresh window.
+      if (self.clients.openWindow) return self.clients.openWindow(absolute);
+    }),
+  );
 });
