@@ -2651,9 +2651,23 @@ Deno.serve(withCors(async (req) => {
       : "Estimated from pipeline stage transitions (interview_outcomes is empty)",
   };
 
+  // Phase 2 (admin redesign) — sidebar attention badge counts, keyed by nav
+  // section id. safeCount returns 0 on any error, so a missing/unapplied table
+  // never breaks the overview call.
+  const [badgeContentReview, badgeTestimonials, badgeIncidents] = await Promise.all([
+    safeCount("badge.content_review", svc.from("content_pieces").select("id", { count: "exact", head: true }).eq("status", "needs_review"), warnings),
+    safeCount("badge.testimonials_pending", svc.from("testimonials").select("id", { count: "exact", head: true }).eq("status", "pending"), warnings),
+    safeCount("badge.incidents_open", svc.from("admin_incidents").select("id", { count: "exact", head: true }).eq("status", "open"), warnings),
+  ]);
+
   return jsonResponse({
     ok: true,
     generatedAt,
+    badges: {
+      "content-studio": badgeContentReview,
+      "testimonials": badgeTestimonials,
+      "operations": badgeIncidents,
+    },
     access: {
       adminEmail: admin.email,
       roles: admin.roles,
