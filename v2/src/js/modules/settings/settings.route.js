@@ -1904,6 +1904,10 @@
 
             ${showOverview ? renderSettingsOverviewSection() : ""}
 
+            ${showOverview && window.CBV2.settingsReferral && window.CBV2.settingsReferral.render
+              ? window.CBV2.settingsReferral.render()
+              : ""}
+
             ${showMe ? renderPersonalHero() : ""}
             ${showMe ? renderProfileSection() : ""}
 
