@@ -2001,6 +2001,10 @@
               ? window.CBV2.settingsEmailConsent.render()
               : ""}
 
+            ${showData && window.CBV2.settingsPush && window.CBV2.settingsPush.render
+              ? window.CBV2.settingsPush.render()
+              : ""}
+
             ${showData ? `<section class="card panel-lg settings-section">
           <div class="panel-head">
             <h2>Local browser data</h2>

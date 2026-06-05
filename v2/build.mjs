@@ -119,6 +119,7 @@ const SCRIPTS = [
   "./src/js/modules/settings/settings.intel.js",
   "./src/js/modules/settings/settings.referral.js",
   "./src/js/modules/settings/settings.email-consent.js",
+  "./src/js/modules/settings/settings.push.js",
   "./src/js/modules/settings/settings.route.js",
   "./src/js/modules/admin/admin-helpers.js",
   "./src/js/modules/admin/admin-realtime.js",
@@ -152,6 +153,7 @@ const SCRIPTS = [
   "./src/js/app/bootstrap.js",
   "./src/js/marketing/announcement-banner.js",
   "./src/js/marketing/ab-testing.js",
+  "./src/js/marketing/push.js",
 ];
 
 // Ordered list of stylesheets to bundle. Cascade order matters — tokens
