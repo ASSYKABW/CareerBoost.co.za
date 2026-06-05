@@ -6,7 +6,7 @@
   grid-template-columns: 280px minmax(0, 1fr);
   background:
     linear-gradient(90deg, rgba(34, 227, 255, 0.08), transparent 28%),
-    radial-gradient(48% 36% at 82% 8%, rgba(34, 197, 94, 0.12), transparent 62%),
+    radial-gradient(48% 36% at 82% 8%, rgba(34, 227, 255, 0.12), transparent 62%),
     #0b0f16;
   color: #eef3ff;
   /* Day 4.2 — root-level overflow guard. The admin console contains
@@ -58,7 +58,7 @@
 }
 
 .admin-brand .cb-logo--admin .cb-logo-wordmark span {
-  color: #34d399;
+  color: #22e3ff;
 }
 
 .admin-brand .cb-logo--admin .cb-logo-tagline {
@@ -113,19 +113,19 @@
 
 .admin-nav-link.is-active {
   color: #f8fbff;
-  background: linear-gradient(90deg, rgba(16, 185, 129, 0.16), rgba(34, 227, 255, 0.07));
-  border-color: rgba(16, 185, 129, 0.28);
-  box-shadow: inset 3px 0 0 #10b981;
+  background: linear-gradient(90deg, rgba(34, 227, 255, 0.16), rgba(34, 227, 255, 0.07));
+  border-color: rgba(34, 227, 255, 0.28);
+  box-shadow: inset 3px 0 0 #22e3ff;
 }
 
-.admin-nav-link.is-active i { color: #5eead4; }
+.admin-nav-link.is-active i { color: #22e3ff; }
 
 .admin-nav-badge {
   margin-left: auto;
   padding: 3px 7px;
   border-radius: 999px;
-  background: rgba(16, 185, 129, 0.12);
-  color: #8ff6d2;
+  background: rgba(34, 227, 255, 0.12);
+  color: #9fe9ff;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -254,8 +254,8 @@
 }
 
 .admin-status-banner--live {
-  border-color: rgba(16, 185, 129, 0.34);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(15, 23, 42, 0.94));
+  border-color: rgba(34, 227, 255, 0.34);
+  background: linear-gradient(135deg, rgba(34, 227, 255, 0.14), rgba(15, 23, 42, 0.94));
 }
 
 .admin-status-banner--warn {
@@ -292,7 +292,7 @@
   background: var(--admin-stat-accent, #22e3ff);
 }
 
-.admin-stat--green { --admin-stat-accent: #10b981; }
+.admin-stat--green { --admin-stat-accent: #22e3ff; }
 .admin-stat--blue { --admin-stat-accent: #3b82f6; }
 .admin-stat--cyan { --admin-stat-accent: #22e3ff; }
 .admin-stat--violet { --admin-stat-accent: #8b5cf6; }
@@ -440,7 +440,7 @@
   font-style: normal;
 }
 
-.admin-kpi-card--green { --kpi-accent: #10b981; }
+.admin-kpi-card--green { --kpi-accent: #22e3ff; }
 .admin-kpi-card--blue { --kpi-accent: #3b82f6; }
 .admin-kpi-card--cyan { --kpi-accent: #22e3ff; }
 .admin-kpi-card--violet { --kpi-accent: #8b5cf6; }
@@ -612,7 +612,7 @@
   min-width: 10px;
   height: var(--bar);
   border-radius: 999px 999px 4px 4px;
-  background: linear-gradient(180deg, #22e3ff, #10b981);
+  background: linear-gradient(180deg, #22e3ff, #22e3ff);
   box-shadow: 0 0 22px rgba(34, 227, 255, 0.18);
 }
 
@@ -632,7 +632,7 @@
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  background: #10b981;
+  background: #22e3ff;
   margin-right: 6px;
 }
 
@@ -699,7 +699,7 @@
 }
 
 .admin-line-chart circle {
-  fill: #34d399;
+  fill: #22e3ff;
   stroke: #06111d;
   stroke-width: 2;
 }
@@ -762,7 +762,7 @@
   box-shadow: 0 0 16px currentColor;
 }
 
-.admin-dot--green { background: #10b981; color: #10b981; }
+.admin-dot--green { background: #22e3ff; color: #22e3ff; }
 .admin-dot--blue { background: #3b82f6; color: #3b82f6; }
 .admin-dot--cyan { background: #22e3ff; color: #22e3ff; }
 .admin-dot--violet { background: #8b5cf6; color: #8b5cf6; }
@@ -918,8 +918,8 @@
 }
 
 .admin-retention-cell--green {
-  border-color: rgba(16, 185, 129, 0.32);
-  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(34, 227, 255, 0.32);
+  background: rgba(34, 227, 255, 0.1);
 }
 
 .admin-retention-cell--amber {
@@ -1005,7 +1005,7 @@
   overflow-wrap: anywhere;
 }
 
-.admin-decision-row--green { border-color: rgba(16, 185, 129, 0.24); background: rgba(16, 185, 129, 0.08); }
+.admin-decision-row--green { border-color: rgba(34, 227, 255, 0.24); background: rgba(34, 227, 255, 0.08); }
 .admin-decision-row--blue { border-color: rgba(59, 130, 246, 0.24); background: rgba(59, 130, 246, 0.08); }
 .admin-decision-row--amber { border-color: rgba(245, 158, 11, 0.26); background: rgba(245, 158, 11, 0.09); }
 .admin-decision-row--red { border-color: rgba(248, 113, 113, 0.26); background: rgba(248, 113, 113, 0.09); }
@@ -1050,8 +1050,8 @@
   padding: 6px 10px;
   border-radius: 999px;
   color: #d9fff0;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(34, 227, 255, 0.12);
+  border: 1px solid rgba(34, 227, 255, 0.25);
 }
 
 .admin-funnel-track,
@@ -1311,7 +1311,7 @@
   border-color: rgba(107, 125, 255, 0.25);
 }
 .admin-incident-row--resolved {
-  border-color: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 227, 255, 0.2);
   opacity: 0.7;
 }
 .admin-incident-meta {
@@ -1619,8 +1619,8 @@
 
 .admin-health-pill--green {
   color: #bbf7d0;
-  border-color: rgba(16, 185, 129, 0.32);
-  background: rgba(16, 185, 129, 0.11);
+  border-color: rgba(34, 227, 255, 0.32);
+  background: rgba(34, 227, 255, 0.11);
 }
 
 .admin-health-pill--amber {
@@ -1781,7 +1781,7 @@
   box-shadow: 0 0 16px currentColor;
 }
 
-.admin-sla-row--green > span { background: #10b981; color: #10b981; }
+.admin-sla-row--green > span { background: #22e3ff; color: #22e3ff; }
 .admin-sla-row--amber > span { background: #f59e0b; color: #f59e0b; }
 .admin-sla-row--red > span { background: #f87171; color: #f87171; }
 
@@ -1817,8 +1817,8 @@
 }
 
 .admin-readiness-card.is-pass {
-  border-color: rgba(16, 185, 129, 0.24);
-  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(34, 227, 255, 0.24);
+  background: rgba(34, 227, 255, 0.06);
 }
 
 .admin-readiness-card i {
@@ -1832,8 +1832,8 @@
 }
 
 .admin-readiness-card.is-pass i {
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.12);
+  color: #22e3ff;
+  background: rgba(34, 227, 255, 0.12);
 }
 
 .admin-readiness-card strong,
@@ -1961,7 +1961,7 @@
   height: 8px;
   border-radius: 999px;
   background:
-    linear-gradient(90deg, #10b981, #22e3ff) 0 0 / var(--bar) 100% no-repeat,
+    linear-gradient(90deg, #22e3ff, #22e3ff) 0 0 / var(--bar) 100% no-repeat,
     rgba(148, 163, 184, 0.14);
 }
 
@@ -2199,8 +2199,8 @@
     background-image: none;
   }
   .admin-topbar-actions .btn-primary {
-    background: rgba(34, 197, 94, 0.18);
-    border: 1px solid rgba(34, 197, 94, 0.4);
+    background: rgba(34, 227, 255, 0.18);
+    border: 1px solid rgba(34, 227, 255, 0.4);
     color: #b5f5cc;
   }
 
@@ -2373,7 +2373,7 @@
   padding: 32px;
   margin: 0 0 24px;
   border-radius: 24px;
-  background: linear-gradient(135deg, rgba(34, 227, 255, 0.14), rgba(16, 185, 129, 0.10));
+  background: linear-gradient(135deg, rgba(34, 227, 255, 0.14), rgba(34, 227, 255, 0.10));
   border: 1px solid rgba(34, 227, 255, 0.32);
   position: relative;
   overflow: hidden;
@@ -2385,7 +2385,7 @@
   background: radial-gradient(circle at 80% 20%, rgba(34, 227, 255, 0.18), transparent 60%);
   pointer-events: none;
 }
-.admin-north-star--green { border-color: rgba(16, 185, 129, 0.40); }
+.admin-north-star--green { border-color: rgba(34, 227, 255, 0.40); }
 .admin-north-star--amber { border-color: rgba(251, 191, 36, 0.40); }
 .admin-north-star--red,
 .admin-north-star--rose { border-color: rgba(244, 63, 94, 0.42); background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(251, 191, 36, 0.08)); }
@@ -2426,7 +2426,7 @@
   font-size: 13px;
   font-weight: 600;
 }
-.admin-north-star-delta--green { background: rgba(16, 185, 129, 0.18); color: #5eead4; }
+.admin-north-star-delta--green { background: rgba(34, 227, 255, 0.18); color: #22e3ff; }
 .admin-north-star-delta--rose  { background: rgba(244, 63, 94, 0.18);  color: #fda4af; }
 .admin-north-star-delta--subtle{ background: rgba(255, 255, 255, 0.08); color: rgba(248, 251, 255, 0.7); }
 
@@ -2453,7 +2453,7 @@
   display: block;
   height: 100%;
   width: var(--bar, 0%);
-  background: linear-gradient(90deg, #22e3ff, #10b981);
+  background: linear-gradient(90deg, #22e3ff, #22e3ff);
   transition: width 320ms ease;
 }
 .admin-north-star-progress small {
@@ -2479,7 +2479,7 @@
   transition: transform 160ms ease, border-color 160ms ease;
 }
 .admin-aarrr-card:hover { transform: translateY(-2px); border-color: rgba(94, 234, 212, 0.32); }
-.admin-aarrr-card--green { border-left: 3px solid #10b981; }
+.admin-aarrr-card--green { border-left: 3px solid #22e3ff; }
 .admin-aarrr-card--amber { border-left: 3px solid #f59e0b; }
 .admin-aarrr-card--rose  { border-left: 3px solid #f43f5e; }
 .admin-aarrr-card-head {
@@ -2489,7 +2489,7 @@
   font-size: 13px;
   color: rgba(248, 251, 255, 0.7);
 }
-.admin-aarrr-card-head i:first-child { color: #5eead4; font-size: 14px; }
+.admin-aarrr-card-head i:first-child { color: #22e3ff; font-size: 14px; }
 .admin-aarrr-card-head span { flex: 1; font-weight: 600; }
 .admin-aarrr-card-head .chip { font-size: 9px; padding: 3px 7px; letter-spacing: 0.04em; }
 .admin-aarrr-card-value {
@@ -2506,7 +2506,7 @@
   font-size: 11px;
   font-weight: 600;
 }
-.admin-aarrr-delta--up   { color: #5eead4; }
+.admin-aarrr-delta--up   { color: #22e3ff; }
 .admin-aarrr-delta--down { color: #fda4af; }
 .admin-aarrr-card-sub {
   font-size: 12px;
@@ -2570,7 +2570,7 @@
 .admin-priority-rank span {
   font-size: 22px;
   font-weight: 700;
-  color: #5eead4;
+  color: #22e3ff;
 }
 .admin-priority-rank i {
   font-size: 20px;
@@ -2634,7 +2634,7 @@
   background: rgba(15, 23, 42, 0.4);
   border-left: 3px solid rgba(255, 255, 255, 0.1);
 }
-.admin-weekly-row--green { border-left-color: #10b981; }
+.admin-weekly-row--green { border-left-color: #22e3ff; }
 .admin-weekly-row--rose  { border-left-color: #f43f5e; }
 .admin-weekly-icon { font-size: 18px; color: rgba(248, 251, 255, 0.6); }
 .admin-weekly-copy strong { display: block; color: #f8fbff; font-size: 14px; }
@@ -2642,7 +2642,7 @@
 .admin-weekly-copy span em { font-style: normal; color: rgba(248, 251, 255, 0.4); }
 .admin-weekly-delta { font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
 .admin-weekly-delta small { font-weight: 500; opacity: 0.8; }
-.admin-weekly-delta--green { color: #5eead4; }
+.admin-weekly-delta--green { color: #22e3ff; }
 .admin-weekly-delta--rose  { color: #fda4af; }
 .admin-weekly-delta--subtle{ color: rgba(248, 251, 255, 0.5); }
 
@@ -2661,7 +2661,7 @@
 }
 .admin-outcomes-stats strong {
   font-size: 22px;
-  color: #5eead4;
+  color: #22e3ff;
   font-weight: 700;
 }
 .admin-outcomes-stats em {
@@ -2692,7 +2692,7 @@
   display: block;
   height: 100%;
   width: var(--bar, 0%);
-  background: linear-gradient(90deg, #22e3ff, #10b981);
+  background: linear-gradient(90deg, #22e3ff, #22e3ff);
   border-radius: 999px;
 }
 .admin-outcomes-source { font-size: 11px; margin-top: 8px; opacity: 0.6; }
@@ -2713,7 +2713,7 @@
   transition: border-color 160ms ease, transform 160ms ease;
 }
 .admin-quick-card:hover { border-color: rgba(94, 234, 212, 0.32); transform: translateX(4px); }
-.admin-quick-card > i:first-child { font-size: 20px; color: #5eead4; }
+.admin-quick-card > i:first-child { font-size: 20px; color: #22e3ff; }
 .admin-quick-card strong { display: block; font-size: 13px; }
 .admin-quick-card span { font-size: 11px; color: rgba(248, 251, 255, 0.55); }
 .admin-quick-arrow { font-size: 12px; color: rgba(255, 255, 255, 0.35); }
@@ -2769,7 +2769,7 @@
   font-style: normal;
   font-weight: 600;
   font-size: 12px;
-  color: #5eead4;
+  color: #22e3ff;
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px dashed rgba(94, 234, 212, 0.2);
@@ -2790,7 +2790,7 @@
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
-  color: #5eead4;
+  color: #22e3ff;
 }
 
 .admin-table-row--six {
@@ -2804,7 +2804,7 @@
 }
 
 .admin-nav-badge {
-  background: linear-gradient(135deg, #22e3ff, #10b981);
+  background: linear-gradient(135deg, #22e3ff, #22e3ff);
   color: #0a0a0a;
   font-weight: 700;
 }
@@ -2841,7 +2841,7 @@
   border-color: rgba(94, 234, 212, 0.6);
   box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.18) inset;
 }
-.admin-segment-card--green  { border-left: 3px solid #10b981; }
+.admin-segment-card--green  { border-left: 3px solid #22e3ff; }
 .admin-segment-card--blue   { border-left: 3px solid #22e3ff; }
 .admin-segment-card--amber  { border-left: 3px solid #f59e0b; }
 .admin-segment-card--rose   { border-left: 3px solid #f43f5e; }
@@ -2853,7 +2853,7 @@
   font-size: 13px;
   color: rgba(248, 251, 255, 0.7);
 }
-.admin-segment-card-head i { color: #5eead4; }
+.admin-segment-card-head i { color: #22e3ff; }
 .admin-segment-card-head span { flex: 1; font-weight: 600; }
 .admin-segment-card-head strong { font-size: 22px; color: #f8fbff; }
 .admin-segment-card p {
@@ -2866,7 +2866,7 @@
   font-style: normal;
   font-size: 11px;
   font-weight: 600;
-  color: #5eead4;
+  color: #22e3ff;
   padding-top: 6px;
   border-top: 1px dashed rgba(94, 234, 212, 0.2);
   margin-top: 4px;
@@ -2874,7 +2874,7 @@
 .admin-segment-card-active {
   font-size: 10px;
   font-weight: 700;
-  color: #5eead4;
+  color: #22e3ff;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2939,7 +2939,7 @@
   background: rgba(15, 23, 42, 0.55);
   border-radius: 8px;
 }
-.admin-user-drawer-stats strong { font-size: 20px; color: #5eead4; }
+.admin-user-drawer-stats strong { font-size: 20px; color: #22e3ff; }
 .admin-user-drawer-stats em {
   font-style: normal;
   font-size: 10px;
@@ -3045,7 +3045,7 @@
   background: radial-gradient(circle at 100% 0%, rgba(94, 234, 212, 0.14), transparent 55%);
   pointer-events: none;
 }
-.admin-econ-hero--green { border-color: rgba(16, 185, 129, 0.42); }
+.admin-econ-hero--green { border-color: rgba(34, 227, 255, 0.42); }
 .admin-econ-hero--amber { border-color: rgba(251, 191, 36, 0.40); background: linear-gradient(135deg, rgba(251, 191, 36, 0.10), rgba(34, 227, 255, 0.06)); }
 .admin-econ-hero--rose  { border-color: rgba(244, 63, 94, 0.42);  background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(251, 191, 36, 0.06)); }
 .admin-econ-hero--subtle{ opacity: 0.85; }
@@ -3090,7 +3090,7 @@
   background: rgba(15, 23, 42, 0.5);
   border-radius: 10px;
 }
-.admin-econ-hero-stats strong { font-size: 18px; color: #5eead4; }
+.admin-econ-hero-stats strong { font-size: 18px; color: #22e3ff; }
 .admin-econ-hero-stats em {
   font-size: 11px;
   font-style: normal;
@@ -3107,7 +3107,7 @@
   display: inline-block;
   padding: 3px 10px;
   background: rgba(94, 234, 212, 0.12);
-  color: #5eead4;
+  color: #22e3ff;
   font-weight: 700;
   border-radius: 999px;
   font-size: 12px;
@@ -3127,7 +3127,7 @@
   background: rgba(94, 234, 212, 0.08);
   padding: 1px 6px;
   border-radius: 4px;
-  color: #5eead4;
+  color: #22e3ff;
 }
 @media (max-width: 1024px) {
   .admin-table-row--client-err { grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -3308,7 +3308,7 @@
   gap: 6px;
 }
 .admin-users-pager-status strong {
-  color: #5eead4;
+  color: #22e3ff;
   font-weight: 600;
 }
 #admin-users-query-clear {
@@ -3468,7 +3468,7 @@
   height: 16px;
   margin: 0;
   cursor: pointer;
-  accent-color: #5eead4;
+  accent-color: #22e3ff;
 }
 
 .admin-bulk-toolbar {
@@ -3492,7 +3492,7 @@
   font-size: 13px;
 }
 .admin-bulk-count strong {
-  color: #5eead4;
+  color: #22e3ff;
   font-size: 16px;
   font-weight: 700;
   margin-right: 4px;
@@ -3532,7 +3532,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: var(--pct, 0%);
-  background: linear-gradient(90deg, #5eead4, #a78bfa);
+  background: linear-gradient(90deg, #22e3ff, #a78bfa);
   border-radius: 3px;
   transition: width 0.2s ease;
 }
@@ -3570,9 +3570,9 @@
 }
 .admin-freshness i.fa-solid { font-size: 10px; }
 .admin-freshness--fresh {
-  background: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.25);
-  color: #86efac;
+  background: rgba(34, 227, 255, 0.08);
+  border-color: rgba(34, 227, 255, 0.25);
+  color: #9fe9ff;
 }
 .admin-freshness--aging {
   background: rgba(250, 204, 21, 0.08);
@@ -3658,7 +3658,7 @@
 .admin-first-load-spinner {
   width: 22px; height: 22px; border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.12);
-  border-top-color: #5eead4;
+  border-top-color: #22e3ff;
   animation: admin-first-load-spin 600ms linear infinite;
   margin-top: 4px;
 }
@@ -3699,7 +3699,7 @@
 .admin-tc-filters .btn-ghost.is-active {
   background: rgba(94, 234, 212, 0.12);
   border-color: rgba(94, 234, 212, 0.4);
-  color: #5eead4;
+  color: #22e3ff;
 }
 .admin-tc-toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 
@@ -3753,7 +3753,7 @@
 .admin-tc-cell--actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .admin-tc-danger:hover { background: rgba(244, 63, 94, 0.12); color: #fda4af; }
 
-.chip.success { background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.3); color: #86efac; }
+.chip.success { background: rgba(34, 227, 255, 0.12); border-color: rgba(34, 227, 255, 0.3); color: #9fe9ff; }
 .chip.warning { background: rgba(244, 63, 94, 0.12); border-color: rgba(244, 63, 94, 0.3); color: #fda4af; }
 
 @media (max-width: 900px) {
@@ -4239,4 +4239,69 @@
 /* Misc green health rows → cyan. */
 .admin-decision-row--green { border-color: rgba(34, 227, 255, 0.24); background: rgba(34, 227, 255, 0.07); }
 .admin-sla-row--green > span { background: #22e3ff; color: #22e3ff; }
+
+/* =====================================================================
+   AURORA CONSOLE — Phase 2.3: kill ALL remaining green
+   ---------------------------------------------------------------------
+   Sweeps the teal text accents (#22e3ff), solid greens, cyan→green
+   gradients, and "--green / --fresh / --pass / --resolved" semantic
+   modifiers scattered through the deeper sections → cyan (good), violet
+   (gradient pair), slate tracks. After this there is no green left.
+   ===================================================================== */
+
+/* Teal/green value + accent text → cyan. */
+.admin-action-card-action,
+.admin-bulk-count strong,
+.admin-copy--list code,
+.admin-coverage-pill,
+.admin-outcomes-stats strong,
+.admin-priority-rank span,
+.admin-quick-card > i:first-child,
+.admin-segment-card-action,
+.admin-segment-card-active,
+.admin-segment-card-head i,
+.admin-user-drawer-stats strong,
+.admin-users-pager-status strong,
+.admin-econ-hero-stats strong,
+.admin-weekly-delta--green,
+.admin-readiness-card.is-pass i { color: #22e3ff; }
+
+/* Solid greens → cyan. */
+.admin-chart-legend i { background: #22e3ff; }
+.admin-line-chart circle { fill: #22e3ff; }
+.admin-first-load-spinner { border-top-color: #22e3ff; }
+.admin-users-cell-check input[type="checkbox"] { accent-color: #22e3ff; }
+
+/* cyan→green gradients → cyan→violet (slate tracks). */
+.admin-bulk-progress::after { background: linear-gradient(90deg, #22e3ff, #b06bff); }
+.admin-channel-row i::before { background: linear-gradient(90deg, #22e3ff, #b06bff); }
+.admin-cohort-card span {
+  background:
+    linear-gradient(90deg, #b06bff, #22e3ff) 0 0 / var(--bar) 100% no-repeat,
+    rgba(255, 255, 255, 0.06);
+}
+
+/* "good" semantic modifiers (green tints) → cyan tints. */
+.admin-health-pill--green { background: rgba(34, 227, 255, 0.10); border-color: rgba(34, 227, 255, 0.32); color: #9fe9ff; }
+.admin-freshness--fresh { background: rgba(34, 227, 255, 0.08); border-color: rgba(34, 227, 255, 0.25); color: #9fe9ff; }
+.admin-funnel-step-head b { background: rgba(34, 227, 255, 0.12); border: 1px solid rgba(34, 227, 255, 0.25); color: #9fe9ff; }
+.admin-readiness-card.is-pass { background: rgba(34, 227, 255, 0.06); }
+.admin-incident-row--resolved { border-color: rgba(34, 227, 255, 0.20); }
+.admin-econ-hero--green { border-color: rgba(34, 227, 255, 0.34); }
+.admin-north-star--green { border-color: rgba(34, 227, 255, 0.40); }
+.admin-segment-card--green { border-color: rgba(34, 227, 255, 0.30); }
+.admin-retention-cell--green { background: rgba(34, 227, 255, 0.12); color: #9fe9ff; }
+.admin-weekly-row--green { border-color: rgba(34, 227, 255, 0.24); }
+.admin-tc-filters .btn-ghost.is-active { border-color: rgba(34, 227, 255, 0.40); color: #22e3ff; }
+
+/* Mobile topbar primary button green → cyan→violet gradient. */
+.admin-topbar-actions .btn-primary { background: linear-gradient(135deg, #22e3ff, #b06bff); border: 0; color: #04121a; }
+
+/* Phase 2.2 — North Star activity sparkline. */
+.admin-ns-spark { margin-top: 14px; }
+.admin-ns-spark-label {
+  display: block; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--color-text-dim, #5a6179); font-weight: 700; margin-bottom: 7px;
+}
+.admin-ns-spark .admin-chart-bars { min-height: 34px; }
 
