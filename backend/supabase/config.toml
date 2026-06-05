@@ -239,3 +239,8 @@ verify_jwt = false
 # Public content view/click tracking (Phase 4). Unauthenticated insert.
 [functions.content-track]
 verify_jwt = false
+
+# Referral codes + stats (authed user) and leaderboard (authed admin).
+# Validates auth in-code via getAuthedUser/getAuthedAdmin.
+[functions.referral]
+verify_jwt = false

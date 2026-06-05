@@ -62,6 +62,33 @@
     );
   }
 
+  // Referral leaderboard (top referrers). Data via the referral edge fn.
+  function renderReferrals() {
+    var state = ensureState();
+    var rows = state.referrals || [];
+    var cell = 'style="padding:6px 8px;text-align:right;"';
+    var body = rows.length
+      ? rows.map(function (r) {
+          return "<tr><td style=\"padding:6px 8px;\">" + st(r.full_name || r.referrer_id || "—") + "</td>" +
+            "<td style=\"padding:6px 8px;text-align:right;color:var(--accent,#7cf0ff);font-weight:600;\">" + (r.referrals || 0) + "</td>" +
+            "<td " + cell + ">" + (r.rewarded || 0) + "</td></tr>";
+        }).join("")
+      : "<tr><td colspan=\"3\" style=\"padding:10px 8px;color:var(--col-muted,#888);\">No referrals yet. Users get their invite link from Settings → Invite friends.</td></tr>";
+    return (
+      '<article class="admin-panel" style="margin-bottom:16px;">' +
+        '<div class="admin-panel-head"><div><span>Marketing &amp; Brand</span><h2>Referral leaderboard</h2></div>' +
+          '<button class="btn btn--ghost btn--sm" data-content-action="referrals-close">Hide</button></div>' +
+        '<p style="font-size:12.5px;color:var(--col-muted,#888);margin-bottom:10px;">Top referrers by confirmed signups. Rewards are granted manually — flip a referral to “rewarded” when you fulfil it.</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="text-align:left;color:var(--col-muted,#999);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));">' +
+            '<th style="padding:6px 8px;">Referrer</th><th style="padding:6px 8px;text-align:right;">Referrals</th>' +
+            '<th style="padding:6px 8px;text-align:right;">Rewarded</th></tr></thead>' +
+          "<tbody>" + body + "</tbody>" +
+        "</table>" +
+      "</article>"
+    );
+  }
+
   function getCsrfNonce() {
     try {
       var n = sessionStorage.getItem("cb_admin_csrf_nonce");
@@ -98,6 +125,21 @@
       .then(function (res) {
         if (res.error) throw res.error;
         if (res.data && res.data.ok === false) throw new Error(res.data.error || "Cadence failed");
+        return res.data;
+      });
+  }
+
+  // Referral leaderboard (admin JWT path) via the standalone referral fn.
+  function callReferralAdmin() {
+    var auth = window.CBV2.auth;
+    var client = auth && auth.getClient && auth.getClient();
+    if (!(client && client.functions && typeof client.functions.invoke === "function")) {
+      return Promise.reject(new Error("Supabase client unavailable."));
+    }
+    return client.functions.invoke("referral", { body: { action: "leaderboard" }, headers: { "X-CB-Admin-Nonce": getCsrfNonce() } })
+      .then(function (res) {
+        if (res.error) throw res.error;
+        if (res.data && res.data.ok === false) throw new Error(res.data.error || "Leaderboard failed");
         return res.data;
       });
   }
@@ -290,6 +332,7 @@
       statsHtml +
       formHtml +
       (state.showPerf ? renderScorecard() : "") +
+      (state.showReferrals ? renderReferrals() : "") +
       '<article class="admin-panel">' +
         '<div class="admin-panel-head">' +
           '<div><span>Marketing &amp; Brand</span><h2>Content Studio</h2></div>' +
@@ -298,6 +341,7 @@
             '<button class="btn btn--ghost btn--sm" data-content-action="new">+ New content</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="cadence"><i class="fa-solid fa-bolt"></i> Run cadence now</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="perf"><i class="fa-solid fa-chart-line"></i> Performance</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="referrals"><i class="fa-solid fa-user-group"></i> Referrals</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -343,6 +387,13 @@
         return;
       }
       if (action === "perf-close") { state.showPerf = false; rerender(); return; }
+      if (action === "referrals") {
+        callReferralAdmin()
+          .then(function (d) { state.referrals = (d && d.leaderboard) || []; state.showReferrals = true; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Couldn't load referrals."); });
+        return;
+      }
+      if (action === "referrals-close") { state.showReferrals = false; rerender(); return; }
       if (action === "edit") {
         callApi("get", { id: id }).then(function (data) { state.editing = data.piece; state.creating = false; rerender(); })
           .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Load failed."); });

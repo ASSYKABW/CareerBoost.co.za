@@ -117,6 +117,7 @@ const SCRIPTS = [
   "./src/js/modules/settings/settings.meta.js",
   "./src/js/modules/settings/settings.billing.js",
   "./src/js/modules/settings/settings.intel.js",
+  "./src/js/modules/settings/settings.referral.js",
   "./src/js/modules/settings/settings.route.js",
   "./src/js/modules/admin/admin-helpers.js",
   "./src/js/modules/admin/admin-realtime.js",
