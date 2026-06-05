@@ -253,6 +253,32 @@
     );
   }
 
+  // ── PWA push notifications panel ──────────────────────────────────────
+  function renderPush() {
+    var state = ensureState();
+    var p = state.push;
+    if (!p) return "";
+    var pauseChip = p.paused ? '<span class="chip amber">Paused</span>' : '<span class="chip green">Active</span>';
+    var pauseBtn = p.paused
+      ? '<button class="btn btn--primary btn--sm" data-content-action="push-pause" data-paused="0">Resume push</button>'
+      : '<button class="btn btn--ghost btn--sm" data-content-action="push-pause" data-paused="1">Pause push</button>';
+    var lbl = 'style="display:block;font-size:12px;color:var(--col-muted,#999);margin:8px 0 4px;"';
+    return (
+      '<article class="admin-panel" style="margin-bottom:16px;">' +
+        '<div class="admin-panel-head"><div><span>Marketing &amp; Brand</span><h2>Push notifications ' + pauseChip + '</h2></div>' +
+          '<div style="display:flex;gap:8px;">' + pauseBtn +
+          '<button class="btn btn--ghost btn--sm" data-content-action="push-close">Hide</button></div></div>' +
+        '<p style="font-size:13px;color:var(--col-muted,#888);margin-bottom:10px;"><strong>' + (p.subscribers || 0) + '</strong> subscribed device' + ((p.subscribers === 1) ? '' : 's') + '. Sends to every subscriber; dead subscriptions are pruned automatically.</p>' +
+        "<label " + lbl + ">Title</label><input class=\"admin-input\" id=\"cs-push-title\" maxlength=\"120\" style=\"width:100%;\" placeholder=\"New jobs matching your profile\" />" +
+        "<label " + lbl + ">Body</label><textarea class=\"admin-input\" id=\"cs-push-body\" maxlength=\"300\" style=\"width:100%;min-height:60px;\" placeholder=\"3 new roles in Cape Town were just posted. Tap to view.\"></textarea>" +
+        "<label " + lbl + ">Link (path or URL, optional)</label><input class=\"admin-input\" id=\"cs-push-url\" style=\"width:100%;\" placeholder=\"/#/job-search\" />" +
+        '<div style="display:flex;gap:8px;margin-top:10px;">' +
+          '<button class="btn btn--primary btn--sm" data-content-action="push-broadcast"' + (state.pushBusy ? " disabled" : "") + ">" + (state.pushBusy ? "Sending…" : "Send to all subscribers") + "</button>" +
+        "</div>" +
+      "</article>"
+    );
+  }
+
   function getCsrfNonce() {
     try {
       var n = sessionStorage.getItem("cb_admin_csrf_nonce");
@@ -304,6 +330,22 @@
       .then(function (res) {
         if (res.error) throw res.error;
         if (res.data && res.data.ok === false) throw new Error(res.data.error || "Leaderboard failed");
+        return res.data;
+      });
+  }
+
+  // PWA push admin (stats / pause / send) via the push-send fn (admin JWT).
+  function callPushAdmin(action, payload) {
+    var auth = window.CBV2.auth;
+    var client = auth && auth.getClient && auth.getClient();
+    if (!(client && client.functions && typeof client.functions.invoke === "function")) {
+      return Promise.reject(new Error("Supabase client unavailable."));
+    }
+    var b = Object.assign({ action: action }, payload || {});
+    return client.functions.invoke("push-send", { body: b, headers: { "X-CB-Admin-Nonce": getCsrfNonce() } })
+      .then(function (res) {
+        if (res.error) throw res.error;
+        if (res.data && res.data.ok === false) throw new Error(res.data.error || "Push request failed");
         return res.data;
       });
   }
@@ -499,6 +541,7 @@
       (state.showReferrals ? renderReferrals() : "") +
       (state.showExperiments ? renderExperiments() : "") +
       (state.showLifecycle ? renderLifecycle() : "") +
+      (state.showPush ? renderPush() : "") +
       '<article class="admin-panel">' +
         '<div class="admin-panel-head">' +
           '<div><span>Marketing &amp; Brand</span><h2>Content Studio</h2></div>' +
@@ -510,6 +553,7 @@
             '<button class="btn btn--ghost btn--sm" data-content-action="referrals"><i class="fa-solid fa-user-group"></i> Referrals</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="experiments"><i class="fa-solid fa-flask"></i> A/B tests</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="lifecycle"><i class="fa-solid fa-envelope-open-text"></i> Lifecycle email</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="push"><i class="fa-solid fa-bell"></i> Push</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -636,6 +680,37 @@
         return;
       }
       if (action === "lifecycle-close") { state.showLifecycle = false; rerender(); return; }
+
+      // ── PWA push ─────────────────────────────────────────────────────
+      if (action === "push") {
+        callPushAdmin("stats")
+          .then(function (d) { state.push = d || {}; state.showPush = true; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Couldn't load push."); });
+        return;
+      }
+      if (action === "push-close") { state.showPush = false; rerender(); return; }
+      if (action === "push-pause") {
+        var wantP = btn.getAttribute("data-paused") === "1";
+        callPushAdmin("pause", { paused: wantP }).then(function () {
+          if (window.CBV2.toast) window.CBV2.toast.success(wantP ? "Push paused." : "Push resumed.");
+          return callPushAdmin("stats");
+        }).then(function (d) { state.push = d || state.push; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Update failed."); });
+        return;
+      }
+      if (action === "push-broadcast") {
+        var ptitle = val("cs-push-title").trim();
+        if (!ptitle) { if (window.CBV2.toast) window.CBV2.toast.error("Add a title first."); return; }
+        if (!confirm("Send this push to all " + ((state.push && state.push.subscribers) || 0) + " subscribers?")) return;
+        state.pushBusy = true; rerender();
+        callPushAdmin("send", { segment: "all", title: ptitle, body: val("cs-push-body").trim(), url: val("cs-push-url").trim() || "/" })
+          .then(function (d) {
+            state.pushBusy = false; rerender();
+            if (window.CBV2.toast) window.CBV2.toast.success("Sent: " + (d.sent || 0) + " · failed " + (d.failed || 0) + " · pruned " + (d.pruned || 0));
+          })
+          .catch(function (err) { state.pushBusy = false; rerender(); if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Send failed."); });
+        return;
+      }
       if (action === "email-pause") {
         var wantPause = btn.getAttribute("data-paused") === "1";
         callApi("email-pause", { paused: wantPause }).then(function () {
