@@ -87,6 +87,93 @@ function rowFromGenerated(type: string, brief: string, d: Record<string, unknown
   };
 }
 
+// ── auto-learn: bias the cadence toward themes that actually convert ──────
+//
+// Each rotation entry is a recurring theme, identified by its `brief` (which
+// marketing-cron stamps into source_data.brief on every draft). We score the
+// published descendants of each theme by on-site engagement (content_events)
+// + attributed signups (profiles.utm_campaign = slug), then pick the best
+// theme most of the time and explore the full rotation the rest of the time.
+// Falls back to plain day-rotation on cold start / insufficient data, and is
+// fully defensive — any failure degrades to the original rotation.
+const EVENT_WEIGHT: Record<string, number> = { view: 1, click: 3, share: 5 };
+const SIGNUP_WEIGHT = 10;
+
+interface Selection {
+  type: string;
+  brief: string;
+  mode: "explore" | "exploit" | "cold-start" | "no-signal" | "error";
+  score?: number;
+}
+
+async function pickTopic(
+  svc: ReturnType<typeof getServiceClient>,
+  dayIdx: number,
+): Promise<Selection> {
+  const rotation = TOPIC_ROTATION[dayIdx % TOPIC_ROTATION.length];
+  const fallback = (mode: Selection["mode"]): Selection => ({ type: rotation.type, brief: rotation.brief, mode });
+
+  // ~40% of runs explore: cycle the whole rotation so every theme — including
+  // off-site social posts that carry no on-site tracking — keeps getting made.
+  if (dayIdx % 5 < 2) return fallback("explore");
+
+  try {
+    const since = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: pieces } = await svc
+      .from("content_pieces")
+      .select("slug, source_data")
+      .eq("status", "published")
+      .not("slug", "is", null)
+      .gte("published_at", since)
+      .limit(500);
+    if (!pieces || pieces.length < 3) return fallback("cold-start");
+
+    const slugs = pieces.map((p) => p.slug as string);
+    const [evRes, sgRes] = await Promise.all([
+      svc.from("content_events").select("slug, event").in("slug", slugs).limit(20000),
+      svc.from("profiles").select("utm_campaign").in("utm_campaign", slugs).limit(5000),
+    ]);
+    const events = evRes.data ?? [];
+    if (events.length < 15) return fallback("cold-start");
+
+    // Per-slug performance score.
+    const slugScore: Record<string, number> = {};
+    slugs.forEach((s) => { slugScore[s] = 0; });
+    events.forEach((e) => {
+      const w = EVENT_WEIGHT[String(e.event)] ?? 0;
+      if (e.slug != null) slugScore[e.slug as string] = (slugScore[e.slug as string] ?? 0) + w;
+    });
+    (sgRes.data ?? []).forEach((r) => {
+      const c = r.utm_campaign as string | null;
+      if (c && c in slugScore) slugScore[c] += SIGNUP_WEIGHT;
+    });
+
+    // Aggregate by theme (brief) → average score per published descendant.
+    const byBrief: Record<string, { score: number; n: number }> = {};
+    pieces.forEach((p) => {
+      const sd = p.source_data && typeof p.source_data === "object" ? p.source_data as Record<string, unknown> : null;
+      const brief = sd ? String(sd.brief || "") : "";
+      if (!brief) return;
+      if (!byBrief[brief]) byBrief[brief] = { score: 0, n: 0 };
+      byBrief[brief].score += slugScore[p.slug as string] ?? 0;
+      byBrief[brief].n += 1;
+    });
+
+    let best: { type: string; brief: string } | null = null;
+    let bestAvg = -1;
+    for (const entry of TOPIC_ROTATION) {
+      const agg = byBrief[entry.brief];
+      if (!agg || agg.n === 0) continue;
+      const avg = agg.score / agg.n;
+      if (avg > bestAvg) { bestAvg = avg; best = entry; }
+    }
+    if (best && bestAvg > 0) return { type: best.type, brief: best.brief, mode: "exploit", score: Number(bestAvg.toFixed(2)) };
+    return fallback("no-signal");
+  } catch {
+    return fallback("error");
+  }
+}
+
 Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
@@ -138,14 +225,18 @@ Deno.serve(withCors(async (req) => {
       return jsonResponse({ ok: true, task, piece: data });
     }
 
-    // default: a single rotating content draft
-    const idx = Math.floor(Date.now() / (24 * 60 * 60 * 1000)) % TOPIC_ROTATION.length;
-    const topic = TOPIC_ROTATION[idx];
+    // default: a single rotating content draft, biased by what's converting
+    const dayIdx = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+    const topic = await pickTopic(svc, dayIdx);
     const d = await generate(topic.type, topic.brief, voice);
     const row = rowFromGenerated(topic.type, topic.brief, d);
+    row.source_data = {
+      ...(row.source_data as Record<string, unknown>),
+      selection: { mode: topic.mode, score: topic.score ?? null },
+    };
     const { data, error } = await svc.from("content_pieces").insert(row).select("id, title, type").maybeSingle();
     if (error) return errorResponse("draft insert failed: " + error.message, 500);
-    return jsonResponse({ ok: true, task: "draft", piece: data });
+    return jsonResponse({ ok: true, task: "draft", piece: data, selection: { mode: topic.mode, score: topic.score ?? null } });
   } catch (err) {
     return errorResponse("Generation failed: " + ((err as Error).message || String(err)), 502);
   }
