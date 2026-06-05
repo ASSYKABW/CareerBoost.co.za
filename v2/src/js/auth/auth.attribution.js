@@ -61,6 +61,9 @@
         utm_campaign: params.get("utm_campaign") || existing.utm_campaign || null,
         utm_content: params.get("utm_content") || existing.utm_content || null,
         utm_term: params.get("utm_term") || existing.utm_term || null,
+        // Referral code (?ref=CODE). First-touch wins, like UTMs — the code
+        // that drove the visit gets the credit on signup.
+        ref_code: (params.get("ref") || existing.ref_code || "").toString().trim().slice(0, 32) || null,
       };
       // Landing path is captured fresh each visit (most recent wins) so
       // even if a returning visitor lands on a different page, we know
@@ -112,6 +115,7 @@
       utm_term: bundle.utm_term || null,
       referrer_host: bundle.referrer_host || null,
       landing_path: bundle.landing_path || null,
+      ref_code: bundle.ref_code || null,
     };
 
     try {
