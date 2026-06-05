@@ -17,7 +17,7 @@
   window.CBAdmin = window.CBAdmin || {};
   window.CBAdmin.sections = window.CBAdmin.sections || {};
 
-  function renderNorthStar(northStar, h) {
+  function renderNorthStar(northStar, h, dailyActive) {
     const st = h.st;
     if (!northStar) {
       return (
@@ -38,6 +38,16 @@
       : "subtle";
     const deltaLabel = (northStar.delta > 0 ? "+" : "") + northStar.delta +
       " (" + (northStar.deltaPct > 0 ? "+" : "") + northStar.deltaPct + "%)";
+    // BE-1: a 30-day activity sparkline (active users) — the one clean daily
+    // series in the payload. Clearly labelled so it reads as context, not the
+    // placements metric itself.
+    const sparkSeries = (dailyActive || []).map(function (d) { return Number(d.activeUsers || 0); });
+    const spark = sparkSeries.length
+      ? '<div class="admin-ns-spark">' +
+          '<span class="admin-ns-spark-label">Active users · 30d</span>' +
+          '<div class="admin-chart-bars">' + h.renderSparkBars(sparkSeries) + '</div>' +
+        '</div>'
+      : "";
     return (
       '<section class="admin-north-star admin-north-star--' + st(northStar.progressTone || "blue") + '">' +
         '<div class="admin-north-star-copy">' +
@@ -58,6 +68,7 @@
           '</div>' +
           '<div class="admin-north-star-progress-bar"><i style="--bar:' + Math.min(100, Number(northStar.progress) || 0) + '%"></i></div>' +
           '<small>' + st(northStar.note || "") + '</small>' +
+          spark +
         '</div>' +
       '</section>'
     );
@@ -289,7 +300,7 @@
           metricsBadge +
         '</div>' +
       '</section>' +
-      renderNorthStar(data.northStar, h) +
+      renderNorthStar(data.northStar, h, data.dailyActive) +
       renderAarrrStrip(data.aarrr, h) +
       renderPriorities(data.priorities, h) +
       '<section class="admin-grid admin-grid--command">' +
