@@ -547,7 +547,10 @@
     const groups = sections.map(function (group) {
       const items = group.items.map(function (item) {
         const isActive = item.id === active;
-        const badge = item.badge ? '<span class="admin-nav-badge">' + st(item.badge) + '</span>' : "";
+        // Live attention counts from admin-overview (badges keyed by section id);
+        // falls back to a static item.badge, then to no badge. Amber-styled.
+        const badgeCount = (adminRemote.data && adminRemote.data.badges && adminRemote.data.badges[item.id]) || item.badge || 0;
+        const badge = badgeCount ? '<span class="admin-nav-badge">' + st(badgeCount) + '</span>' : "";
         return (
           '<a class="admin-nav-link' + (isActive ? " is-active" : "") + '" href="#/admin?section=' + item.id + '" data-admin-route="' + item.id + '">' +
             '<i class="fa-solid ' + item.icon + '" aria-hidden="true"></i>' +
