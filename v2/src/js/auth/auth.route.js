@@ -97,6 +97,16 @@
           s(viewState.fullName) + '" /></label>'
         : "";
 
+    // POPIA single opt-in: an explicit, UNticked marketing-consent box at
+    // signup. Bound to viewState so it survives the busy re-render.
+    const marketingOptIn =
+      mode === "signup"
+        ? '<label class="auth-consent" style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;margin:2px 0 4px;cursor:pointer;color:var(--muted,rgba(240,244,255,0.7));">' +
+          '<input type="checkbox" id="auth-marketing-consent"' + (viewState.marketingConsent ? " checked" : "") + ' style="margin-top:2px;flex:none;" />' +
+          "<span>Email me job-search tips and product updates. You can unsubscribe anytime.</span>" +
+          "</label>"
+        : "";
+
     const submitLabel =
       mode === "signup" ? "Create account" :
       mode === "forgot" ? "Send reset link" :
@@ -121,6 +131,7 @@
         ? '<div class="ai-notice"><i class="fa-solid fa-circle-check"></i><div>' +
           s(viewState.info) + "</div></div>"
         : "") +
+      marketingOptIn +
       '<div class="auth-submit-row">' +
       '<button class="btn-primary" id="auth-submit" type="submit"' +
       (viewState.busy ? " disabled" : "") + ">" +
@@ -199,6 +210,8 @@
     viewState.email = e ? e.value.trim() : viewState.email;
     viewState.password = p ? p.value : viewState.password;
     viewState.fullName = n ? n.value.trim() : viewState.fullName;
+    const mc = document.getElementById("auth-marketing-consent");
+    if (mc) viewState.marketingConsent = !!mc.checked;
   }
 
   async function submit(e) {
@@ -214,6 +227,10 @@
         await window.CBV2.auth.signInWithPassword(viewState.email, viewState.password);
         window.location.hash = "#/dashboard";
       } else if (viewState.mode === "signup") {
+        // Persist the marketing-consent choice so the attribution module can
+        // POST it once the user is authenticated (handles the email-
+        // confirmation delay — the box can't be re-read after navigation).
+        try { localStorage.setItem("cb_marketing_consent", viewState.marketingConsent ? "1" : "0"); } catch (_e) {}
         // P3 signup security: enforce password rules client-side BEFORE
         // hitting the network. Supabase doesn't validate complexity, so
         // this is the only place we can stop "password123" at the door.

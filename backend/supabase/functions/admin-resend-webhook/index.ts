@@ -179,5 +179,33 @@ Deno.serve(withCors(async (req) => {
     return errorResponse("DB update failed: " + error.message, 500);
   }
 
+  // Bounce / complaint → add to the marketing suppression list so the
+  // lifecycle sender never emails this address again. Idempotent (unique
+  // on email). Best-effort: don't fail the webhook if suppression write fails.
+  if (event.type === "email.bounced" || event.type === "email.complained") {
+    try {
+      const { data: logRow } = await svc
+        .from("admin_email_log")
+        .select("recipient_email, recipient_user_id")
+        .eq("resend_message_id", emailId)
+        .maybeSingle();
+      const email = (logRow?.recipient_email || (event.data.to && event.data.to[0]) || "").trim().toLowerCase();
+      if (email) {
+        const reason = event.type === "email.bounced" ? "bounce" : "complaint";
+        await svc.from("email_suppressions").upsert(
+          {
+            user_id: logRow?.recipient_user_id || null,
+            email,
+            reason,
+            detail: String(update.error_message || event.type),
+          },
+          { onConflict: "email" },
+        );
+      }
+    } catch (err) {
+      console.error("[admin-resend-webhook] suppression write failed:", (err as Error).message);
+    }
+  }
+
   return jsonResponse({ ok: true, event: event.type, emailId });
 }));
