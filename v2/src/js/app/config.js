@@ -9,6 +9,11 @@
       supabaseAnon: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZGZma2h3cGJuZ2l1cGZtY3NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2MjE4MDAsImV4cCI6MjA5MjE5NzgwMH0.glvjjwKq3JeOy8HF71JfwzW0m45DvwK8tSbnqxu-JY8",
       // If blank, it's derived from supabaseUrl: https://<ref>.functions.supabase.co
       functionsUrl: "",
+      // PWA Web Push: paste the VAPID *public* key here after generating a
+      // keypair (`npx web-push generate-vapid-keys`). Leave blank to keep push
+      // dormant — the Settings "Push notifications" card stays hidden until set.
+      // The matching PRIVATE key goes in Supabase function secrets, never here.
+      vapidPublicKey: "",
       // Canonical production origin (no trailing slash). When set, auth
       // email redirects (signup confirmation, OAuth, password reset)
       // point HERE so the link works regardless of which device opens
