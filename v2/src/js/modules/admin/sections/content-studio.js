@@ -89,6 +89,97 @@
     );
   }
 
+  // ── A/B experiments (Phase 5b) ────────────────────────────────────────
+  function variantsToText(variants) {
+    return (variants || []).map(function (v) {
+      return [v.id, v.label || "", (v.weight == null ? 1 : v.weight), v.text || ""].join(" | ");
+    }).join("\n");
+  }
+  function parseVariants(text) {
+    return String(text || "").split("\n").map(function (ln) { return ln.trim(); }).filter(Boolean).map(function (ln, i) {
+      var parts = ln.split("|").map(function (p) { return p.trim(); });
+      var id = (parts[0] || ("v" + (i + 1))).toLowerCase().replace(/[^a-z0-9-]/g, "-");
+      var weight = parseFloat(parts[2]);
+      return { id: id, label: parts[1] || id, weight: isFinite(weight) && weight > 0 ? weight : 1, text: parts[3] || "" };
+    });
+  }
+
+  function renderExpResults(key) {
+    var state = ensureState();
+    var rows = (state.expResults && state.expResults[key]) || [];
+    var total = rows.reduce(function (a, r) { return a + (r.views || 0); }, 0);
+    var body = rows.length
+      ? rows.map(function (r) {
+          var ctr = r.views ? ((r.clicks || 0) / r.views * 100).toFixed(1) + "%" : "—";
+          return "<tr><td style=\"padding:5px 8px;\">" + st(r.variant) + "</td>" +
+            "<td style=\"padding:5px 8px;text-align:right;\">" + (r.views || 0) + "</td>" +
+            "<td style=\"padding:5px 8px;text-align:right;\">" + (r.clicks || 0) + "</td>" +
+            "<td style=\"padding:5px 8px;text-align:right;color:var(--accent,#7cf0ff);font-weight:600;\">" + ctr + "</td>" +
+            "<td style=\"padding:5px 8px;text-align:right;\"><button class=\"btn btn--ghost btn--sm\" data-content-action=\"exp-winner\" data-exp-key=\"" + st(key) + "\" data-exp-variant=\"" + st(r.variant) + "\">Declare winner</button></td></tr>";
+        }).join("")
+      : "<tr><td colspan=\"5\" style=\"padding:8px;color:var(--col-muted,#888);\">No exposures yet.</td></tr>";
+    return '<div style="margin:8px 0 4px;padding:10px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;">' +
+      '<div style="font-size:12px;color:var(--col-muted,#999);margin-bottom:6px;">Results for <strong>' + st(key) + '</strong> · ' + total + ' total exposures</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr style="text-align:left;color:var(--col-muted,#999);">' +
+      '<th style="padding:5px 8px;">Variant</th><th style="padding:5px 8px;text-align:right;">Views</th><th style="padding:5px 8px;text-align:right;">Clicks</th><th style="padding:5px 8px;text-align:right;">CTR</th><th></th></tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderExpForm() {
+    var state = ensureState();
+    var f = state.expForm || {};
+    var isEdit = !!f.key;
+    var lbl = 'style="display:block;font-size:12px;color:var(--col-muted,#999);margin:8px 0 4px;"';
+    var inp = 'class="admin-input" style="width:100%;"';
+    var statusOpts = ["draft", "running", "done"].map(function (s) {
+      return '<option value="' + s + '"' + (f.status === s ? " selected" : "") + ">" + s + "</option>";
+    }).join("");
+    return '<article class="admin-panel" style="margin-bottom:12px;border:1px solid rgba(124,240,255,0.25);">' +
+      '<div class="admin-panel-head"><div><span>A/B testing</span><h2>' + (isEdit ? "Edit experiment" : "New experiment") + '</h2></div></div>' +
+      "<label " + lbl + ">Key (slug, stable)</label>" +
+      '<input ' + inp + ' id="exp-key" value="' + st(f.key || "") + '"' + (isEdit ? " readonly" : "") + ' placeholder="hero-cta" />' +
+      "<label " + lbl + ">Name</label><input " + inp + ' id="exp-name" value="' + st(f.name || "") + '" placeholder="Hero CTA copy test" />' +
+      "<label " + lbl + ">Hypothesis (optional)</label><input " + inp + ' id="exp-hyp" value="' + st(f.hypothesis || "") + '" placeholder="Action-led copy converts better" />' +
+      "<label " + lbl + ">Target CSS selector (optional — for no-code copy swaps)</label><input " + inp + ' id="exp-target" value="' + st(f.target || "") + '" placeholder="#hero .cta-primary" />' +
+      "<label " + lbl + '>Variants — one per line: <code>id | label | weight | text</code></label>' +
+      '<textarea class="admin-input" id="exp-variants" style="width:100%;min-height:90px;font-family:monospace;font-size:12px;" placeholder="control | Original | 1 | Get started free&#10;b | Action-led | 1 | Land your next job">' + st(variantsToText(f.variants)) + "</textarea>" +
+      "<label " + lbl + ">Status</label><select class=\"admin-input\" id=\"exp-status\">" + statusOpts + "</select>" +
+      '<div style="display:flex;gap:8px;margin-top:10px;">' +
+        '<button class="btn btn--primary btn--sm" data-content-action="exp-save">Save experiment</button>' +
+        '<button class="btn btn--ghost btn--sm" data-content-action="exp-cancel">Cancel</button>' +
+      "</div></article>";
+  }
+
+  function renderExperiments() {
+    var state = ensureState();
+    var list = state.experiments || [];
+    var rowsHtml = list.length ? list.map(function (e) {
+      var chip = e.status === "running" ? "green" : (e.status === "done" ? "cyan" : "subtle");
+      var vids = (e.variants || []).map(function (v) { return v.id; }).join(", ");
+      var resultsBlock = (state.expResultsKey === e.key) ? renderExpResults(e.key) : "";
+      return '<div style="padding:10px 0;border-bottom:1px solid var(--border,rgba(255,255,255,0.06));">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
+          '<div><strong>' + st(e.name || e.key) + '</strong> <span class="chip ' + chip + '">' + st(e.status) + '</span>' +
+            (e.winner ? ' <span class="chip cyan">winner: ' + st(e.winner) + '</span>' : '') +
+            '<div style="font-size:12px;color:var(--col-muted,#888);">' + st(e.key) + ' · variants: ' + st(vids || "—") + '</div></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="exp-results" data-exp-key="' + st(e.key) + '">Results</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="exp-edit" data-exp-key="' + st(e.key) + '">Edit</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="exp-toggle" data-exp-key="' + st(e.key) + '">' + (e.status === "running" ? "Pause" : "Run") + '</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="exp-delete" data-exp-key="' + st(e.key) + '">Delete</button>' +
+          '</div>' +
+        '</div>' + resultsBlock +
+      '</div>';
+    }).join("") : '<p style="color:var(--col-muted,#888);padding:14px 0;">No experiments yet. Create one, set status to “running”, then add <code>data-ab</code> slots or a target selector on the site.</p>';
+    return (state.expForm ? renderExpForm() : "") +
+      '<article class="admin-panel" style="margin-bottom:16px;">' +
+        '<div class="admin-panel-head"><div><span>Marketing &amp; Brand</span><h2>A/B experiments</h2></div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn btn--primary btn--sm" data-content-action="exp-new">+ New experiment</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="experiments-close">Hide</button></div></div>' +
+        rowsHtml +
+      "</article>";
+  }
+
   function getCsrfNonce() {
     try {
       var n = sessionStorage.getItem("cb_admin_csrf_nonce");
@@ -333,6 +424,7 @@
       formHtml +
       (state.showPerf ? renderScorecard() : "") +
       (state.showReferrals ? renderReferrals() : "") +
+      (state.showExperiments ? renderExperiments() : "") +
       '<article class="admin-panel">' +
         '<div class="admin-panel-head">' +
           '<div><span>Marketing &amp; Brand</span><h2>Content Studio</h2></div>' +
@@ -342,6 +434,7 @@
             '<button class="btn btn--ghost btn--sm" data-content-action="cadence"><i class="fa-solid fa-bolt"></i> Run cadence now</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="perf"><i class="fa-solid fa-chart-line"></i> Performance</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="referrals"><i class="fa-solid fa-user-group"></i> Referrals</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="experiments"><i class="fa-solid fa-flask"></i> A/B tests</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -394,6 +487,71 @@
         return;
       }
       if (action === "referrals-close") { state.showReferrals = false; rerender(); return; }
+
+      // ── A/B experiments ──────────────────────────────────────────────
+      var expKey = btn.getAttribute("data-exp-key");
+      function findExp(key) { return (state.experiments || []).filter(function (e) { return e.key === key; })[0] || null; }
+      function expPayload(e, overrides) {
+        return Object.assign({ key: e.key, name: e.name, hypothesis: e.hypothesis, target: e.target, variants: e.variants, status: e.status, winner: e.winner }, overrides || {});
+      }
+      function refreshExps() { return callApi("exp-list").then(function (d) { state.experiments = (d && d.experiments) || []; rerender(); }); }
+      if (action === "experiments") {
+        callApi("exp-list")
+          .then(function (d) { state.experiments = (d && d.experiments) || []; state.showExperiments = true; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Couldn't load experiments."); });
+        return;
+      }
+      if (action === "experiments-close") { state.showExperiments = false; state.expForm = null; rerender(); return; }
+      if (action === "exp-new") { state.expForm = { variants: [] }; rerender(); return; }
+      if (action === "exp-cancel") { state.expForm = null; rerender(); return; }
+      if (action === "exp-edit") { var ee = findExp(expKey); if (ee) { state.expForm = Object.assign({}, ee); rerender(); } return; }
+      if (action === "exp-save") {
+        var payload = {
+          key: val("exp-key"), name: val("exp-name"), hypothesis: val("exp-hyp"),
+          target: val("exp-target"), variants: parseVariants(val("exp-variants")), status: val("exp-status"),
+        };
+        if (state.expForm && state.expForm.winner) payload.winner = state.expForm.winner;
+        if (!payload.key.trim()) { if (window.CBV2.toast) window.CBV2.toast.error("A key (slug) is required."); return; }
+        callApi("exp-save", payload).then(function () {
+          state.expForm = null;
+          if (window.CBV2.toast) window.CBV2.toast.success("Experiment saved.");
+          return refreshExps();
+        }).catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Save failed."); });
+        return;
+      }
+      if (action === "exp-toggle") {
+        var te = findExp(expKey); if (!te) return;
+        callApi("exp-save", expPayload(te, { status: te.status === "running" ? "draft" : "running" }))
+          .then(refreshExps)
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Update failed."); });
+        return;
+      }
+      if (action === "exp-results") {
+        callApi("exp-results", { key: expKey }).then(function (d) {
+          state.expResults = state.expResults || {};
+          state.expResults[expKey] = (d && d.results) || [];
+          state.expResultsKey = (state.expResultsKey === expKey) ? null : expKey;
+          rerender();
+        }).catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Couldn't load results."); });
+        return;
+      }
+      if (action === "exp-winner") {
+        var we = findExp(expKey); if (!we) return;
+        var variant = btn.getAttribute("data-exp-variant");
+        callApi("exp-save", expPayload(we, { status: "done", winner: variant })).then(function () {
+          if (window.CBV2.toast) window.CBV2.toast.success("Winner declared: " + variant);
+          return refreshExps();
+        }).catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Update failed."); });
+        return;
+      }
+      if (action === "exp-delete") {
+        if (!confirm("Delete this experiment? Tracked events are kept.")) return;
+        callApi("exp-delete", { key: expKey }).then(function () {
+          if (window.CBV2.toast) window.CBV2.toast.success("Experiment deleted.");
+          return refreshExps();
+        }).catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Delete failed."); });
+        return;
+      }
       if (action === "edit") {
         callApi("get", { id: id }).then(function (data) { state.editing = data.piece; state.creating = false; rerender(); })
           .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Load failed."); });

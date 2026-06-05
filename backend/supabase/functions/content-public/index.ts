@@ -8,6 +8,7 @@
 //   landing-list     — published programmatic SEO landing pages (list)
 //   landing&slug=..  — a single published SEO landing page (full body)
 //   sitemap          — dynamic XML sitemap (static + published blog + landing)
+//   experiments-active — running A/B experiments (key + variants) for the client
 //   announcements    — active published announcements (in-app banner)
 //
 // Mirrors testimonials-public.
@@ -153,6 +154,22 @@ Deno.serve(withCors(async (req) => {
         "Cache-Control": "public, max-age=600, stale-while-revalidate=300",
       },
     });
+  }
+
+  // ── active A/B experiments (Phase 5b) ────────────────────────────────
+  if (resource === "experiments-active") {
+    try {
+      const { data, error } = await svc
+        .from("marketing_experiments")
+        .select("key, target, variants")
+        .eq("status", "running")
+        .limit(50);
+      if (error) throw error;
+      return jsonOut({ ok: true, experiments: data ?? [] }, 120);
+    } catch (err) {
+      console.error("[content-public] experiments-active:", (err as Error).message);
+      return jsonOut({ ok: true, experiments: [] }, 120);
+    }
   }
 
   // ── active in-app announcements ──────────────────────────────────────
