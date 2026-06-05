@@ -252,3 +252,8 @@ verify_jwt = false
 # Public one-click unsubscribe (no login; per-user token in the link).
 [functions.email-unsubscribe]
 verify_jwt = false
+
+# Lifecycle drip sender (scheduler via X-Cron-Secret OR admin JWT). Hard-gated
+# behind EMAIL_DRIPS_ENABLED=true — no-op until an operator turns it on.
+[functions.email-drip]
+verify_jwt = false
