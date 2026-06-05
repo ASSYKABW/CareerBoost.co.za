@@ -12,3 +12,4 @@ Disallow: /#/auth/verify
 Disallow: /#/auth/reset
 
 Sitemap: https://www.careerboost.co.za/sitemap.xml
+Sitemap: https://www.careerboost.co.za/content-sitemap.xml

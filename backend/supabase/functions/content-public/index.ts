@@ -5,6 +5,9 @@
 //   (none) | brand   — the published brand config (site hydration)
 //   posts            — published blog posts (list, newest first)
 //   post&slug=<slug> — a single published blog post (full body)
+//   landing-list     — published programmatic SEO landing pages (list)
+//   landing&slug=..  — a single published SEO landing page (full body)
+//   sitemap          — dynamic XML sitemap (static + published blog + landing)
 //   announcements    — active published announcements (in-app banner)
 //
 // Mirrors testimonials-public.
@@ -121,12 +124,43 @@ Deno.serve(withCors(async (req) => {
     }
   }
 
+  // ── dynamic sitemap (published blog + landing pages) ─────────────────
+  if (resource === "sitemap") {
+    const base = "https://www.careerboost.co.za";
+    const urls = [base + "/", base + "/blog", base + "/jobs"];
+    try {
+      const { data } = await svc
+        .from("content_pieces")
+        .select("type, slug")
+        .in("type", ["blog", "landing_seo"])
+        .eq("status", "published")
+        .not("slug", "is", null)
+        .limit(2000);
+      (data ?? []).forEach((r) => {
+        const path = r.type === "blog" ? "/blog/" : "/jobs/";
+        urls.push(base + path + r.slug);
+      });
+    } catch (err) {
+      console.error("[content-public] sitemap:", (err as Error).message);
+    }
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      urls.map((u) => "  <url><loc>" + u + "</loc></url>").join("\n") + "\n</urlset>";
+    return new Response(req.method === "HEAD" ? null : xml, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=600, stale-while-revalidate=300",
+      },
+    });
+  }
+
   // ── active in-app announcements ──────────────────────────────────────
   if (resource === "announcements") {
     try {
       const { data, error } = await svc
         .from("content_pieces")
-        .select("id, title, body, published_at")
+        .select("id, title, body, slug, published_at")
         .eq("type", "announcement")
         .eq("status", "published")
         .order("published_at", { ascending: false })

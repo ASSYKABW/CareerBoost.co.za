@@ -148,6 +148,7 @@ const SCRIPTS = [
   "./src/js/app/share-handler.js",
   "./src/js/app/router.js",
   "./src/js/app/bootstrap.js",
+  "./src/js/marketing/announcement-banner.js",
 ];
 
 // Ordered list of stylesheets to bundle. Cascade order matters — tokens
