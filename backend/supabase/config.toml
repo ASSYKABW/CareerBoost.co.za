@@ -261,3 +261,8 @@ verify_jwt = false
 # PWA Web Push subscription store (authed user). Validates in-code.
 [functions.push-subscribe]
 verify_jwt = false
+
+# PWA Web Push sender (admin JWT OR X-Cron-Secret). Gated behind VAPID secrets
+# + brand_settings.push_paused.
+[functions.push-send]
+verify_jwt = false
