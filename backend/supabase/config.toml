@@ -244,3 +244,11 @@ verify_jwt = false
 # Validates auth in-code via getAuthedUser/getAuthedAdmin.
 [functions.referral]
 verify_jwt = false
+
+# Marketing-email consent (authed user). Validates in-code via getAuthedUser.
+[functions.email-consent]
+verify_jwt = false
+
+# Public one-click unsubscribe (no login; per-user token in the link).
+[functions.email-unsubscribe]
+verify_jwt = false

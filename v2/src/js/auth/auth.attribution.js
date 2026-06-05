@@ -116,6 +116,8 @@
       referrer_host: bundle.referrer_host || null,
       landing_path: bundle.landing_path || null,
       ref_code: bundle.ref_code || null,
+      // Marketing-email consent chosen at signup (single opt-in checkbox).
+      marketing_consent: safeReadLocal("cb_marketing_consent") === "1",
     };
 
     try {
@@ -149,6 +151,7 @@
       // Clear the bundle — it served its purpose. Next signup on this
       // browser starts clean.
       safeClearLocal(STORAGE_KEY);
+      safeClearLocal("cb_marketing_consent");
       return result;
     } catch (err) {
       // Soft-fail: don't block sign-in or surface to user. Log to console
