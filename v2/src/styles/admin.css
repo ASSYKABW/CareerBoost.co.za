@@ -4100,3 +4100,106 @@
   }
 }
 
+/* =====================================================================
+   AURORA CONSOLE — brand re-skin (Phase 1)
+   ---------------------------------------------------------------------
+   Appended override layer that retargets the admin's IDENTITY surfaces to
+   the CareerBoost aurora system (cyan #22e3ff → violet #b06bff, amber =
+   "needs you") behind the existing class names — no markup changes, so no
+   section breaks. Semantic greens (success / health / "up") are left alone
+   on purpose. See docs/ADMIN_REDESIGN_BRIEF.md.
+   ===================================================================== */
+
+/* Aurora semantic token layer (admin scope). */
+.admin-shell {
+  --admin-cyan: #22e3ff;
+  --admin-violet: #b06bff;
+  --admin-amber: #ff9d4a;
+  --admin-grad: linear-gradient(135deg, #22e3ff, #b06bff);
+  --admin-glass: linear-gradient(180deg, rgba(14, 18, 32, 0.66), rgba(10, 13, 24, 0.72));
+  --admin-border-a: rgba(255, 255, 255, 0.08);
+  --admin-glow: 0 0 0 1px rgba(34, 227, 255, 0.16), 0 10px 44px rgba(34, 227, 255, 0.06);
+}
+
+/* App canvas: kill the green radial, paint the aurora over deep space. */
+.admin-shell {
+  background:
+    radial-gradient(58% 40% at 16% 8%, rgba(34, 227, 255, 0.10), transparent 60%),
+    radial-gradient(54% 42% at 86% 14%, rgba(176, 107, 255, 0.12), transparent 60%),
+    radial-gradient(70% 55% at 50% 112%, rgba(107, 125, 255, 0.08), transparent 64%),
+    #06070f;
+}
+
+/* Sidebar: deeper space + a faint cyan glow at the top. */
+.admin-sidebar {
+  background: linear-gradient(180deg, rgba(10, 13, 24, 0.96), rgba(6, 7, 15, 0.97));
+  border-right-color: var(--admin-border-a);
+}
+
+/* Wordmark accent: green → cyan. */
+.admin-brand .cb-logo--admin .cb-logo-wordmark span { color: var(--admin-cyan); }
+
+/* Active nav: green → cyan→violet with a gradient left bar + cyan icon. */
+.admin-nav-link.is-active {
+  background: linear-gradient(90deg, rgba(34, 227, 255, 0.16), rgba(176, 107, 255, 0.10));
+  border-color: rgba(34, 227, 255, 0.24);
+  box-shadow: none;
+  position: relative;
+}
+.admin-nav-link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 3px;
+  background: linear-gradient(180deg, #22e3ff, #b06bff);
+}
+.admin-nav-link.is-active i { color: var(--admin-cyan); }
+
+/* Nav badge: green → amber (this is "needs you" / attention). */
+.admin-nav-badge {
+  background: rgba(255, 157, 74, 0.16);
+  color: #ffc78f;
+  border: 1px solid rgba(255, 157, 74, 0.30);
+}
+
+/* Surfaces: slate → glass + aurora border, with a cyan hover. */
+.admin-stat,
+.admin-panel,
+.admin-auth-card,
+.admin-kpi-card {
+  background: var(--admin-glass);
+  border-color: var(--admin-border-a);
+  backdrop-filter: blur(8px);
+}
+.admin-panel:hover,
+.admin-kpi-card:hover { border-color: rgba(34, 227, 255, 0.18); }
+
+/* Numbers speak in mono (instrument-readout voice). */
+.admin-kpi-card strong,
+.admin-stat strong,
+.admin-stat-value,
+.admin-north-star-value strong {
+  font-family: var(--font-family-mono);
+  letter-spacing: -0.02em;
+}
+
+/* Match the brand violet for the violet accent modifiers. */
+.admin-stat--violet { --admin-stat-accent: #b06bff; }
+.admin-kpi-card--violet { --kpi-accent: #b06bff; }
+
+/* Primary buttons → aurora gradient (scoped to the admin shell). */
+.admin-shell .btn-primary,
+.admin-shell .btn.btn--primary {
+  background: var(--admin-grad);
+  color: #04121a;
+  border: 0;
+  box-shadow: var(--admin-glow);
+}
+
+/* Identity gradients that were cyan→green → cyan→violet. */
+.admin-chart-bars span { background: linear-gradient(180deg, #22e3ff, #b06bff); }
+.admin-north-star {
+  background: linear-gradient(135deg, rgba(34, 227, 255, 0.14), rgba(176, 107, 255, 0.10));
+}
+.admin-north-star-progress-bar i { background: linear-gradient(90deg, #22e3ff, #b06bff); }
+
