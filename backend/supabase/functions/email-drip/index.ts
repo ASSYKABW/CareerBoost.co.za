@@ -141,6 +141,15 @@ Deno.serve(withCors(async (req) => {
   const now = Date.now();
   const nowIso = new Date().toISOString();
 
+  // DB kill-switch: operators pause drips from the admin UI without touching
+  // function env. Both gates (env + this flag) must be clear to send.
+  {
+    const { data: bs } = await svc.from("brand_settings").select("drips_paused").eq("id", "default").maybeSingle();
+    if (bs && bs.drips_paused) {
+      return jsonResponse({ ok: true, enabled: true, paused: true, note: "Drips paused by operator (brand_settings.drips_paused)." });
+    }
+  }
+
   // Current consented users (state for fast filtering + enrolment).
   const consented = new Map<string, ConsentInfo>();
   {

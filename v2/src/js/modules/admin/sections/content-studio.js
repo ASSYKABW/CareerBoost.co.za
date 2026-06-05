@@ -180,6 +180,79 @@
       "</article>";
   }
 
+  // ── Lifecycle email dashboard + kill-switch ───────────────────────────
+  function renderLifecycle() {
+    var state = ensureState();
+    var o = state.lifecycle;
+    if (!o) return "";
+    var rate = o.total ? Math.round((o.consented / o.total) * 100) : 0;
+    var cellR = 'style="padding:5px 8px;text-align:right;"';
+
+    // Pivot sequences → { key: {enrolled, completed, stopped} }.
+    var seqMap = {};
+    (o.sequences || []).forEach(function (r) {
+      var k = r.sequence_key || "?"; seqMap[k] = seqMap[k] || {};
+      seqMap[k][r.status] = (seqMap[k][r.status] || 0) + (r.n || 0);
+    });
+    var seqRows = Object.keys(seqMap).sort().map(function (k) {
+      var s = seqMap[k];
+      return "<tr><td style=\"padding:5px 8px;\">" + st(k) + "</td>" +
+        "<td " + cellR + ">" + (s.enrolled || 0) + "</td>" +
+        "<td " + cellR + ">" + (s.completed || 0) + "</td>" +
+        "<td " + cellR + ">" + (s.stopped || 0) + "</td></tr>";
+    }).join("") || '<tr><td colspan="4" style="padding:8px;color:var(--col-muted,#888);">No one enrolled yet.</td></tr>';
+
+    // Pivot sends → { send_type: {sent, delivered, bounced, complained, opened, failed} }.
+    var sendMap = {};
+    (o.sends || []).forEach(function (r) {
+      var k = r.send_type || "?"; sendMap[k] = sendMap[k] || {};
+      sendMap[k][r.status] = (sendMap[k][r.status] || 0) + (r.n || 0);
+    });
+    var sendRows = Object.keys(sendMap).sort().map(function (k) {
+      var s = sendMap[k];
+      var total = Object.keys(s).reduce(function (a, key) { return a + s[key]; }, 0);
+      return "<tr><td style=\"padding:5px 8px;\">" + st(k) + "</td>" +
+        "<td " + cellR + ">" + total + "</td>" +
+        "<td " + cellR + ">" + (s.delivered || 0) + "</td>" +
+        "<td " + cellR + ">" + (s.opened || 0) + "</td>" +
+        "<td " + cellR + ">" + ((s.bounced || 0) + (s.complained || 0)) + "</td></tr>";
+    }).join("") || '<tr><td colspan="5" style="padding:8px;color:var(--col-muted,#888);">No sends logged yet.</td></tr>';
+
+    var pauseBtn = o.paused
+      ? '<button class="btn btn--primary btn--sm" data-content-action="email-pause" data-paused="0">Resume drips</button>'
+      : '<button class="btn btn--ghost btn--sm" data-content-action="email-pause" data-paused="1">Pause drips</button>';
+    var pauseChip = o.paused
+      ? '<span class="chip amber">Paused</span>'
+      : '<span class="chip green">Active</span>';
+
+    return (
+      '<article class="admin-panel" style="margin-bottom:16px;">' +
+        '<div class="admin-panel-head"><div><span>Marketing &amp; Brand</span><h2>Lifecycle email ' + pauseChip + '</h2></div>' +
+          '<div style="display:flex;gap:8px;">' + pauseBtn +
+          '<button class="btn btn--ghost btn--sm" data-content-action="lifecycle-close">Hide</button></div></div>' +
+        '<section class="admin-stat-grid" style="margin-bottom:12px;">' +
+          (window.CBAdmin.helpers && window.CBAdmin.helpers.renderStat
+            ? window.CBAdmin.helpers.renderStat("Opted in", o.consented || 0, rate + "% of " + (o.total || 0) + " users", "cyan") +
+              window.CBAdmin.helpers.renderStat("Suppressed", o.suppressions || 0, "never-send list", (o.suppressions ? "amber" : "subtle"))
+            : "") +
+        "</section>" +
+        '<p style="font-size:12.5px;color:var(--col-muted,#888);margin-bottom:6px;">Sequence progress</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;">' +
+          '<thead><tr style="text-align:left;color:var(--col-muted,#999);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));">' +
+            '<th style="padding:5px 8px;">Sequence</th><th style="padding:5px 8px;text-align:right;">Enrolled</th>' +
+            '<th style="padding:5px 8px;text-align:right;">Completed</th><th style="padding:5px 8px;text-align:right;">Stopped</th></tr></thead>' +
+          "<tbody>" + seqRows + "</tbody></table>" +
+        '<p style="font-size:12.5px;color:var(--col-muted,#888);margin-bottom:6px;">Email sends</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="text-align:left;color:var(--col-muted,#999);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));">' +
+            '<th style="padding:5px 8px;">Type</th><th style="padding:5px 8px;text-align:right;">Total</th>' +
+            '<th style="padding:5px 8px;text-align:right;">Delivered</th><th style="padding:5px 8px;text-align:right;">Opened</th>' +
+            '<th style="padding:5px 8px;text-align:right;">Bounce/Spam</th></tr></thead>' +
+          "<tbody>" + sendRows + "</tbody></table>" +
+      "</article>"
+    );
+  }
+
   function getCsrfNonce() {
     try {
       var n = sessionStorage.getItem("cb_admin_csrf_nonce");
@@ -425,6 +498,7 @@
       (state.showPerf ? renderScorecard() : "") +
       (state.showReferrals ? renderReferrals() : "") +
       (state.showExperiments ? renderExperiments() : "") +
+      (state.showLifecycle ? renderLifecycle() : "") +
       '<article class="admin-panel">' +
         '<div class="admin-panel-head">' +
           '<div><span>Marketing &amp; Brand</span><h2>Content Studio</h2></div>' +
@@ -435,6 +509,7 @@
             '<button class="btn btn--ghost btn--sm" data-content-action="perf"><i class="fa-solid fa-chart-line"></i> Performance</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="referrals"><i class="fa-solid fa-user-group"></i> Referrals</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="experiments"><i class="fa-solid fa-flask"></i> A/B tests</button>' +
+            '<button class="btn btn--ghost btn--sm" data-content-action="lifecycle"><i class="fa-solid fa-envelope-open-text"></i> Lifecycle email</button>' +
             '<button class="btn btn--ghost btn--sm" data-content-action="refresh">Refresh</button>' +
           '</div>' +
         '</div>' +
@@ -550,6 +625,24 @@
           if (window.CBV2.toast) window.CBV2.toast.success("Experiment deleted.");
           return refreshExps();
         }).catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Delete failed."); });
+        return;
+      }
+
+      // ── Lifecycle email ──────────────────────────────────────────────
+      if (action === "lifecycle") {
+        callApi("email-overview")
+          .then(function (d) { state.lifecycle = (d && d.overview) || {}; state.showLifecycle = true; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Couldn't load lifecycle email."); });
+        return;
+      }
+      if (action === "lifecycle-close") { state.showLifecycle = false; rerender(); return; }
+      if (action === "email-pause") {
+        var wantPause = btn.getAttribute("data-paused") === "1";
+        callApi("email-pause", { paused: wantPause }).then(function () {
+          if (window.CBV2.toast) window.CBV2.toast.success(wantPause ? "Drips paused." : "Drips resumed.");
+          return callApi("email-overview");
+        }).then(function (d) { state.lifecycle = (d && d.overview) || state.lifecycle; rerender(); })
+          .catch(function (err) { if (window.CBV2.toast) window.CBV2.toast.error(err.message || "Update failed."); });
         return;
       }
       if (action === "edit") {

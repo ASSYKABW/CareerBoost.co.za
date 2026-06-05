@@ -217,5 +217,22 @@ Deno.serve(withCors(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── lifecycle email dashboard + kill-switch ───────────────────────────
+  if (action === "email-overview") {
+    const { data, error } = await svc.rpc("marketing_email_overview");
+    if (error) return errorResponse("Overview failed: " + error.message, 500);
+    return jsonResponse({ ok: true, overview: data ?? {} });
+  }
+
+  if (action === "email-pause") {
+    const paused = body.paused === true;
+    const { error } = await svc
+      .from("brand_settings")
+      .update({ drips_paused: paused })
+      .eq("id", "default");
+    if (error) return errorResponse("Could not update pause state: " + error.message, 500);
+    return jsonResponse({ ok: true, paused });
+  }
+
   return errorResponse("Unknown action: " + action, 400);
 }));
