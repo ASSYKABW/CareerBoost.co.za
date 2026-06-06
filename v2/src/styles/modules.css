@@ -5654,10 +5654,10 @@ a.settings-status-card:hover {
 /* ── Pricing ─────────────────────────────────────────────────────── */
 .lp-pricing-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 18px;
-  max-width: 900px;
+  max-width: 1160px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -6055,7 +6055,7 @@ a.settings-status-card:hover {
 
   .lp-feature-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-step-grid { grid-template-columns: repeat(2, 1fr); }
-  .lp-pricing-grid { grid-template-columns: repeat(3, 1fr); max-width: 100%; }
+  .lp-pricing-grid { grid-template-columns: repeat(2, 1fr); max-width: 100%; }
   .lp-trust-grid { grid-template-columns: repeat(2, 1fr); }
   .lp-final-card { grid-template-columns: 1fr; gap: 32px; padding: 40px; }
   .lp-footer-grid { grid-template-columns: 1fr 1fr 1fr; gap: 32px; }
