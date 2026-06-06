@@ -168,15 +168,30 @@
       usd: { monthly: 21.99, label: "$21.99", annual: 18.25, annualLabel: "$18.25", annualTotal: "$219" },
       features: [
         "<b>Unlimited</b> resumes + covers",
-        "<b>Unlimited</b> voice mocks",
+        "10 voice mock interviews / mo",
         "<b>Unlimited</b> research + saved jobs",
+        "All 4 personas (voice)",
         "Personal analytics",
-        "Priority AI (faster + smarter)",
-        "Priority support (&lt;24h)",
       ],
       cta: "Get Pro",
       featured: true,
       badge: "Most popular",
+    },
+    {
+      id: "career",
+      name: "Career",
+      fit: "For executives + career changers.",
+      zar: { monthly: 699, label: "R699", annual: 583, annualLabel: "R583", annualTotal: "R6,990" },
+      usd: { monthly: 39.99, label: "$39.99", annual: 29.08, annualLabel: "$29.08", annualTotal: "$349" },
+      features: [
+        "<b>Everything unlimited</b>",
+        "<b>Unlimited</b> voice mock interviews",
+        "Priority AI (faster + smarter)",
+        "Personal analytics",
+        "Priority support (&lt;24h)",
+      ],
+      cta: "Get Career",
+      featured: false,
     },
   ];
 
@@ -456,17 +471,17 @@
   // line items. Values use ✓ / ✗ / numbers — short enough that all
   // four columns stay readable at narrow widths.
   const COMPARE_ROWS = [
-    { label: "AI resume tailorings / mo", values: ["1", "10", "Unlimited"] },
-    { label: "Cover letters / mo",        values: ["2", "15", "Unlimited"] },
-    { label: "Mock interviews / mo",      values: ["1 (text)", "3", "Unlimited voice"] },
-    { label: "Company research / mo",     values: ["1", "5", "Unlimited"] },
-    { label: "Saved jobs",                values: ["5", "100", "Unlimited"] },
-    { label: "Voice mock interviews",     values: ["—", "—", "✓"] },
-    { label: "All 4 interviewer personas",values: ["—", "✓ (text)", "✓ (voice)"] },
-    { label: "Personal analytics",        values: ["—", "—", "✓"] },
-    { label: "Priority AI (faster)",      values: ["—", "—", "✓"] },
-    { label: "Priority support (<24h)",   values: ["—", "—", "✓"] },
-    { label: "Pipeline + extension",      values: ["✓", "✓", "✓"] },
+    { label: "AI resume tailorings / mo", values: ["1", "10", "Unlimited", "Unlimited"] },
+    { label: "Cover letters / mo",        values: ["2", "15", "Unlimited", "Unlimited"] },
+    { label: "Mock interviews / mo",      values: ["1 (text)", "3", "10 voice", "Unlimited voice"] },
+    { label: "Company research / mo",     values: ["1", "5", "Unlimited", "Unlimited"] },
+    { label: "Saved jobs",                values: ["5", "100", "Unlimited", "Unlimited"] },
+    { label: "Voice mock interviews",     values: ["—", "—", "✓", "✓"] },
+    { label: "All 4 interviewer personas",values: ["—", "✓ (text)", "✓ (voice)", "✓ (voice)"] },
+    { label: "Personal analytics",        values: ["—", "—", "✓", "✓"] },
+    { label: "Priority AI (faster)",      values: ["—", "—", "—", "✓"] },
+    { label: "Priority support (<24h)",   values: ["—", "—", "—", "✓"] },
+    { label: "Pipeline + extension",      values: ["✓", "✓", "✓", "✓"] },
   ];
 
   function renderComparisonTable() {
@@ -627,7 +642,7 @@
                 '</header>' +
                 '<div class="lp-pricing-grid">' + cards + '</div>' +
                 renderComparisonTable() +
-                '<p class="lp-pricing-foot">Secure checkout. Cancel anytime from Billing.</p>' +
+                '<p class="lp-pricing-foot">Secure checkout. Cancel anytime from Billing. International cards welcome — your bank converts automatically.</p>' +
               '</div>' +
             '</section>'
           );

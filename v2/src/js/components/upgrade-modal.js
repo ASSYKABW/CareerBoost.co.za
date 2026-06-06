@@ -34,8 +34,8 @@
       id: "plus",
       label: "Plus",
       prices: {
-        ZAR: { monthly: 179,  annual: 1790 },
-        USD: { monthly: 9.99, annual: 89   },
+        ZAR: { monthly: 210,  annual: 2100 },
+        USD: { monthly: 11.99, annual: 119 },
       },
       tagline: "For active job seekers",
       perks: [
@@ -50,8 +50,8 @@
       id: "pro",
       label: "Pro",
       prices: {
-        ZAR: { monthly: 349,   annual: 3490 },
-        USD: { monthly: 19.99, annual: 179  },
+        ZAR: { monthly: 380,   annual: 3800 },
+        USD: { monthly: 21.99, annual: 219  },
       },
       featured: true,
       tagline: "Most popular",
@@ -299,7 +299,7 @@
               '<button type="button" data-cb-upgrade-currency="USD" class="cb-upgrade-cur-btn ' + (currency === "USD" ? "is-active" : "") + '">USD ($)</button>' +
             '</div>'
           : "";
-        const footCopy = "Secure payment via PayStack. Cancel anytime in Billing settings. Pricing in " + currency + ".";
+        const footCopy = "Secure payment via PayStack. Cancel anytime in Billing settings. Pricing in " + currency + " — international cards welcome, your bank converts automatically.";
         backdrop.innerHTML = (
           '<div class="cb-upgrade-card">' +
             '<div class="cb-upgrade-head">' +
