@@ -541,6 +541,20 @@
 
   // ─── Page render ───────────────────────────────────────────────────
 
+  // Loud launch-promo strip across the top of the landing page. The
+  // window end mirrors INTRO_DISCOUNT_END on the checkout function so it
+  // never advertises a dead offer — it removes itself after that date.
+  function renderPromoBar() {
+    if (Date.now() > Date.parse("2026-10-06T23:59:59Z")) return "";
+    return (
+      '<div class="lp-promo-bar" role="region" aria-label="Launch promotion">' +
+        '<span class="lp-promo-emoji" aria-hidden="true">🎉</span>' +
+        '<span class="lp-promo-text"><strong>Launch offer —</strong> get <strong>30% off your first month.</strong> New subscribers, applied automatically at checkout.</span>' +
+        '<a class="lp-promo-cta" href="#/auth?mode=signup">Claim it →</a>' +
+      '</div>'
+    );
+  }
+
   function renderView() {
     const features = FEATURES.map(renderFeature).join("");
     const steps = STEPS.map(renderStep).join("");
@@ -549,6 +563,9 @@
 
     return (
       '<main class="lp-page">' +
+
+        // ── Launch promo strip (intro discount campaign) ───────────
+        renderPromoBar() +
 
         // ── Sticky nav ─────────────────────────────────────────────
         '<header class="lp-nav">' +
