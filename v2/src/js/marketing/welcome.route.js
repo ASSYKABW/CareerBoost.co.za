@@ -201,7 +201,7 @@
   //   1. localStorage saved preference (if user toggled before)
   //   2. navigator.language ("en-ZA" → ZAR)
   //   3. Intl resolved locale region (fallback for browsers without -ZA)
-  //   4. Default USD
+  //   4. Default ZAR (Paystack settles in ZAR; USD is a toggle-only estimate)
   function detectDefaultCurrency() {
     try {
       const saved = localStorage.getItem("cb_pricing_ccy");
@@ -213,7 +213,7 @@
       const region = (new Intl.Locale(navigator.language).region || "").toUpperCase();
       if (region === "ZA") return "zar";
     } catch (e) { /* old browser */ }
-    return "usd";
+    return "zar";
   }
 
   function detectDefaultPeriod() {
@@ -387,12 +387,19 @@
     );
   }
 
+  // USD prices are a courtesy estimate only — Paystack settles every card
+  // in ZAR. Prefix paid USD amounts with "≈" so visitors don't expect to
+  // be billed in dollars. Free ($0) needs no prefix.
+  function displayPriceLabel(rawLabel, currency, tierId) {
+    return currency === "usd" && tierId !== "free" ? "≈ " + rawLabel : rawLabel;
+  }
+
   // Render a single pricing card. Pulls amount + label from the
   // currency-specific block (zar / usd) on the tier.
   function renderPricingCard(tier, currency, period) {
     const isAnnual = period === "annual" && tier.id !== "free";
     const price = tier[currency] || tier.usd;
-    const priceLabel = isAnnual && price.annualLabel ? price.annualLabel : price.label;
+    const priceLabel = displayPriceLabel(isAnnual && price.annualLabel ? price.annualLabel : price.label, currency, tier.id);
     const billingNote = isAnnual && price.annualTotal
       ? '<small class="lp-price-billing-note">Billed ' + price.annualTotal + '/yr</small>'
       : '';
@@ -639,6 +646,7 @@
                     renderBillingToggle(activePeriod) +
                     renderCurrencyToggle(activeCcy) +
                   '</div>' +
+                  '<p class="lp-ccy-note" data-ccy-note' + (activeCcy === "usd" ? "" : " hidden") + '>Dollar prices are an estimate — you\'re billed in ZAR; your bank converts at checkout.</p>' +
                 '</header>' +
                 '<div class="lp-pricing-grid">' + cards + '</div>' +
                 renderComparisonTable() +
@@ -740,7 +748,7 @@
       const node = document.querySelector('[data-price-amount="' + tier.id + '"]');
       if (!node) return;
       const price = tier[currency] || tier.usd;
-      const label = isAnnual && tier.id !== "free" && price.annualLabel ? price.annualLabel : price.label;
+      const label = displayPriceLabel(isAnnual && tier.id !== "free" && price.annualLabel ? price.annualLabel : price.label, currency, tier.id);
       const billingNote = isAnnual && tier.id !== "free" && price.annualTotal
         ? '<small class="lp-price-billing-note">Billed ' + price.annualTotal + '/yr</small>'
         : '';
@@ -756,6 +764,8 @@
       btn.classList.toggle("is-active", isActive);
       btn.setAttribute("aria-selected", isActive ? "true" : "false");
     });
+    const ccyNote = document.querySelector("[data-ccy-note]");
+    if (ccyNote) ccyNote.hidden = currency !== "usd";
     try {
       localStorage.setItem("cb_pricing_ccy", currency);
       localStorage.setItem("cb_pricing_period", period);
