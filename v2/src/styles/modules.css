@@ -5774,6 +5774,9 @@ a.settings-status-card:hover {
   background: linear-gradient(90deg, var(--lp-accent-strong, #2dd4bf), var(--lp-accent, #5eead4));
   box-shadow: 0 2px 14px rgba(45, 212, 191, 0.25);
 }
+/* Without this, the [hidden] div still shows as an empty gradient strip
+   because `display:flex` (author rule) overrides the UA `[hidden]` rule. */
+.lp-promo-bar[hidden] { display: none; }
 .lp-promo-bar strong { font-weight: 800; }
 .lp-promo-emoji { font-size: 16px; }
 .lp-promo-text { letter-spacing: 0.01em; }
