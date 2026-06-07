@@ -70,7 +70,7 @@ interface ChargeData {
   metadata?: {
     user_id?: string; plan_id?: string; interval?: string; currency?: string;
     intro_discount?: string; plan_code?: string; subscription_start?: string;
-    discount_pct?: string; full_amount_minor?: string;
+    discount_pct?: string; full_amount_minor?: string; grant_id?: string;
   } | string;
   subscription?: string;
 }
@@ -144,16 +144,31 @@ async function handleChargeSuccess(svc: ReturnType<typeof getServiceClient>, eve
   // Now create the real recurring subscription, set to start one interval
   // later at full price, and stamp the redemption.
   if (meta.intro_discount === "true" && meta.plan_code) {
-    // Idempotency: if already redeemed for this user, this is a Paystack
-    // retry — don't create a second subscription.
-    const { data: existing } = await svc
-      .from("subscriptions")
-      .select("intro_discount_redeemed_at")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (existing && existing.intro_discount_redeemed_at) {
-      console.log("[paystack-webhook] intro already redeemed for " + userId + "; skipping");
-      return;
+    const isGrant = !!meta.grant_id;
+
+    // Idempotency on Paystack retries: skip if the discount was already
+    // redeemed. For a grant that means status != 'active'; for the global
+    // intro it means intro_discount_redeemed_at is already stamped.
+    if (isGrant) {
+      const { data: g } = await svc
+        .from("promo_grants")
+        .select("status")
+        .eq("id", meta.grant_id)
+        .maybeSingle();
+      if (!g || g.status !== "active") {
+        console.log("[paystack-webhook] grant " + meta.grant_id + " not active; skipping");
+        return;
+      }
+    } else {
+      const { data: existing } = await svc
+        .from("subscriptions")
+        .select("intro_discount_redeemed_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existing && existing.intro_discount_redeemed_at) {
+        console.log("[paystack-webhook] intro already redeemed for " + userId + "; skipping");
+        return;
+      }
     }
 
     const authCode = charge.authorization?.authorization_code || null;
@@ -192,13 +207,15 @@ async function handleChargeSuccess(svc: ReturnType<typeof getServiceClient>, eve
       plan_id: planId,
       status: "active",
       payment_processor: "paystack",
-      intro_discount_redeemed_at: new Date().toISOString(),
       current_period_end: startDate,
       cancel_at_period_end: false,
       canceled_at: null,
       last_event_id: event.id || charge.reference,
       updated_at: new Date().toISOString(),
     };
+    // Stamp the first-time intro flag only for the GLOBAL intro, not a grant
+    // (a grant can go to returning customers; it's tracked on promo_grants).
+    if (!isGrant) introUpdate.intro_discount_redeemed_at = new Date().toISOString();
     if (customerCode) introUpdate.paystack_customer_code = customerCode;
     const { error: introErr } = await svc
       .from("subscriptions")
@@ -207,7 +224,14 @@ async function handleChargeSuccess(svc: ReturnType<typeof getServiceClient>, eve
       console.error("[paystack-webhook] intro upsert failed:", introErr.message, "userId=", userId);
       throw new Error("DB upsert failed: " + introErr.message);
     }
-    console.log("[paystack-webhook] intro: promoted " + userId + " → " + planId + " (first month " + (meta.discount_pct || "30") + "% off)");
+    // Single-use: consume the grant now that the charge cleared.
+    if (isGrant) {
+      await svc
+        .from("promo_grants")
+        .update({ status: "redeemed", redeemed_at: new Date().toISOString() })
+        .eq("id", meta.grant_id);
+    }
+    console.log("[paystack-webhook] intro: promoted " + userId + " → " + planId + " (" + (meta.discount_pct || "30") + "% off" + (isGrant ? ", granted" : ", global intro") + ")");
     return;
   }
 

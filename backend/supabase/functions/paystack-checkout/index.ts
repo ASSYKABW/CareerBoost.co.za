@@ -170,10 +170,36 @@ Deno.serve(withCors(async (req) => {
   } catch (_e) { /* promo_settings not present yet — keep the env fallback */ }
 
   const nowDate = new Date();
-  const withinWindow = !introEnd || nowDate <= introEnd;
 
-  let applyIntro = false;
+  // The effective discount is resolved in priority order:
+  //   1. A per-account grant (promo_grants) for THIS user — works for anyone,
+  //      including returning customers; overrides the first-time requirement.
+  //   2. Otherwise the global campaign, for genuine first-time subscribers.
+  let discountPct = 0;
+  let grantId: string | null = null;
+
+  {
+    const { data: grant } = await svc
+      .from("promo_grants")
+      .select("id, percent, expires_at")
+      .eq("user_id", user.id)
+      .eq("kind", "percent")
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (
+      grant && Number(grant.percent) > 0 && Number(grant.percent) < 100 &&
+      (!grant.expires_at || new Date(String(grant.expires_at)) > nowDate)
+    ) {
+      discountPct = Number(grant.percent);
+      grantId = String(grant.id);
+    }
+  }
+
+  const withinWindow = !introEnd || nowDate <= introEnd;
   if (
+    discountPct === 0 &&
     introEnabled && withinWindow && introPct > 0 && introPct < 100 &&
     introIntervals.includes(interval) && introPlans.includes(planId)
   ) {
@@ -182,13 +208,16 @@ Deno.serve(withCors(async (req) => {
       .select("plan_id, paystack_customer_code, stripe_customer_id, intro_discount_redeemed_at")
       .eq("user_id", user.id)
       .maybeSingle();
-    applyIntro = !subRow || (
+    const firstTime = !subRow || (
       (!subRow.plan_id || subRow.plan_id === "free") &&
       !subRow.paystack_customer_code &&
       !subRow.stripe_customer_id &&
       !subRow.intro_discount_redeemed_at
     );
+    if (firstTime) discountPct = introPct;
   }
+
+  const applyIntro = discountPct > 0;
 
   // Charge amount + whether to attach the recurring plan now:
   //   - Normal: attach `plan` → Paystack charges full price and starts the
@@ -199,7 +228,7 @@ Deno.serve(withCors(async (req) => {
   let chargeMinor = toMinorUnits(price);
   let subscriptionStartIso: string | null = null;
   if (applyIntro) {
-    chargeMinor = toMinorUnits(price * (1 - introPct / 100));
+    chargeMinor = toMinorUnits(price * (1 - discountPct / 100));
     const start = new Date(nowDate);
     if (interval === "annual") start.setFullYear(start.getFullYear() + 1);
     else start.setMonth(start.getMonth() + 1);
@@ -214,7 +243,7 @@ Deno.serve(withCors(async (req) => {
     { display_name: "Currency", variable_name: "currency", value: currency },
   ];
   if (applyIntro) {
-    customFields.push({ display_name: "Intro discount", variable_name: "intro_discount", value: introPct + "% off first " + (interval === "annual" ? "year" : "month") });
+    customFields.push({ display_name: "Intro discount", variable_name: "intro_discount", value: discountPct + "% off first " + (interval === "annual" ? "year" : "month") + (grantId ? " (granted)" : "") });
   }
   const metadata: Record<string, unknown> = {
     user_id: user.id,
@@ -226,10 +255,11 @@ Deno.serve(withCors(async (req) => {
   if (applyIntro) {
     // The webhook reads these to build the deferred full-price subscription.
     metadata.intro_discount = "true";
-    metadata.discount_pct = String(introPct);
+    metadata.discount_pct = String(discountPct);
     metadata.plan_code = planCode;
     metadata.subscription_start = subscriptionStartIso;
     metadata.full_amount_minor = String(toMinorUnits(price));
+    if (grantId) metadata.grant_id = grantId;
   }
   const initBody: Record<string, unknown> = {
     email: user.email,
@@ -281,6 +311,7 @@ Deno.serve(withCors(async (req) => {
     currency,
     amountMinor: chargeMinor,
     introApplied: applyIntro,
-    discountPct: applyIntro ? introPct : 0,
+    discountPct: discountPct,
+    grantApplied: !!grantId,
   });
 }));

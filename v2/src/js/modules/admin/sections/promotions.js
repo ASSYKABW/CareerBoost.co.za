@@ -15,7 +15,7 @@
   function ensureState() {
     var h = window.CBAdmin.helpers || (window.CBAdmin.helpers = {});
     if (!h.adminPromoRemote) {
-      h.adminPromoRemote = { status: "idle", data: null, error: "", busy: false };
+      h.adminPromoRemote = { status: "idle", data: null, error: "", busy: false, grants: null, grantsBusy: false };
     }
     return h.adminPromoRemote;
   }
@@ -76,6 +76,16 @@
         state.error = err && err.message ? err.message : String(err);
       })
       .then(function () { state.busy = false; rerender(); });
+  }
+
+  function fetchGrants() {
+    var state = ensureState();
+    if (state.grantsBusy) return Promise.resolve();
+    state.grantsBusy = true;
+    return callApi("grants-list")
+      .then(function (data) { state.grants = (data && data.grants) || []; })
+      .catch(function () { if (state.grants === null) state.grants = []; })
+      .then(function () { state.grantsBusy = false; rerender(); });
   }
 
   function rerender() {
@@ -167,6 +177,48 @@
           (p.updated_at ? '<small style="color:var(--col-muted,#888);">Last updated ' + st(new Date(p.updated_at).toLocaleString()) + '</small>' : '') +
         '</div>' +
       '</article>'
+    ) + renderGrantsSection();
+  }
+
+  function renderGrantsSection() {
+    var state = ensureState();
+    if (state.grants === null && !state.grantsBusy) fetchGrants();
+    var grants = state.grants || [];
+    var rows = grants.map(function (g) {
+      var expired = g.expires_at && new Date(g.expires_at) < new Date();
+      var chip = g.status === "active"
+        ? (expired ? '<span class="chip subtle">Expired</span>' : '<span class="chip green">Active</span>')
+        : (g.status === "redeemed" ? '<span class="chip blue">Redeemed</span>' : '<span class="chip subtle">' + st(g.status) + '</span>');
+      var exp = g.expires_at ? new Date(g.expires_at).toLocaleDateString() : "—";
+      return '<tr>' +
+        '<td style="padding:6px 8px;">' + st(g.email || g.user_id) + '</td>' +
+        '<td style="padding:6px 8px;">' + st(g.percent) + '%</td>' +
+        '<td style="padding:6px 8px;">' + chip + '</td>' +
+        '<td style="padding:6px 8px;">' + st(exp) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;">' + (g.status === "active" ? '<button class="btn btn--ghost btn--sm" data-promo-action="grant-revoke" data-grant-id="' + st(g.id) + '">Revoke</button>' : '') + '</td>' +
+      '</tr>';
+    }).join("");
+    if (!rows) rows = '<tr><td colspan="5" style="padding:10px 8px;color:var(--col-muted,#888);">No grants yet.</td></tr>';
+
+    return (
+      '<article class="admin-panel" style="margin-top:16px;">' +
+        '<div class="admin-panel-head"><div><span>Marketing &amp; Brand</span><h2>Per-account grants</h2></div>' +
+          '<button class="btn btn--ghost btn--sm" data-promo-action="grants-reload">Refresh</button>' +
+        '</div>' +
+        '<p style="font-size:13px;color:var(--col-muted,#888);margin-bottom:14px;">Give a specific account a one-time % discount on their next subscription — returning customers included. It\'s consumed on their next successful checkout; set an optional expiry.</p>' +
+        '<div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px;">' +
+          field("Customer email", '<input class="admin-input" id="grant-email" type="email" placeholder="name@example.com" />') +
+          field("Discount %", '<input class="admin-input" id="grant-percent" type="number" min="1" max="99" value="30" />') +
+          field("Expires (optional)", '<input class="admin-input" id="grant-expires" type="date" />') +
+          '<button class="btn btn--primary btn--sm" data-promo-action="grant-create"' + (state.grantsBusy ? " disabled" : "") + '>Grant</button>' +
+        '</div>' +
+        '<div style="overflow-x:auto;">' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+            '<thead><tr style="text-align:left;color:var(--col-muted,#888);"><th style="padding:6px 8px;">Email</th><th style="padding:6px 8px;">%</th><th style="padding:6px 8px;">Status</th><th style="padding:6px 8px;">Expires</th><th></th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</article>'
     );
   }
 
@@ -214,6 +266,42 @@
             if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Save failed.");
             rerender();
           });
+      }
+
+      if (action === "grants-reload") { state.grants = null; fetchGrants(); return; }
+      if (action === "grant-create") {
+        var email = val("grant-email").trim();
+        var payload = { email: email, percent: Number(val("grant-percent")), expires_at: val("grant-expires") };
+        state.grantsBusy = true; rerender();
+        callApi("grant-create", payload)
+          .then(function () {
+            if (window.CBV2.toast) window.CBV2.toast.success("Granted " + payload.percent + "% to " + email + ".");
+            state.grants = null;
+            return fetchGrants();
+          })
+          .catch(function (err) {
+            state.grantsBusy = false;
+            if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Grant failed.");
+            rerender();
+          });
+        return;
+      }
+      if (action === "grant-revoke") {
+        var gid = btn.getAttribute("data-grant-id");
+        if (!gid) return;
+        state.grantsBusy = true; rerender();
+        callApi("grant-revoke", { id: gid })
+          .then(function () {
+            if (window.CBV2.toast) window.CBV2.toast.success("Grant revoked.");
+            state.grants = null;
+            return fetchGrants();
+          })
+          .catch(function (err) {
+            state.grantsBusy = false;
+            if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Revoke failed.");
+            rerender();
+          });
+        return;
       }
     });
   }

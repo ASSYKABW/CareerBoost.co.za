@@ -27,6 +27,28 @@ function cleanList(value: unknown, allowed: string[]): string[] {
   return out;
 }
 
+// Resolve a user id from an email. Supabase admin has no getByEmail, so we
+// page through listUsers and match client-side (same as admin-promote-user).
+async function resolveUserIdByEmail(
+  svc: ReturnType<typeof getServiceClient>,
+  email: string,
+): Promise<string | null> {
+  const target = email.toLowerCase().trim();
+  let page = 1;
+  const perPage = 1000;
+  for (;;) {
+    const { data, error } = await svc.auth.admin.listUsers({ page, perPage });
+    if (error) throw new Error("User lookup failed: " + error.message);
+    const batch = ((data?.users || []) as unknown) as Array<Record<string, unknown>>;
+    const hit = batch.find((u) => String(u.email || "").toLowerCase() === target);
+    if (hit) return String(hit.id || "");
+    if (batch.length < perPage) break;
+    if (page * perPage >= 5000) break;
+    page += 1;
+  }
+  return null;
+}
+
 Deno.serve(withCors(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
@@ -107,6 +129,79 @@ Deno.serve(withCors(async (req) => {
       .from("promo_settings")
       .upsert({ id: 1, ...patch }, { onConflict: "id" });
     if (error) return errorResponse("Promo update failed: " + error.message, 500);
+    return jsonResponse({ ok: true });
+  }
+
+  // ── grants-list ─────────────────────────────────────────────────────────
+  if (action === "grants-list") {
+    const { data, error } = await svc
+      .from("promo_grants")
+      .select("id, user_id, percent, status, note, expires_at, redeemed_at, created_at")
+      .eq("kind", "percent")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) return errorResponse("Failed to list grants: " + error.message, 500);
+    const rows = (data || []) as Array<Record<string, unknown>>;
+    const grants: Array<Record<string, unknown>> = [];
+    for (const r of rows) {
+      let email = "";
+      try {
+        const { data: u } = await svc.auth.admin.getUserById(String(r.user_id));
+        email = String(u?.user?.email || "");
+      } catch (_e) { /* leave blank if the user was deleted */ }
+      grants.push({ ...r, email });
+    }
+    return jsonResponse({ ok: true, grants });
+  }
+
+  // ── grant-create ────────────────────────────────────────────────────────
+  if (action === "grant-create") {
+    const email = String(body.email ?? "").toLowerCase().trim();
+    if (!email || email.indexOf("@") < 0) return errorResponse("A valid email is required.", 400);
+
+    const pct = Math.round(Number(body.percent));
+    if (!Number.isFinite(pct) || pct < 1 || pct > 99) {
+      return errorResponse("percent must be between 1 and 99.", 400);
+    }
+
+    let expiresAt: string | null = null;
+    const exp = String(body.expires_at ?? "").trim();
+    if (exp !== "") {
+      const d = new Date(exp);
+      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
+    }
+
+    let userId: string | null;
+    try {
+      userId = await resolveUserIdByEmail(svc, email);
+    } catch (e) {
+      return errorResponse((e as Error).message, 502);
+    }
+    if (!userId) return errorResponse("No account found with that email.", 404);
+
+    const { error } = await svc.from("promo_grants").insert({
+      user_id: userId,
+      kind: "percent",
+      percent: pct,
+      note: body.note ? String(body.note).slice(0, 200) : null,
+      granted_by: admin.id,
+      expires_at: expiresAt,
+      status: "active",
+    });
+    if (error) return errorResponse("Grant failed: " + error.message, 500);
+    return jsonResponse({ ok: true });
+  }
+
+  // ── grant-revoke ────────────────────────────────────────────────────────
+  if (action === "grant-revoke") {
+    const id = String(body.id ?? "").trim();
+    if (!id) return errorResponse("Grant id required.", 400);
+    const { error } = await svc
+      .from("promo_grants")
+      .update({ status: "revoked" })
+      .eq("id", id)
+      .eq("status", "active");
+    if (error) return errorResponse("Revoke failed: " + error.message, 500);
     return jsonResponse({ ok: true });
   }
 
