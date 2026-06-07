@@ -161,8 +161,9 @@
           field("Applies to intervals", checkRow("promo-int-", INTERVALS, intervals)) +
         '</div>' +
 
-        '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
           '<button class="btn btn--primary btn--sm" data-promo-action="save"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? "Saving…" : "Save promotion") + '</button>' +
+          (enabled ? '<button class="btn btn--ghost btn--sm" data-promo-action="stop"' + (state.busy ? " disabled" : "") + ' style="color:#ff9b9b;border-color:rgba(255,120,120,0.4);">Stop promotion now</button>' : '') +
           (p.updated_at ? '<small style="color:var(--col-muted,#888);">Last updated ' + st(new Date(p.updated_at).toLocaleString()) + '</small>' : '') +
         '</div>' +
       '</article>'
@@ -177,6 +178,23 @@
       var state = ensureState();
 
       if (action === "reload") { state.status = "idle"; state.data = null; fetchPromo(); return; }
+      if (action === "stop") {
+        var ok = (typeof window.confirm !== "function") ||
+          window.confirm("Stop the promotion now? The banner and checkout discount turn off immediately. You can re-enable it anytime.");
+        if (!ok) return;
+        state.busy = true; rerender();
+        callApi("update", { enabled: false })
+          .then(function () {
+            if (window.CBV2.toast) window.CBV2.toast.success("Promotion stopped.");
+            return fetchPromo();
+          })
+          .catch(function (err) {
+            state.busy = false;
+            if (window.CBV2.toast) window.CBV2.toast.error(err && err.message ? err.message : "Couldn't stop promotion.");
+            rerender();
+          });
+        return;
+      }
       if (action === "save") {
         var payload = {
           enabled: checked("promo-enabled"),
