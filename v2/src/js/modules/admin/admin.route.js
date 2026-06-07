@@ -92,6 +92,7 @@
       items: [
         { id: "content-studio", icon: "fa-pen-nib", label: "Content Studio" },
         { id: "brand-kit", icon: "fa-palette", label: "Brand Kit" },
+        { id: "promotions", icon: "fa-tag", label: "Promotions" },
         { id: "testimonials", icon: "fa-star", label: "Testimonials" }
       ]
     },

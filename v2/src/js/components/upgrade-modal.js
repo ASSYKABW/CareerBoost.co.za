@@ -299,11 +299,12 @@
               '<button type="button" data-cb-upgrade-currency="USD" class="cb-upgrade-cur-btn ' + (currency === "USD" ? "is-active" : "") + '">USD ($)</button>' +
             '</div>'
           : "";
-        // Intro campaign: monthly plans get 30% off the first month for
-        // new subscribers (server-enforced; this is just the heads-up). The
-        // window end matches INTRO_DISCOUNT_END on the checkout function.
-        const introNote = (interval === "monthly" && Date.now() <= Date.parse("2026-10-06T23:59:59Z"))
-          ? " New subscribers get 30% off their first month — applied automatically at checkout."
+        // Intro campaign heads-up, read live from the admin-controlled
+        // promo_settings (window.CBV2.promo). Server-enforced — this is just
+        // the notice. Shows only when the promo is active for this interval.
+        const promo = window.CBV2 && window.CBV2.promo;
+        const introNote = (promo && promo.isActive(interval))
+          ? " New subscribers get " + promo.percent() + "% off their first " + (promo.periodWord ? promo.periodWord() : "month") + " — applied automatically at checkout."
           : "";
         const footCopy = "Secure payment via PayStack. Cancel anytime in Billing settings. Pricing in " + currency + " — international cards welcome, your bank converts automatically." + introNote;
         backdrop.innerHTML = (
@@ -327,6 +328,14 @@
         );
       }
       render();
+
+      // Warm the admin-controlled promo state, then re-render (only if a
+      // promo is actually active) so the intro note shows on first open too.
+      if (window.CBV2.promo && window.CBV2.promo.load) {
+        window.CBV2.promo.load().then(function () {
+          if (window.CBV2.promo.isActive(interval)) render();
+        });
+      }
 
       function showError(msg) {
         const node = backdrop.querySelector(".cb-upgrade-error");

@@ -142,19 +142,41 @@ Deno.serve(withCors(async (req) => {
     return errorResponse("Plan price missing or zero for " + planId + " " + interval + " " + currency, 503);
   }
 
-  // ---- Intro discount: "30% off your first subscription" ----
-  // Eligible = campaign ON + inside the window + MONTHLY plan + the user
-  // is a genuine first-time subscriber (never transacted on Paystack OR
-  // Stripe, and hasn't already redeemed the intro). Enforced server-side
-  // so it can't be forced from the browser. Campaign knobs are env-driven
-  // so you can start/stop it without a deploy.
-  const introEnabled = (Deno.env.get("INTRO_DISCOUNT_ENABLED") || "false").toLowerCase() === "true";
-  const introPct = Number(Deno.env.get("INTRO_DISCOUNT_PCT") || "30");
-  const introEnd = new Date((Deno.env.get("INTRO_DISCOUNT_END") || "2026-10-06") + "T23:59:59Z");
+  // ---- Intro discount: admin-managed "X% off your first subscription" ----
+  // Config lives in promo_settings (admin-editable, no redeploy). Falls back
+  // to the INTRO_DISCOUNT_* env vars if that row/table isn't present yet, so
+  // the env→DB cut-over is safe in any deploy order. Eligible = campaign ON +
+  // inside the window + plan/interval allowed + the user is a genuine
+  // first-time subscriber (never transacted, not already redeemed). Enforced
+  // server-side so it can't be forced from the browser.
+  let introEnabled = (Deno.env.get("INTRO_DISCOUNT_ENABLED") || "false").toLowerCase() === "true";
+  let introPct = Number(Deno.env.get("INTRO_DISCOUNT_PCT") || "30");
+  let introEnd: Date | null = new Date((Deno.env.get("INTRO_DISCOUNT_END") || "2026-10-06") + "T23:59:59Z");
+  let introPlans = ["plus", "pro", "career"];
+  let introIntervals = ["monthly"];
+  try {
+    const { data: promo } = await svc
+      .from("promo_settings")
+      .select("enabled, percent, end_date, plans, intervals")
+      .eq("id", 1)
+      .maybeSingle();
+    if (promo) {
+      introEnabled = !!promo.enabled;
+      introPct = Number(promo.percent);
+      introEnd = promo.end_date ? new Date(String(promo.end_date) + "T23:59:59Z") : null;
+      if (Array.isArray(promo.plans)) introPlans = promo.plans as string[];
+      if (Array.isArray(promo.intervals)) introIntervals = promo.intervals as string[];
+    }
+  } catch (_e) { /* promo_settings not present yet — keep the env fallback */ }
+
   const nowDate = new Date();
+  const withinWindow = !introEnd || nowDate <= introEnd;
 
   let applyIntro = false;
-  if (introEnabled && interval === "monthly" && nowDate <= introEnd && introPct > 0 && introPct < 100) {
+  if (
+    introEnabled && withinWindow && introPct > 0 && introPct < 100 &&
+    introIntervals.includes(interval) && introPlans.includes(planId)
+  ) {
     const { data: subRow } = await svc
       .from("subscriptions")
       .select("plan_id, paystack_customer_code, stripe_customer_id, intro_discount_redeemed_at")
@@ -179,7 +201,8 @@ Deno.serve(withCors(async (req) => {
   if (applyIntro) {
     chargeMinor = toMinorUnits(price * (1 - introPct / 100));
     const start = new Date(nowDate);
-    start.setMonth(start.getMonth() + 1);
+    if (interval === "annual") start.setFullYear(start.getFullYear() + 1);
+    else start.setMonth(start.getMonth() + 1);
     subscriptionStartIso = start.toISOString();
   }
 
@@ -191,7 +214,7 @@ Deno.serve(withCors(async (req) => {
     { display_name: "Currency", variable_name: "currency", value: currency },
   ];
   if (applyIntro) {
-    customFields.push({ display_name: "Intro discount", variable_name: "intro_discount", value: introPct + "% off first month" });
+    customFields.push({ display_name: "Intro discount", variable_name: "intro_discount", value: introPct + "% off first " + (interval === "annual" ? "year" : "month") });
   }
   const metadata: Record<string, unknown> = {
     user_id: user.id,
