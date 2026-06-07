@@ -64,7 +64,14 @@ interface ChargeData {
   status: string;
   customer?: { id: number; customer_code: string; email: string };
   plan?: { id: number; plan_code: string; name: string } | string;
-  metadata?: { user_id?: string; plan_id?: string; interval?: string; currency?: string } | string;
+  // Present on any successful card charge — reusable token we attach to the
+  // deferred subscription in the intro-discount flow.
+  authorization?: { authorization_code: string; reusable?: boolean };
+  metadata?: {
+    user_id?: string; plan_id?: string; interval?: string; currency?: string;
+    intro_discount?: string; plan_code?: string; subscription_start?: string;
+    discount_pct?: string; full_amount_minor?: string;
+  } | string;
   subscription?: string;
 }
 
@@ -131,6 +138,78 @@ async function handleChargeSuccess(svc: ReturnType<typeof getServiceClient>, eve
 
   const customerCode = charge.customer?.customer_code || null;
   const subscriptionCode = typeof charge.subscription === "string" ? charge.subscription : null;
+
+  // ---- Intro discount path ----
+  // The first charge was a DISCOUNTED ONE-TIME payment (no plan attached).
+  // Now create the real recurring subscription, set to start one interval
+  // later at full price, and stamp the redemption.
+  if (meta.intro_discount === "true" && meta.plan_code) {
+    // Idempotency: if already redeemed for this user, this is a Paystack
+    // retry — don't create a second subscription.
+    const { data: existing } = await svc
+      .from("subscriptions")
+      .select("intro_discount_redeemed_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (existing && existing.intro_discount_redeemed_at) {
+      console.log("[paystack-webhook] intro already redeemed for " + userId + "; skipping");
+      return;
+    }
+
+    const authCode = charge.authorization?.authorization_code || null;
+    const startDate = meta.subscription_start || null;
+    if (authCode && customerCode) {
+      const secret = Deno.env.get("PAYSTACK_SECRET_KEY") || "";
+      try {
+        const createRes = await fetch("https://api.paystack.co/subscription", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + secret, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer: customerCode,
+            plan: meta.plan_code,
+            authorization: authCode,
+            ...(startDate ? { start_date: startDate } : {}),
+          }),
+        });
+        if (!createRes.ok) {
+          const txt = await createRes.text();
+          console.error("[paystack-webhook] intro subscription create FAILED (manual follow-up needed):", createRes.status, txt.slice(0, 300), "userId=", userId);
+        } else {
+          console.log("[paystack-webhook] intro subscription scheduled for " + userId + " (first full charge " + startDate + ")");
+        }
+      } catch (e) {
+        console.error("[paystack-webhook] intro subscription create threw:", (e as Error).message, "userId=", userId);
+      }
+    } else {
+      console.error("[paystack-webhook] intro charge missing auth/customer; recurring NOT created:", JSON.stringify({ userId, ref: charge.reference }));
+    }
+
+    // Grant the prepaid first period + record the redemption. We stamp
+    // redeemed_at even if the subscription create failed, so a Paystack
+    // retry can't double-charge — a failed create is surfaced via the log
+    // above for manual follow-up.
+    const introUpdate: Record<string, unknown> = {
+      plan_id: planId,
+      status: "active",
+      payment_processor: "paystack",
+      intro_discount_redeemed_at: new Date().toISOString(),
+      current_period_end: startDate,
+      cancel_at_period_end: false,
+      canceled_at: null,
+      last_event_id: event.id || charge.reference,
+      updated_at: new Date().toISOString(),
+    };
+    if (customerCode) introUpdate.paystack_customer_code = customerCode;
+    const { error: introErr } = await svc
+      .from("subscriptions")
+      .upsert({ user_id: userId, ...introUpdate }, { onConflict: "user_id" });
+    if (introErr) {
+      console.error("[paystack-webhook] intro upsert failed:", introErr.message, "userId=", userId);
+      throw new Error("DB upsert failed: " + introErr.message);
+    }
+    console.log("[paystack-webhook] intro: promoted " + userId + " → " + planId + " (first month " + (meta.discount_pct || "30") + "% off)");
+    return;
+  }
 
   // Upsert the subscription row.
   const update: Record<string, unknown> = {

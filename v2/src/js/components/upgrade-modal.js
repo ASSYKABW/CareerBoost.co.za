@@ -299,7 +299,13 @@
               '<button type="button" data-cb-upgrade-currency="USD" class="cb-upgrade-cur-btn ' + (currency === "USD" ? "is-active" : "") + '">USD ($)</button>' +
             '</div>'
           : "";
-        const footCopy = "Secure payment via PayStack. Cancel anytime in Billing settings. Pricing in " + currency + " — international cards welcome, your bank converts automatically.";
+        // Intro campaign: monthly plans get 30% off the first month for
+        // new subscribers (server-enforced; this is just the heads-up). The
+        // window end matches INTRO_DISCOUNT_END on the checkout function.
+        const introNote = (interval === "monthly" && Date.now() <= Date.parse("2026-10-06T23:59:59Z"))
+          ? " New subscribers get 30% off their first month — applied automatically at checkout."
+          : "";
+        const footCopy = "Secure payment via PayStack. Cancel anytime in Billing settings. Pricing in " + currency + " — international cards welcome, your bank converts automatically." + introNote;
         backdrop.innerHTML = (
           '<div class="cb-upgrade-card">' +
             '<div class="cb-upgrade-head">' +
