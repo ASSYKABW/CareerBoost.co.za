@@ -228,6 +228,9 @@ verify_jwt = false
 [functions.admin-promo]
 verify_jwt = false
 
+[functions.my-discount]
+verify_jwt = false
+
 [functions.admin-content]
 verify_jwt = false
 
