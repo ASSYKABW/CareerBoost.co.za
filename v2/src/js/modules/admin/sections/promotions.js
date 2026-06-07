@@ -41,7 +41,17 @@
     if (client && client.functions && typeof client.functions.invoke === "function") {
       return client.functions.invoke("admin-promo", { body: body, headers: headers })
         .then(function (res) {
-          if (res.error) throw res.error;
+          if (res.error) {
+            // supabase-js hides the real message behind a generic
+            // "non-2xx status code" — dig the actual error out of the body.
+            var ctx = res.error.context;
+            if (ctx && typeof ctx.json === "function") {
+              return ctx.json().then(function (b) {
+                throw new Error((b && b.error) || res.error.message || "API error");
+              }, function () { throw res.error; });
+            }
+            throw res.error;
+          }
           if (res.data && res.data.ok === false) throw new Error(res.data.error || "API error");
           return res.data;
         });

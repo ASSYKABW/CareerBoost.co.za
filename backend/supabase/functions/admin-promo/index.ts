@@ -68,20 +68,21 @@ Deno.serve(withCors(async (req) => {
       patch.enabled = body.enabled === true || body.enabled === "true";
     }
     if (body.percent !== undefined) {
-      const n = Math.round(Number(body.percent));
-      if (!Number.isFinite(n) || n < 1 || n > 99) {
-        return errorResponse("percent must be an integer between 1 and 99.", 400);
-      }
-      patch.percent = n;
+      // Clamp into range rather than reject — keeps the save robust against
+      // an empty/NaN read from the form.
+      let n = Math.round(Number(body.percent));
+      if (!Number.isFinite(n)) n = 30;
+      patch.percent = Math.min(99, Math.max(1, n));
     }
     if (body.end_date !== undefined) {
+      // Accept any parseable date (incl. locale formats like "10/06/2026")
+      // and normalize to YYYY-MM-DD; blank/unparseable → no end date.
       const s = String(body.end_date ?? "").trim();
       if (s === "") {
         patch.end_date = null;
-      } else if (/^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s))) {
-        patch.end_date = s;
       } else {
-        return errorResponse("end_date must be YYYY-MM-DD or empty.", 400);
+        const d = new Date(s);
+        patch.end_date = Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
       }
     }
     if (body.plans !== undefined) {
