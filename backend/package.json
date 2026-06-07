@@ -38,6 +38,7 @@
     "fn:deploy:paystack-webhook": "supabase functions deploy paystack-webhook --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:paystack-portal": "supabase functions deploy paystack-portal --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin-promo": "supabase functions deploy admin-promo --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
+    "fn:deploy:my-discount": "supabase functions deploy my-discount --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:downgrade-to-free": "supabase functions deploy downgrade-to-free --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:password-recovery-update": "supabase functions deploy password-recovery-update --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",
     "fn:deploy:admin-send-email": "supabase functions deploy admin-send-email --project-ref kddffkhwpbngiupfmcse --no-verify-jwt",

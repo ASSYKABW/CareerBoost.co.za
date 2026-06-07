@@ -68,6 +68,7 @@ const SCRIPTS = [
   "./src/js/services/entitlements/entitlements.js",
   "./src/js/components/upgrade-modal.js",
   "./src/js/components/deletion-banner.js",
+  "./src/js/components/discount-banner.js",
   "./src/js/services/entitlements/entitlement-gate.js",
   "./src/js/components/app-drawer.js",
   "./src/js/components/ai-chat-knowledge.js",
