@@ -118,6 +118,24 @@
   box-shadow: 0 0 0 3px rgba(107, 215, 255, 0.18);
 }
 
+/* Marketing-consent row. The generic ".auth-form label" and
+   ".auth-form input" rules above are written for stacked text fields, so
+   they uppercase the sentence and stretch the checkbox to full width.
+   Opt this row out of both (higher specificity wins). */
+.auth-form label.auth-consent {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.auth-consent input[type="checkbox"] {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 0;
+}
+
 .auth-submit-row {
   margin-top: 6px;
 }
