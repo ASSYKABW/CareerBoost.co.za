@@ -225,6 +225,9 @@ verify_jwt = false
 [functions.admin-brand]
 verify_jwt = false
 
+[functions.admin-promo]
+verify_jwt = false
+
 [functions.admin-content]
 verify_jwt = false
 

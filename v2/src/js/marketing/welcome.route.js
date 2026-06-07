@@ -541,18 +541,28 @@
 
   // ─── Page render ───────────────────────────────────────────────────
 
-  // Loud launch-promo strip across the top of the landing page. The
-  // window end mirrors INTRO_DISCOUNT_END on the checkout function so it
-  // never advertises a dead offer — it removes itself after that date.
+  // Loud launch-promo strip across the top of the landing page. Renders a
+  // hidden shell; hydratePromoBar() fills + reveals it from the live
+  // promo_settings (admin-controlled) after the page mounts — so turning the
+  // campaign off in admin pulls the banner down, with no stale-offer flash.
   function renderPromoBar() {
-    if (Date.now() > Date.parse("2026-10-06T23:59:59Z")) return "";
-    return (
-      '<div class="lp-promo-bar" role="region" aria-label="Launch promotion">' +
+    return '<div class="lp-promo-bar" role="region" aria-label="Launch promotion" data-promo-bar hidden></div>';
+  }
+
+  function hydratePromoBar() {
+    const bar = document.querySelector("[data-promo-bar]");
+    const promo = window.CBV2 && window.CBV2.promo;
+    if (!bar || !promo || !promo.load) return;
+    promo.load().then(function () {
+      if (!promo.isActive()) return;
+      const pct = promo.percent();
+      const word = promo.periodWord ? promo.periodWord() : "month";
+      bar.innerHTML =
         '<span class="lp-promo-emoji" aria-hidden="true">🎉</span>' +
-        '<span class="lp-promo-text"><strong>Launch offer —</strong> get <strong>30% off your first month.</strong> New subscribers, applied automatically at checkout.</span>' +
-        '<a class="lp-promo-cta" href="#/auth?mode=signup">Claim it →</a>' +
-      '</div>'
-    );
+        '<span class="lp-promo-text"><strong>Launch offer —</strong> get <strong>' + pct + '% off your first ' + word + '.</strong> New subscribers, applied automatically at checkout.</span>' +
+        '<a class="lp-promo-cta" href="#/auth?mode=signup">Claim it →</a>';
+      bar.hidden = false;
+    });
   }
 
   function renderView() {
@@ -845,6 +855,8 @@
   function bindLandingTracking() {
     const root = document.querySelector(".lp-page");
     if (!root) return;
+
+    hydratePromoBar();
 
     try {
       const telemetry = window.CBAI && window.CBAI.telemetry;

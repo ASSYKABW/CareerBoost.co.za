@@ -1,0 +1,113 @@
+// POST /functions/v1/admin-promo
+//
+// Admin-only read/update of the promotions config. Requires admin role +
+// AAL2 (getAuthedAdmin), like all admin edge functions.
+//
+// Actions:
+//   get     — return the singleton promo_settings row
+//   update  — patch enabled / percent / end_date / plans / intervals
+//
+// The paystack-checkout function reads promo_settings at runtime and the
+// public site reads it for the banner, so changes here go live with no
+// deploy. (Phase 2 will add per-account grant/revoke actions here.)
+
+import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
+import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
+
+const VALID_PLANS = ["plus", "pro", "career"];
+const VALID_INTERVALS = ["monthly", "annual"];
+
+function cleanList(value: unknown, allowed: string[]): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const v of value) {
+    const s = String(v).toLowerCase().trim();
+    if (allowed.includes(s) && !out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+Deno.serve(withCors(async (req) => {
+  const pre = handleOptions(req);
+  if (pre) return pre;
+  if (req.method !== "POST") return errorResponse("Method not allowed", 405);
+
+  let admin;
+  try {
+    admin = await getAuthedAdmin(req);
+  } catch (err) {
+    return errorResponse((err as Error).message, 403);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse("Invalid JSON body.", 400);
+  }
+
+  const action = String(body.action ?? "get");
+  const svc = getServiceClient();
+
+  // ── get ───────────────────────────────────────────────────────────────
+  if (action === "get") {
+    const { data, error } = await svc
+      .from("promo_settings")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) return errorResponse("Failed to load promo settings: " + error.message, 500);
+    return jsonResponse({ ok: true, promo: data });
+  }
+
+  // ── update ────────────────────────────────────────────────────────────
+  if (action === "update") {
+    const patch: Record<string, unknown> = {};
+
+    if (body.enabled !== undefined) {
+      patch.enabled = body.enabled === true || body.enabled === "true";
+    }
+    if (body.percent !== undefined) {
+      const n = Math.round(Number(body.percent));
+      if (!Number.isFinite(n) || n < 1 || n > 99) {
+        return errorResponse("percent must be an integer between 1 and 99.", 400);
+      }
+      patch.percent = n;
+    }
+    if (body.end_date !== undefined) {
+      const s = String(body.end_date ?? "").trim();
+      if (s === "") {
+        patch.end_date = null;
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s))) {
+        patch.end_date = s;
+      } else {
+        return errorResponse("end_date must be YYYY-MM-DD or empty.", 400);
+      }
+    }
+    if (body.plans !== undefined) {
+      const plans = cleanList(body.plans, VALID_PLANS);
+      if (plans.length === 0) return errorResponse("Select at least one plan.", 400);
+      patch.plans = plans;
+    }
+    if (body.intervals !== undefined) {
+      const intervals = cleanList(body.intervals, VALID_INTERVALS);
+      if (intervals.length === 0) return errorResponse("Select at least one billing interval.", 400);
+      patch.intervals = intervals;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return errorResponse("No editable fields supplied.", 400);
+    }
+    patch.updated_at = new Date().toISOString();
+    patch.updated_by = admin.id;
+
+    // Upsert keeps it robust even if the seed row is somehow missing.
+    const { error } = await svc
+      .from("promo_settings")
+      .upsert({ id: 1, ...patch }, { onConflict: "id" });
+    if (error) return errorResponse("Promo update failed: " + error.message, 500);
+    return jsonResponse({ ok: true });
+  }
+
+  return errorResponse("Unknown action: " + action, 400);
+}));
