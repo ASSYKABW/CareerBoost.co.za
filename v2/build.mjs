@@ -155,6 +155,7 @@ const SCRIPTS = [
   "./src/js/modules/console/console.route.js",
   "./src/js/modules/console/console.users.js",
   "./src/js/modules/console/console.money.js",
+  "./src/js/modules/console/console.ai.js",
   "./src/js/app/share-handler.js",
   "./src/js/app/router.js",
   "./src/js/app/bootstrap.js",

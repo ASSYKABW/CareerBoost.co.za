@@ -344,5 +344,41 @@
         return MOCK;
       }
     },
+    loadAiHealth: async function () {
+      var MOCK = {
+        _mock: true,
+        kpis: [
+          { key: "spend", label: "AI spend 7d (est)", tone: "amber", value: 128, fmt: "usd", delta: "-3%", deltaDir: "gd", spark: [22, 19, 21, 18, 17, 16, 15] },
+          { key: "calls", label: "AI calls 7d", tone: "cyan", value: 1240, fmt: "int", delta: "+8%", deltaDir: "up", spark: [150, 168, 172, 180, 190, 185, 195] },
+          { key: "failrate", label: "Failure rate", tone: "green", value: 0.4, fmt: "pct", delta: "-0.2pt", deltaDir: "gd", spark: [] },
+          { key: "incidents", label: "Open incidents", tone: "amber", value: 1, fmt: "int", delta: "1 critical", deltaDir: "down", spark: [] },
+        ],
+        bySkill: [
+          { skill: "resume tailor", calls: 420, spend: "$52.10", failRate: 0.5, tone: "green" },
+          { skill: "cover letter generate", calls: 310, spend: "$28.40", failRate: 0.3, tone: "green" },
+          { skill: "interview session step", calls: 260, spend: "$31.80", failRate: 1.2, tone: "amber" },
+          { skill: "interview intel pack", calls: 150, spend: "$11.90", failRate: 0.0, tone: "green" },
+          { skill: "bullet strengthen", calls: 100, spend: "$3.80", failRate: 0.0, tone: "green" },
+        ],
+        byModel: [
+          { model: "claude-haiku-4-5", calls: 720, spend: "$18.20" },
+          { model: "claude-sonnet-5", calls: 380, spend: "$78.40" },
+          { model: "claude-opus-4-8", calls: 140, spend: "$31.40" },
+        ],
+        incidents: [{ title: "job-feed latency", severity: "critical", section: "health", when: "2026-06-30" }],
+        failures: [
+          { skill: "interview session step", model: "claude-sonnet-5", error: "provider timeout (529)", when: "2026-06-30" },
+          { skill: "resume tailor", model: "claude-haiku-4-5", error: "rate limit (429)", when: "2026-06-29" },
+        ],
+      };
+      if (isMock()) return MOCK;
+      try {
+        var d = await call("console-ai-health", {});
+        return (d && d.aiHealth) ? d.aiHealth : MOCK;
+      } catch (e) {
+        console.warn("[console] console-ai-health failed, using sample data:", e.message);
+        return MOCK;
+      }
+    },
   };
 })();
