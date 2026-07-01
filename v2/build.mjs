@@ -153,6 +153,7 @@ const SCRIPTS = [
   "./src/js/modules/admin/admin.route.js",
   "./src/js/modules/console/console.data.js",
   "./src/js/modules/console/console.route.js",
+  "./src/js/modules/console/console.users.js",
   "./src/js/app/share-handler.js",
   "./src/js/app/router.js",
   "./src/js/app/bootstrap.js",

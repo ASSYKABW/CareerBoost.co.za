@@ -299,6 +299,10 @@
     if (sec === "pulse") {
       if (state.pulse) { body.innerHTML = renderPulseBody(); paintCountAndChart(); startTicker(); }
       else { body.innerHTML = renderSkeleton(); loadAndRenderPulse(); }
+    } else if (window.CBConsole.sections && window.CBConsole.sections[sec] && typeof window.CBConsole.sections[sec].load === "function") {
+      body.innerHTML = renderSkeleton();
+      try { window.CBConsole.sections[sec].load(body); }
+      catch (err) { console.warn("[console] section '" + sec + "' failed:", err); body.innerHTML = renderStubBody(sec); }
     } else {
       body.innerHTML = renderStubBody(sec);
     }
@@ -352,6 +356,13 @@
     $(".cbc-scrim").classList.add("is-show"); d.classList.add("is-show");
   }
   function closeDrawer() { var d = $("#cbc-drawer"); if (d) d.classList.remove("is-show"); var s = $(".cbc-scrim"); if (s) s.classList.remove("is-show"); }
+  // Generic drawer opener for section modules (e.g. console.users.js).
+  function openDrawerHtml(html) {
+    var d = $("#cbc-drawer"); if (!d) return;
+    d.innerHTML = html;
+    var s = $(".cbc-scrim"); if (s) s.classList.add("is-show");
+    d.classList.add("is-show");
+  }
   function openCmd() { var c = $("#cbc-cmd"); if (c) { c.classList.add("is-show"); var i = $("#cbc-cmd-input"); if (i) setTimeout(function () { i.focus(); }, 60); } }
   function closeCmd() { var c = $("#cbc-cmd"); if (c) c.classList.remove("is-show"); }
   function openNav() { var s = $("#cbc-sb"); if (s) s.classList.add("is-open"); var sc = $(".cbc-scrim"); if (sc) sc.classList.add("is-show"); }
@@ -398,6 +409,10 @@
     }
     loadAndRenderPulse();
   }
+
+  // Tiny UI API so section modules (console.users.js, …) can open the shared
+  // drawer + toast without re-implementing them.
+  window.CBConsole.ui = { openDrawer: openDrawerHtml, closeDrawer: closeDrawer, toast: toast };
 
   window.CBV2.routes.console = renderConsole;
   window.CBV2.afterRender.console = bindConsole;

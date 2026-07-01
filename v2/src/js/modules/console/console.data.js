@@ -170,6 +170,38 @@
       { sev: "opp", icon: "fa-arrow-up-right-dots", tag: "~R2,400/mo", title: "Pro users hit the voice-mock cap 3 days into the month", why: "11 of 18 Pro users maxed voice mocks before mid-month — a clean upgrade signal toward Career.", action: "Review upsell", to: "money" },
     ],
   };
+  var MOCK_USERS = [
+    { id: "u1", name: "Lerato Mokoena", email: "lerato@example.com", plan: "Pro", planTone: "cyan", joined: "2026-03-02", lastActive: "2026-06-29", aiCalls: 142, pipeline: 12, status: "active" },
+    { id: "u2", name: "Sipho Khumalo", email: "sipho@example.com", plan: "Career", planTone: "violet", joined: "2026-02-14", lastActive: "2026-06-30", aiCalls: 98, pipeline: 8, status: "active" },
+    { id: "u3", name: "Naledi Pillay", email: "naledi@example.com", plan: "Plus", planTone: "cyan", joined: "2026-05-20", lastActive: "2026-06-28", aiCalls: 54, pipeline: 5, status: "active" },
+    { id: "u4", name: "Thabo Nkosi", email: "thabo@example.com", plan: "Free", planTone: "dim", joined: "2026-06-25", lastActive: "2026-06-27", aiCalls: 3, pipeline: 1, status: "active" },
+    { id: "u5", name: "Aisha Patel", email: "aisha@example.com", plan: "Plus", planTone: "cyan", joined: "2026-04-11", lastActive: "2026-06-26", aiCalls: 37, pipeline: 6, status: "active" },
+    { id: "u6", name: "Themba Dlamini", email: "themba@example.com", plan: "Free", planTone: "dim", joined: "2026-06-18", lastActive: "2026-06-24", aiCalls: 9, pipeline: 2, status: "active" },
+  ];
+  function mockUsers(q) {
+    var list = MOCK_USERS;
+    if (q) { var s = String(q).toLowerCase(); list = list.filter(function (u) { return u.email.toLowerCase().indexOf(s) >= 0 || u.name.toLowerCase().indexOf(s) >= 0; }); }
+    return { _mock: true, users: list, total: list.length, page: 1, perPage: 25 };
+  }
+  function mockUserDetail(userId) {
+    var u = MOCK_USERS.filter(function (x) { return x.id === userId; })[0] || MOCK_USERS[0];
+    return {
+      _mock: true, id: u.id, name: u.name, email: u.email, joined: u.joined, roles: [], mfa: true,
+      plan: u.plan, planStatus: "active",
+      quota: [
+        { label: "AI resume tailors", used: 8, limit: 10 },
+        { label: "Mock interviews", used: 3, limit: 3 },
+        { label: "Cover letters", used: 6, limit: 15 },
+      ],
+      timeline: [
+        { event: "resume tailored", when: "2026-06-29", module: "resume" },
+        { event: "mock interview", when: "2026-06-28", module: "interview" },
+        { event: "job saved", when: "2026-06-27", module: "job-search" },
+        { event: "cover letter generated", when: "2026-06-26", module: "cover-letter" },
+      ],
+      stats: { pipeline: u.pipeline, savedJobs: 14, aiCalls: u.aiCalls, sessions: 21 },
+    };
+  }
 
   // ─── Live transport ────────────────────────────────────────────────
   function isMock() {
@@ -215,6 +247,26 @@
       } catch (e) {
         console.warn("[console] console-insights failed, using sample data:", e.message);
         return MOCK_INSIGHTS;
+      }
+    },
+    loadUsers: async function (q, page) {
+      if (isMock()) return mockUsers(q);
+      try {
+        var d = await call("console-users", { action: "list", q: q || "", page: page || 1 });
+        return (d && d.users) ? d : mockUsers(q);
+      } catch (e) {
+        console.warn("[console] console-users(list) failed, using sample data:", e.message);
+        return mockUsers(q);
+      }
+    },
+    loadUserDetail: async function (userId) {
+      if (isMock()) return { detail: mockUserDetail(userId) };
+      try {
+        var d = await call("console-users", { action: "detail", userId: userId });
+        return (d && d.detail) ? d : { detail: mockUserDetail(userId) };
+      } catch (e) {
+        console.warn("[console] console-users(detail) failed, using sample data:", e.message);
+        return { detail: mockUserDetail(userId) };
       }
     },
   };
