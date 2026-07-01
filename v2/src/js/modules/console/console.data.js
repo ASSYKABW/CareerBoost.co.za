@@ -318,5 +318,31 @@
       if (isMock()) return { ok: true, _mock: true };
       return callMut("admin-promote-user", { targetUserId: userId, roles: roles || [] });
     },
+    loadMoney: async function () {
+      var MOCK = {
+        _mock: true,
+        kpis: [
+          { key: "mrr", label: "MRR (ZAR)", tone: "green", value: 4890, fmt: "zar", delta: "+2 paid", deltaDir: "up", spark: [2, 1, 2, 1, 2, 1, 2] },
+          { key: "paid", label: "Active paid", tone: "cyan", value: 12, fmt: "int", delta: "+3 (30d)", deltaDir: "up", spark: [7, 8, 9, 10, 11, 11, 12] },
+          { key: "churn", label: "Churn (30d)", tone: "amber", value: 2, fmt: "int", delta: "14% of paid", deltaDir: "down", spark: [] },
+          { key: "pastdue", label: "Past due", tone: "amber", value: 1, fmt: "int", delta: "recover", deltaDir: "down", spark: [] },
+        ],
+        plans: [
+          { plan: "Plus", planTone: "cyan", count: 5, mrr: 1050 },
+          { plan: "Pro", planTone: "cyan", count: 4, mrr: 1520 },
+          { plan: "Career", planTone: "violet", count: 3, mrr: 2097 },
+        ],
+        failed: [{ email: "thabo@example.com", plan: "Pro", since: "2026-06-27" }],
+        promo: { active: true, percent: 30, endDate: "2026-07-31", grants: { active: 4, redeemed: 9 } },
+      };
+      if (isMock()) return MOCK;
+      try {
+        var d = await call("console-money", {});
+        return (d && d.money) ? d.money : MOCK;
+      } catch (e) {
+        console.warn("[console] console-money failed, using sample data:", e.message);
+        return MOCK;
+      }
+    },
   };
 })();

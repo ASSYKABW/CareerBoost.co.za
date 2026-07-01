@@ -121,6 +121,7 @@
 
 /* KPI cards */
 .cbc-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 13px; margin-bottom: 14px; }
+.cbc-kpis--4 { grid-template-columns: repeat(4, 1fr); }
 .cbc-card { background: var(--c-glass); border: 1px solid var(--c-border); border-radius: var(--c-r); position: relative; overflow: hidden; backdrop-filter: blur(9px); }
 .cbc-kpi { padding: 15px 15px 13px; transition: transform var(--dur-med) var(--ease-out), border-color var(--dur-med), box-shadow var(--dur-med); }
 .cbc-kpi:hover { transform: translateY(-3px); border-color: rgba(34, 227, 255, .22); box-shadow: 0 18px 50px -28px rgba(0, 0, 0, .8); }
