@@ -60,6 +60,27 @@
     });
   }
 
+  // MFA gate. The console's endpoints require an aal2 (MFA-verified) session
+  // (getAuthedAdmin enforces it server-side); without this the console would
+  // 403 and fall back to sample data. Reuses CBAdmin.mfa (admin.mfa.js) so
+  // there's one MFA surface. Returns: "skip" (mock/dev/signed out), "loading"
+  // (snapshot pending), "challenge" (aal1 + a verified factor → 6-digit prompt),
+  // "enroll" (aal1 + no factor → point to /mfa-setup.html), or "ok" (aal2).
+  function mfaState() {
+    if (window.CBConsole.forceMock) return "skip";
+    try { if (new URLSearchParams(window.location.search).get("mock") === "1") return "skip"; } catch (e) { /* ignore */ }
+    var cfg = window.CBV2 && window.CBV2.config;
+    if (!cfg || typeof cfg.isBackendEnabled !== "function" || !cfg.isBackendEnabled()) return "skip";
+    var auth = window.CBV2 && window.CBV2.auth;
+    if (!auth || typeof auth.isAuthenticated !== "function" || !auth.isAuthenticated()) return "skip";
+    var mfa = window.CBAdmin && window.CBAdmin.mfa;
+    if (!mfa || typeof mfa.getSnapshot !== "function") return "ok"; // module absent — let the server enforce
+    var s = mfa.getSnapshot();
+    if (!s || !s.loaded) return "loading";
+    if (s.currentLevel === "aal2") return "ok";
+    return (s.verifiedFactors && s.verifiedFactors.length) ? "challenge" : "enroll";
+  }
+
   // ─── Shell ─────────────────────────────────────────────────────────
   function renderNav() {
     return NAV.map(function (n) {
@@ -151,6 +172,10 @@
   }
   function renderConsole() {
     if (!hasAccess()) return renderDenied();
+    var m = mfaState();
+    if (m === "loading") return '<div class="cbc" style="min-height:100vh">' + window.CBAdmin.mfa.renderLoadingScreen() + "</div>";
+    if (m === "challenge") return '<div class="cbc" style="min-height:100vh">' + window.CBAdmin.mfa.renderChallengeScreen() + "</div>";
+    if (m === "enroll") return '<div class="cbc" style="min-height:100vh">' + window.CBAdmin.mfa.renderEnrollNudge() + "</div>";
     return '<div class="cbc">' + renderShell() + "</div>";
   }
 
@@ -396,6 +421,14 @@
   var wired = false;
   function bindConsole() {
     if (!hasAccess()) return;
+    var m = mfaState();
+    if (m === "loading") {
+      var mfa = window.CBAdmin && window.CBAdmin.mfa;
+      if (mfa && mfa.refreshSnapshot) mfa.refreshSnapshot().then(function () { if (window.CBV2.renderCurrentRoute) window.CBV2.renderCurrentRoute(); });
+      return;
+    }
+    if (m === "challenge") { if (window.CBAdmin.mfa && window.CBAdmin.mfa.bindChallengeForm) window.CBAdmin.mfa.bindChallengeForm(); return; }
+    if (m === "enroll") return;
     state.section = "pulse"; state.pulse = null;
     // Delegated handlers are attached once to document; re-binding the route
     // (e.g. navigating away and back) must not stack duplicates.
