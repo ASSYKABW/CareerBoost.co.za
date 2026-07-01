@@ -239,6 +239,9 @@
 .cbc-dw-meta .cbc-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--c-dim); font-weight: 600; }
 .cbc-dw-meta .cbc-v { font-size: 14px; font-weight: 600; margin-top: 3px; }
 .cbc-dw-meta .cbc-v.mono { font-family: var(--c-mono); }
+.cbc-inp { font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--c-border-strong); background: rgba(255, 255, 255, .03); color: var(--c-text); outline: none; }
+.cbc-inp:focus { border-color: rgba(34, 227, 255, .4); }
+.cbc-act-panel { background: rgba(255, 255, 255, .02); border: 1px solid var(--c-border); border-radius: 12px; padding: 12px 13px; }
 .cbc-qbar { margin-bottom: 11px; }
 .cbc-qbar .cbc-ql { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
 .cbc-qbar .cbc-ql span:last-child { font-family: var(--c-mono); color: var(--c-muted); }

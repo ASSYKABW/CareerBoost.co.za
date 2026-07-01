@@ -222,6 +222,36 @@
     return res.data;
   }
 
+  // Admin CSRF nonce — client-generated, stored in sessionStorage. The server
+  // only checks the nonce's SHAPE, not its value (see _shared/admin-csrf.ts),
+  // and we reuse the SAME key the legacy admin uses so one session shares one
+  // nonce. Required on admin *mutation* endpoints.
+  function csrfNonce() {
+    try {
+      var n = sessionStorage.getItem("cb_admin_csrf_nonce");
+      if (!n || n.length < 32) {
+        var raw = (window.crypto && crypto.randomUUID) ? (crypto.randomUUID() + crypto.randomUUID())
+          : ("nonce_" + Date.now() + "_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+        n = raw.replace(/[^A-Za-z0-9\-_]/g, "").slice(0, 100);
+        if (n.length < 32) n = (n + "00000000000000000000000000000000000000").slice(0, 40);
+        sessionStorage.setItem("cb_admin_csrf_nonce", n);
+      }
+      return n;
+    } catch (e) {
+      return ("fallback_" + Date.now() + "_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9\-_]/g, "").slice(0, 60);
+    }
+  }
+  // Mutation transport — like call() but attaches the CSRF nonce header that
+  // admin mutation endpoints require (admin-user-adjust, admin-promote-user).
+  async function callMut(fnName, body) {
+    var auth = window.CBV2 && window.CBV2.auth;
+    var client = auth && typeof auth.getClient === "function" ? auth.getClient() : null;
+    if (!client || !client.functions) throw new Error("Supabase client unavailable.");
+    var res = await client.functions.invoke(fnName, { body: body || {}, headers: { "X-CB-Admin-Nonce": csrfNonce() } });
+    if (res.error) throw new Error(res.error.message || "Edge function error.");
+    return res.data;
+  }
+
   window.CBConsole.data = {
     isMock: isMock,
     call: call,
@@ -268,6 +298,25 @@
         console.warn("[console] console-users(detail) failed, using sample data:", e.message);
         return { detail: mockUserDetail(userId) };
       }
+    },
+    // ── Mutations (wired to the existing proven admin endpoints) ──────
+    adjustQuota: async function (userId, quota, amount) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-user-adjust", { targetUserId: userId, action: "grant_quota", payload: { quota: quota, amount: amount } });
+    },
+    resetQuota: async function (userId) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-user-adjust", { targetUserId: userId, action: "reset_quota", payload: {} });
+    },
+    grantPromo: async function (email, percent, expiresAt) {
+      if (isMock()) return { ok: true, _mock: true };
+      var body = { action: "grant-create", email: email, kind: "percent", percent: percent };
+      if (expiresAt) body.expires_at = expiresAt;
+      return call("admin-promo", body); // admin-promo grants don't require the CSRF nonce
+    },
+    promoteUser: async function (userId, roles) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-promote-user", { targetUserId: userId, roles: roles || [] });
     },
   };
 })();

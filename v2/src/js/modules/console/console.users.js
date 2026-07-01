@@ -104,10 +104,83 @@
       '<div class="cbc-dw-sec">Quota usage (this month)</div>' + quota +
       '<div class="cbc-dw-sec">Recent activity</div><div class="cbc-feed" style="max-height:220px">' + timeline + "</div>" +
       '<div class="cbc-dw-sec">Actions</div><div class="cbc-dw-actions">' +
-        '<button class="cbc-btn cbc-sm" data-toast="Adjust quota — wiring to admin-user-adjust next"><i class="fa-solid fa-sliders"></i> Adjust quota</button>' +
-        '<button class="cbc-btn cbc-sm" data-toast="Grant promo — wiring to admin-promo next"><i class="fa-solid fa-gift"></i> Grant promo</button>' +
-        '<button class="cbc-btn cbc-sm" data-toast="Promote — wiring to admin-promote-user next"><i class="fa-solid fa-user-shield"></i> Promote</button>' +
-        '<button class="cbc-btn cbc-danger cbc-sm" data-toast="Suspend — wiring next"><i class="fa-solid fa-ban"></i> Suspend</button></div>';
+        '<button class="cbc-btn cbc-sm" data-act="adjust"><i class="fa-solid fa-sliders"></i> Adjust quota</button>' +
+        '<button class="cbc-btn cbc-sm" data-act="promo"><i class="fa-solid fa-gift"></i> Grant promo</button>' +
+        '<button class="cbc-btn cbc-sm" data-act="promote"><i class="fa-solid fa-user-shield"></i> Promote</button>' +
+        '<button class="cbc-btn cbc-danger cbc-sm" data-act="suspend"><i class="fa-solid fa-ban"></i> Suspend</button></div>' +
+      '<div id="cbc-act-form" style="margin-top:12px"></div>';
+  }
+
+  function isOperator(d) { return (d.roles || []).some(function (r) { return ["admin", "owner", "developer"].indexOf(r) >= 0; }); }
+
+  // Inline action forms rendered into #cbc-act-form when an action is clicked.
+  function formHtml(act, d) {
+    if (act === "adjust") {
+      return '<div class="cbc-act-panel"><div style="font-size:12px;color:var(--c-muted);margin-bottom:8px">Grant extra quota (adds to this month\'s allowance).</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<select id="cbc-q-key" class="cbc-inp"><option value="ai_resumes">Resume tailors</option><option value="ai_covers">Cover letters</option><option value="ai_mocks">Mock interviews</option><option value="ai_research">Company research</option><option value="ai_question_banks">Question banks</option></select>' +
+          '<input id="cbc-q-amt" class="cbc-inp" type="number" min="1" max="1000" value="5" style="width:78px" />' +
+          '<button class="cbc-btn cbc-primary cbc-sm" data-act-submit="adjust">Grant</button></div></div>';
+    }
+    if (act === "promo") {
+      return '<div class="cbc-act-panel"><div style="font-size:12px;color:var(--c-muted);margin-bottom:8px">Create a % discount for ' + esc(d.email) + '.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input id="cbc-p-pct" class="cbc-inp" type="number" min="1" max="99" value="30" style="width:66px" /><span style="font-size:12px;color:var(--c-muted)">% off</span>' +
+          '<input id="cbc-p-exp" class="cbc-inp" type="date" title="Optional expiry" />' +
+          '<button class="cbc-btn cbc-primary cbc-sm" data-act-submit="promo">Grant discount</button></div></div>';
+    }
+    if (act === "promote") {
+      if (isOperator(d)) {
+        return '<div class="cbc-act-panel"><div style="font-size:12.5px;margin-bottom:8px">This user is an operator (' + esc((d.roles || []).join(", ")) + ').</div>' +
+          '<button class="cbc-btn cbc-danger cbc-sm" data-act-submit="demote">Remove operator access</button></div>';
+      }
+      return '<div class="cbc-act-panel"><div style="font-size:12.5px;margin-bottom:8px">Grant <b>admin</b> access to ' + esc(d.email) + '? They\'ll still need MFA to use the console.</div>' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-act-submit="promote">Promote to admin</button></div>';
+    }
+    if (act === "suspend") {
+      return '<div class="cbc-act-panel" style="color:var(--c-muted);font-size:12.5px"><i class="fa-solid fa-circle-info" style="color:var(--c-amber)"></i> No admin suspend endpoint exists yet — this needs a dedicated soft-delete action. Tracked for a later increment.</div>';
+    }
+    return "";
+  }
+
+  function bindDrawer(d) {
+    var drawer = document.querySelector("#cbc-drawer"); if (!drawer) return;
+    drawer.querySelectorAll("[data-act]").forEach(function (btn) {
+      btn.onclick = function () {
+        var host = drawer.querySelector("#cbc-act-form"); if (!host) return;
+        host.innerHTML = formHtml(btn.getAttribute("data-act"), d);
+        var submit = host.querySelector("[data-act-submit]");
+        if (submit) submit.onclick = function () { submitAction(d, submit.getAttribute("data-act-submit"), submit); };
+      };
+    });
+  }
+
+  async function submitAction(d, kind, btn) {
+    var toast = UI().toast || function (m) { console.log(m); };
+    btn.disabled = true;
+    try {
+      if (kind === "adjust") {
+        var q = document.querySelector("#cbc-q-key").value;
+        var amt = Math.max(1, Math.min(1000, parseInt(document.querySelector("#cbc-q-amt").value, 10) || 0));
+        await D().adjustQuota(d.id, q, amt);
+        toast("Granted " + amt + " × " + q.replace("ai_", "").replace(/_/g, " "));
+      } else if (kind === "promo") {
+        var pct = Math.max(1, Math.min(99, parseInt(document.querySelector("#cbc-p-pct").value, 10) || 0));
+        var exp = (document.querySelector("#cbc-p-exp").value || "").trim();
+        await D().grantPromo(d.email, pct, exp || null);
+        toast(pct + "% discount granted to " + d.email);
+      } else if (kind === "promote") {
+        await D().promoteUser(d.id, ["admin"]);
+        toast("Promoted " + d.email + " to admin");
+      } else if (kind === "demote") {
+        await D().promoteUser(d.id, []);
+        toast("Removed operator access from " + d.email);
+      }
+      setTimeout(function () { openUser(d.id); }, 400); // refresh so the change reflects
+    } catch (e) {
+      btn.disabled = false;
+      toast((e && e.message) ? e.message : "Action failed.");
+    }
   }
 
   function drawerSkeleton() {
@@ -122,6 +195,7 @@
     var res = await D().loadUserDetail(userId);
     var d = (res && res.detail) || {};
     if (UI().openDrawer) UI().openDrawer(detailHtml(d));
+    bindDrawer(d);
   }
 
   async function load(bodyEl) {
