@@ -447,5 +447,40 @@
         return MOCK;
       }
     },
+    // ── Model Control (console-config) ────────────────────────────────
+    loadModelControl: async function () {
+      var MOCK = {
+        _mock: true,
+        skills: [
+          { skill: "resume-tailor", tier: "top", defaultProvider: "anthropic", defaultModel: "claude-sonnet-4-5", envProvider: null, envModel: null, db: null, effectiveProvider: "anthropic", effectiveModel: "claude-sonnet-4-5", source: "default" },
+          { skill: "cover-letter-generate", tier: "mid", defaultProvider: "anthropic", defaultModel: "claude-sonnet-4-5", envProvider: null, envModel: null, db: { provider: "anthropic", model: "claude-sonnet-5" }, effectiveProvider: "anthropic", effectiveModel: "claude-sonnet-5", source: "admin" },
+          { skill: "interview-session-step", tier: "top", defaultProvider: "anthropic", defaultModel: "claude-sonnet-4-5", envProvider: null, envModel: null, db: null, effectiveProvider: "anthropic", effectiveModel: "claude-sonnet-4-5", source: "default" },
+          { skill: "query-parse", tier: "cheap", defaultProvider: "gemini", defaultModel: "gemini-2.0-flash", envProvider: null, envModel: null, db: null, effectiveProvider: "gemini", effectiveModel: "gemini-2.0-flash", source: "default" },
+          { skill: "chat-assist", tier: "cheap", defaultProvider: "anthropic", defaultModel: "claude-haiku-4-5", envProvider: null, envModel: null, db: null, effectiveProvider: "anthropic", effectiveModel: "claude-haiku-4-5", source: "default" },
+        ],
+        global: null, globalEnv: null,
+        availableProviders: ["anthropic", "gemini", "openai"],
+        modelCatalog: {
+          anthropic: ["claude-haiku-4-5", "claude-opus-4-8", "claude-sonnet-4-5", "claude-sonnet-5"],
+          gemini: ["gemini-2.0-flash"], openai: ["gpt-4o-mini"], groq: [],
+        },
+      };
+      if (isMock()) return MOCK;
+      try {
+        var d = await call("console-config", { action: "get" });
+        return (d && d.config) ? d.config : MOCK;
+      } catch (e) {
+        console.warn("[console] console-config failed, using sample data:", e.message);
+        return MOCK;
+      }
+    },
+    setModelRoute: async function (skill, provider, model) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("console-config", { action: "set-route", skill: skill, provider: provider || "", model: model || "" });
+    },
+    clearModelRoute: async function (skill) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("console-config", { action: "clear-route", skill: skill });
+    },
   };
 })();

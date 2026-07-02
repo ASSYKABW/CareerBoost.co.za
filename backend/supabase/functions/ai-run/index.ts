@@ -38,6 +38,7 @@ import {
   type LLMProvider,
 } from "../_shared/llm.ts";
 import { computeCostUSD } from "../_shared/pricing.ts";
+import { getAiRouteOverride, type AiRouteOverride } from "../_shared/runtime-config.ts";
 import { checkRateLimit, recordRateLimitUsage } from "../_shared/rate-limit.ts";
 import {
   buildCacheKey,
@@ -300,9 +301,21 @@ function providersWithKeys(): LLMProvider[] {
   return DEFAULT_PROVIDER_ORDER.filter(providerHasKey);
 }
 
-function chooseProviders(skill: Skill, clientOverride?: LLMProvider): LLMProvider[] {
+function chooseProviders(
+  skill: Skill,
+  clientOverride?: LLMProvider,
+  adminProvider?: LLMProvider,
+): LLMProvider[] {
   const available = providersWithKeys();
   if (available.length === 0) return [];
+
+  // Console Model Control (runtime_config.ai_routing) — the admin's LIVE
+  // override, set from the Console with no redeploy. Highest precedence:
+  // it's the most intentional operator signal. Still builds a fallback
+  // chain so a failing routed provider degrades instead of erroring.
+  if (adminProvider && available.includes(adminProvider)) {
+    return [adminProvider, ...available.filter((p) => p !== adminProvider)];
+  }
 
   // Operator global override — single provider, no fallback.
   const globalOverride = (Deno.env.get("LLM_PROVIDER") || "").trim() as LLMProvider;
@@ -329,7 +342,18 @@ function chooseProviders(skill: Skill, clientOverride?: LLMProvider): LLMProvide
   return available;
 }
 
-function modelForCall(skill: Skill, provider: LLMProvider, clientModel?: string): string | undefined {
+function modelForCall(
+  skill: Skill,
+  provider: LLMProvider,
+  clientModel?: string,
+  adminRoute?: AiRouteOverride | null,
+): string | undefined {
+  // 0. Console Model Control override — only when the provider being tried
+  //    matches the admin-routed provider (otherwise a Claude model id would
+  //    be sent to Gemini when the chain falls back).
+  if (adminRoute?.model && (!adminRoute.provider || adminRoute.provider === provider)) {
+    return adminRoute.model;
+  }
   // 1. Client override (rarely used).
   if (clientModel) return clientModel;
   // 2. Operator per-skill override (MODEL_RESUME_TAILOR=...).
@@ -352,6 +376,7 @@ async function tryProviders(
   input: unknown,
   skill: Skill,
   clientModel: string | undefined,
+  adminRoute?: AiRouteOverride | null,
 ) {
   let lastError: Error | null = null;
   const warnings: string[] = [];
@@ -367,7 +392,7 @@ async function tryProviders(
       const call = await callProvider(provider, {
         systemStable: spec.systemStable,
         user: spec.userTemplate(input),
-        model: modelForCall(skill, provider, clientModel),
+        model: modelForCall(skill, provider, clientModel, adminRoute),
         temperature: temperatureFor(skill),
         maxTokens: maxTokensFor(skill),
         timeoutMs,
@@ -602,9 +627,17 @@ Deno.serve(withCors(async (req) => {
         );
       }
     }
+    // Console Model Control: streaming is Anthropic-only, so the admin's
+    // model override applies only when the routed provider is anthropic
+    // (or unset).
+    const dbRoute = await getAiRouteOverride(skill);
+    const streamModel =
+      (dbRoute?.model && (!dbRoute.provider || dbRoute.provider === "anthropic")
+        ? dbRoute.model
+        : undefined) || body.model;
     return streamResponse(
       req, prompts[skill], input, skill,
-      user.id, requestId, promptVersion, body.model,
+      user.id, requestId, promptVersion, streamModel,
     );
   }
 
@@ -655,7 +688,15 @@ Deno.serve(withCors(async (req) => {
     }
   }
 
-  const providers = chooseProviders(skill, body.provider);
+  // Console Model Control: admin live override from runtime_config (45s
+  // cache — effectively free). Threads into both provider choice and the
+  // per-call model pick below.
+  const adminRoute = await getAiRouteOverride(skill);
+  const providers = chooseProviders(
+    skill,
+    body.provider,
+    (adminRoute?.provider || undefined) as LLMProvider | undefined,
+  );
   if (providers.length === 0) {
     return errorResponse(
       "No LLM providers configured. Set at least one of GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY as Supabase Edge Function secrets.",
@@ -667,7 +708,7 @@ Deno.serve(withCors(async (req) => {
   const started = Date.now();
 
   try {
-    const { call, parsed, warnings } = await tryProviders(providers, spec, input, skill, body.model);
+    const { call, parsed, warnings } = await tryProviders(providers, spec, input, skill, body.model, adminRoute);
     const cost = computeCostUSD(call.model, {
       inputTokens: call.inputTokens,
       outputTokens: call.outputTokens,
