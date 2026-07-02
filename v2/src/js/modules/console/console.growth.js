@@ -141,6 +141,11 @@
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
         '<input id="cbc-mk-brief" class="cbc-inp" style="flex:1;min-width:220px" placeholder="Optional brief, e.g. focus on voice mock interviews this week" />' +
         '<button class="cbc-btn cbc-primary cbc-sm" data-mk-gen style="height:34px"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate drafts</button></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="Campaign week on voice mock interviews — the Pro plan hero feature. Angle: interview nerves are beatable with practice.">🎤 Voice interviews</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="CV / resume tailoring tips for SA job seekers. Angle: generic CVs get silence; tailored ones get replies.">📄 CV tips</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="Referral push: invite a friend who is job hunting. Warm, community angle.">🤝 Referrals</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="Free plan awareness: you can start the whole workflow free, no card. Angle: lower the barrier.">🆓 Free plan</button></div>' +
       '<div id="cbc-mk-result">' + (lastRun ? runSummaryHtml(lastRun) : "") + '</div>' +
       '<div id="cbc-mk-list">' + list + '</div></section>';
   }
@@ -150,8 +155,13 @@
     var byId = {};
     (drafts || []).forEach(function (d) { byId[d.id] = d; });
     host.addEventListener("click", async function (e) {
-      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del]") : null;
+      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset]") : null;
       if (!t) return;
+      if (t.hasAttribute("data-mk-preset")) {
+        var inp = host.querySelector("#cbc-mk-brief");
+        if (inp) { inp.value = t.getAttribute("data-mk-preset"); inp.focus(); }
+        return;
+      }
       if (t.hasAttribute("data-mk-copy")) {
         var d = byId[t.getAttribute("data-mk-copy")];
         if (d) {
@@ -167,9 +177,16 @@
           var brief = (host.querySelector("#cbc-mk-brief") || {}).value || "";
           var slot = host.querySelector("#cbc-mk-result");
           if (slot) slot.innerHTML = '<div class="cbc-act-panel" style="margin-bottom:12px"><i class="fa-solid fa-circle-notch fa-spin"></i> Copilot is studying your growth data and writing drafts&hellip; (~30&ndash;60s, budget-capped)</div>';
-          var r = await D().runMarketing(brief.trim() || "Study the current growth and content data, then propose this week's content: one LinkedIn post, one Facebook post, and one TikTok script.");
-          lastRun = r; // shown by copilotPanel after the reload below
-          load(bodyEl); // refresh queue with new drafts
+          try {
+            var r = await D().runMarketing(brief.trim() || "Study the current growth and content data, then propose this week's content: one LinkedIn post, one Facebook post, and one TikTok script.");
+            lastRun = r; // shown by copilotPanel after the reload below
+            load(bodyEl); // refresh queue with new drafts
+          } catch (genErr) {
+            // Show the REAL backend error in place of the spinner (stale
+            // deploy, missing migration, budget, rate limit, …).
+            if (slot) slot.innerHTML = '<div class="cbc-act-panel" style="margin-bottom:12px"><b style="color:var(--c-danger)">Copilot failed</b><div style="font-size:12.5px;margin-top:5px">' + esc((genErr && genErr.message) || "Unknown error") + '</div><div style="font-size:11.5px;color:var(--c-muted);margin-top:5px">Usual fixes: redeploy <code>agent-run</code> + <code>console-growth</code>, apply migration 0047, or retry in a minute.</div></div>';
+            t.disabled = false;
+          }
           return;
         }
         if (t.hasAttribute("data-mk-status")) {

@@ -238,12 +238,24 @@
     if (!auth || typeof auth.isAuthenticated !== "function" || !auth.isAuthenticated()) return true;
     return false;
   }
+  // Pull the REAL error message out of a supabase-js FunctionsHttpError —
+  // the default .message is the useless "Edge Function returned a non-2xx
+  // status code"; the actual { error } body lives on error.context (Response).
+  async function realError(err, fnName) {
+    try {
+      if (err && err.context && typeof err.context.json === "function") {
+        var body = await err.context.json();
+        if (body && body.error) return new Error(fnName + ": " + body.error);
+      }
+    } catch (e) { /* body not json */ }
+    return new Error(fnName + ": " + ((err && err.message) || "Edge function error."));
+  }
   async function call(fnName, body) {
     var auth = window.CBV2 && window.CBV2.auth;
     var client = auth && typeof auth.getClient === "function" ? auth.getClient() : null;
     if (!client || !client.functions) throw new Error("Supabase client unavailable.");
     var res = await client.functions.invoke(fnName, { body: body || {} });
-    if (res.error) throw new Error(res.error.message || "Edge function error.");
+    if (res.error) throw await realError(res.error, fnName);
     return res.data;
   }
 
@@ -273,7 +285,7 @@
     var client = auth && typeof auth.getClient === "function" ? auth.getClient() : null;
     if (!client || !client.functions) throw new Error("Supabase client unavailable.");
     var res = await client.functions.invoke(fnName, { body: body || {}, headers: { "X-CB-Admin-Nonce": csrfNonce() } });
-    if (res.error) throw new Error(res.error.message || "Edge function error.");
+    if (res.error) throw await realError(res.error, fnName);
     return res.data;
   }
 
