@@ -201,7 +201,9 @@
         '<div class="cbc-ins-ic ' + d.sev + '"><i class="fa-solid ' + d.icon + '"></i></div>' +
         '<div class="cbc-ins-bd"><div class="cbc-t">' + U().escapeHtml(d.title) + '</div><div class="cbc-w">' + U().escapeHtml(d.why) + "</div></div>" +
         '<div class="cbc-ins-rt"><span class="cbc-ins-tag ' + d.sev + '">' + U().escapeHtml(d.tag) + "</span>" +
-          '<button class="cbc-btn cbc-sm" data-ins-go="' + d.to + '">' + U().escapeHtml(d.action) + " →</button></div>" +
+          '<span style="display:flex;gap:6px">' +
+            '<button class="cbc-btn cbc-sm cbc-amber" data-ins-fix="1" data-ins-title="' + U().escapeHtml(d.title) + '" title="Diagnose &amp; propose fixes"><i class="fa-solid fa-screwdriver-wrench"></i></button>' +
+            '<button class="cbc-btn cbc-sm" data-ins-go="' + d.to + '">' + U().escapeHtml(d.action) + " →</button></span></div>" +
       "</div>";
     }).join("");
     return '<section class="cbc-card cbc-panel cbc-insights">' +
@@ -393,25 +395,75 @@
   // ── Console Assistant (agent-run) ──────────────────────────────────
   // Single-shot Q&A: each Ask = one audited, budget-capped agent run with
   // read-only tools. The transcript lives in the drawer DOM only.
+  var assistMode = "console";      // "console" (read-only analyst) | "resolver" (proposes fixes)
+  var pendingProposals = [];       // resolver proposals awaiting Apply, indexed by data-rs-apply
   function assistantShell() {
+    var isRes = assistMode === "resolver";
     return '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
-      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#b06bff,#22e3ff)"><i class="fa-solid fa-wand-magic-sparkles"></i></div>' +
-        '<div><div class="cbc-nm">Console Assistant</div><div class="cbc-em">read-only · audited · budget-capped</div></div></div>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,' + (isRes ? "#ff9d4a,#ef4855" : "#b06bff,#22e3ff") + ')"><i class="fa-solid ' + (isRes ? "fa-screwdriver-wrench" : "fa-wand-magic-sparkles") + '"></i></div>' +
+        '<div><div class="cbc-nm">' + (isRes ? "Ops Resolver" : "Console Assistant") + '</div><div class="cbc-em">' + (isRes ? "diagnoses &middot; proposes fixes &middot; you apply" : "read-only &middot; audited &middot; budget-capped") + '</div></div></div>' +
       '<div id="cbc-as-log" class="cbc-feed" style="max-height:none"></div>' +
-      '<div class="cbc-dw-sec">Ask</div>' +
+      '<div class="cbc-dw-sec">' + (isRes ? "Describe the problem" : "Ask") + '</div>' +
       '<div style="display:flex;gap:8px">' +
-        '<input id="cbc-as-input" class="cbc-inp" style="flex:1" placeholder="e.g. Why did AI spend jump this week?" />' +
-        '<button class="cbc-btn cbc-primary cbc-sm" data-assist-ask style="height:34px">Ask</button></div>' +
-      '<div style="font-size:11px;color:var(--c-dim);margin-top:8px">Try: &ldquo;Which channel converts best?&rdquo; &middot; &ldquo;Find thabo&rdquo; &middot; &ldquo;What model is resume-tailor using?&rdquo;</div>';
+        '<input id="cbc-as-input" class="cbc-inp" style="flex:1" placeholder="' + (isRes ? "e.g. AI failures are spiking — diagnose and propose fixes" : "e.g. Why did AI spend jump this week?") + '" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-assist-ask style="height:34px">' + (isRes ? "Diagnose" : "Ask") + '</button></div>' +
+      '<div style="font-size:11px;color:var(--c-dim);margin-top:8px">' +
+        (isRes
+          ? 'It investigates with real data, then each proposed fix gets an <b>Apply</b> button — nothing runs without your tap.'
+          : 'Try: &ldquo;Which channel converts best?&rdquo; &middot; &ldquo;Find thabo&rdquo; &middot; &ldquo;What model is resume-tailor using?&rdquo;') + '</div>';
   }
-  function openAssistant() {
+  function openAssistant(mode, prefill, autorun) {
+    assistMode = mode === "resolver" ? "resolver" : "console";
+    pendingProposals = [];
     openDrawerHtml(assistantShell());
     var input = $("#cbc-as-input");
     if (input) {
+      if (prefill) input.value = prefill;
       setTimeout(function () { input.focus(); }, 80);
       input.addEventListener("keydown", function (ev) {
         if (ev.key === "Enter") { var b = $("[data-assist-ask]"); if (b && !b.disabled) submitAssistant(b); }
       });
+      if (autorun && prefill) {
+        setTimeout(function () { var b = $("[data-assist-ask]"); if (b && !b.disabled) submitAssistant(b); }, 120);
+      }
+    }
+  }
+  // Map an approved proposal onto the EXISTING secure lever endpoints — the
+  // Apply tap goes through the same CSRF+MFA+audit path as doing it manually.
+  function applyProposal(p) {
+    var d = window.CBConsole.data;
+    var prm = p.params || {};
+    if (p.kind === "set_model_route") return d.setModelRoute(String(prm.skill || ""), String(prm.provider || ""), String(prm.model || ""));
+    if (p.kind === "resolve_incident") return d.resolveIncident(String(prm.incidentId || ""), String(prm.note || "Resolved via Ops Resolver"));
+    if (p.kind === "ack_incident") return d.ackIncident(String(prm.incidentId || ""));
+    if (p.kind === "stop_promo") return d.stopPromo();
+    if (p.kind === "grant_quota") return d.grantQuotaByEmail(String(prm.email || ""), String(prm.quota || ""), Number(prm.amount) || 1);
+    return Promise.reject(new Error("Unknown action kind: " + p.kind));
+  }
+  function proposalCardsHtml(props, baseIdx) {
+    function summary(prm) {
+      return Object.keys(prm || {}).map(function (k) { return k + "=" + prm[k]; }).join(" · ");
+    }
+    return props.map(function (p, i) {
+      return '<div class="cbc-act-panel" style="margin:8px 0 0 19px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<span class="cbc-chip amber"><i class="fa-solid fa-bolt"></i> ' + U().escapeHtml(p.kind.replace(/_/g, " ")) + '</span>' +
+          '<span style="font-family:var(--c-mono);font-size:11px;color:var(--c-muted);word-break:break-all">' + U().escapeHtml(summary(p.params)) + '</span>' +
+          '<button class="cbc-btn cbc-primary cbc-sm" data-rs-apply="' + (baseIdx + i) + '" style="margin-left:auto">Apply</button></div>' +
+        '<div style="font-size:12px;color:var(--c-muted);margin-top:5px">' + U().escapeHtml(p.reason) + '</div></div>';
+    }).join("");
+  }
+  async function applyProposalClick(btn) {
+    var p = pendingProposals[Number(btn.getAttribute("data-rs-apply"))];
+    if (!p) return;
+    btn.disabled = true;
+    try {
+      await applyProposal(p);
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
+      toast("Applied: " + p.kind.replace(/_/g, " "));
+    } catch (err) {
+      btn.disabled = false;
+      toast((err && err.message) ? err.message : "Apply failed.");
     }
   }
   async function submitAssistant(btn) {
@@ -423,7 +475,7 @@
       '<div class="cbc-fi violet"><span class="cbc-fd"></span><div><div class="cbc-ft"><b>You</b></div><div class="cbc-fm">' + U().escapeHtml(q) + '</div></div></div>' +
       '<div class="cbc-fi" id="cbc-as-wait"><span class="cbc-fd"></span><div><div class="cbc-ft"><i class="fa-solid fa-circle-notch fa-spin"></i> Investigating&hellip;</div></div></div>');
     try {
-      var r = await window.CBConsole.data.runAgent(q);
+      var r = await (assistMode === "resolver" ? window.CBConsole.data.runResolver(q) : window.CBConsole.data.runAgent(q));
       var wait = $("#cbc-as-wait"); if (wait) wait.remove();
       var toolSteps = (r.steps || []).filter(function (s) { return s.type === "tool"; });
       var stepsHtml = toolSteps.length
@@ -433,8 +485,17 @@
           }).join("") + '</details>'
         : "";
       log.insertAdjacentHTML("beforeend",
-        '<div class="cbc-fi green"><span class="cbc-fd"></span><div style="min-width:0"><div class="cbc-ft"><b>Assistant</b>' + (r._mock ? ' <span class="cbc-chip amber">sample</span>' : "") + '</div>' +
+        '<div class="cbc-fi green"><span class="cbc-fd"></span><div style="min-width:0"><div class="cbc-ft"><b>' + (assistMode === "resolver" ? "Resolver" : "Assistant") + '</b>' + (r._mock ? ' <span class="cbc-chip amber">sample</span>' : "") + '</div>' +
         '<div style="font-size:13px;line-height:1.5;margin-top:3px;white-space:pre-wrap">' + U().escapeHtml(r.result || r.error || "No answer.") + '</div>' + stepsHtml + "</div></div>");
+      // Resolver: turn each propose_action into an Apply card.
+      if (assistMode === "resolver") {
+        var props = U().extractProposals(r.steps);
+        if (props.length) {
+          var base = pendingProposals.length;
+          pendingProposals = pendingProposals.concat(props);
+          log.insertAdjacentHTML("beforeend", proposalCardsHtml(props, base));
+        }
+      }
     } catch (err) {
       var w = $("#cbc-as-wait"); if (w) w.remove();
       log.insertAdjacentHTML("beforeend",
@@ -451,10 +512,15 @@
   // Single delegated click handler for the whole console — survives the
   // body being re-rendered on every section/range switch.
   function onClick(e) {
-    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-resolve],[data-spender],[data-ins-go],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
+    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-resolve],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
     if (!t) return;
-    if (t.hasAttribute("data-assist")) { openAssistant(); return; }
+    if (t.hasAttribute("data-assist")) { openAssistant("console"); return; }
     if (t.hasAttribute("data-assist-ask")) { submitAssistant(t); return; }
+    if (t.hasAttribute("data-ins-fix")) {
+      openAssistant("resolver", "Investigate and propose fixes: " + (t.getAttribute("data-ins-title") || "current issues"), true);
+      return;
+    }
+    if (t.hasAttribute("data-rs-apply")) { applyProposalClick(t); return; }
     if (t.hasAttribute("data-sec")) { switchSection(t.getAttribute("data-sec")); return; }
     if (t.hasAttribute("data-range")) {
       state.range = t.getAttribute("data-range");
@@ -502,7 +568,7 @@
 
   // Tiny UI API so section modules (console.users.js, …) can open the shared
   // drawer + toast without re-implementing them.
-  window.CBConsole.ui = { openDrawer: openDrawerHtml, closeDrawer: closeDrawer, toast: toast };
+  window.CBConsole.ui = { openDrawer: openDrawerHtml, closeDrawer: closeDrawer, toast: toast, openAssistant: openAssistant };
 
   window.CBV2.routes.console = renderConsole;
   window.CBV2.afterRender.console = bindConsole;

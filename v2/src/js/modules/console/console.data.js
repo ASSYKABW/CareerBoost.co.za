@@ -110,6 +110,15 @@
     escapeHtml: escapeHtml, fmt: fmt, sparkPath: sparkPath, areaPaths: areaPaths,
     countUp: countUp, prefersReducedMotion: prefersReducedMotion, toastErr: toastErr,
     kpiCard: kpiCard, kpiSkeleton: kpiSkeleton, sampleBadge: sampleBadge,
+    // Pull the resolver's propose_action calls out of an agent-run step
+    // transcript → [{kind, params, reason}] for the Apply buttons.
+    extractProposals: function (steps) {
+      return (steps || []).filter(function (s) {
+        return s && s.type === "tool" && s.tool === "propose_action" && s.input && s.input.kind;
+      }).map(function (s) {
+        return { kind: String(s.input.kind), params: (s.input.params && typeof s.input.params === "object") ? s.input.params : {}, reason: String(s.input.reason || "") };
+      });
+    },
   };
 
   // ─── Mock fixtures (mirror the approved reference screen) ───────────
@@ -509,6 +518,38 @@
         };
       }
       return callMut("agent-run", { agent: "marketing", prompt: prompt });
+    },
+    // ── Ops Resolver (agent-run agent=resolver) + its Apply levers ─────
+    runResolver: async function (prompt) {
+      if (isMock()) {
+        return {
+          ok: true, _mock: true, status: "done", turns: 3, costUsd: 0.11,
+          result: "(Sample) interview-session-step failed 6.2% of calls in the last 24h — all errors are Anthropic 529 (overloaded). Other skills are healthy, so this is provider-side, not a prompt regression. Recommended: fail the skill over to OpenAI until Anthropic recovers, and the job-feed incident has been quiet for 48h so it can be closed.",
+          steps: [
+            { type: "tool", tool: "get_ai_usage_breakdown", input: { days: 1 }, output: '{"bySkill":[{"skill":"interview-session-step","calls":210,"failed":13}]}' },
+            { type: "tool", tool: "get_open_incidents", input: {}, output: '[{"id":"inc_1","title":"job-feed latency","severity":"warning"}]' },
+            { type: "tool", tool: "propose_action", input: { kind: "set_model_route", params: { skill: "interview-session-step", provider: "openai", model: "gpt-4o-mini" }, reason: "13/210 calls failed with Anthropic 529 in 24h; OpenAI healthy at 0 failures." }, output: '{"queued":true}' },
+            { type: "tool", tool: "propose_action", input: { kind: "resolve_incident", params: { incidentId: "inc_1", note: "latency normal for 48h" }, reason: "job-feed latency back under threshold since 2026-06-30." }, output: '{"queued":true}' },
+          ],
+        };
+      }
+      return callMut("agent-run", { agent: "resolver", prompt: prompt });
+    },
+    resolveIncident: async function (id, note) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-incident-update", { incidentId: id, action: "resolve", note: note || "Resolved via Ops Resolver" });
+    },
+    ackIncident: async function (id) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-incident-update", { incidentId: id, action: "ack" });
+    },
+    stopPromo: async function () {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-promo", { action: "update", enabled: false });
+    },
+    grantQuotaByEmail: async function (email, quota, amount) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-user-adjust", { targetEmail: email, action: "grant_quota", payload: { quota: quota, amount: Number(amount) || 1 } });
     },
     loadDrafts: async function () {
       var MOCK = {

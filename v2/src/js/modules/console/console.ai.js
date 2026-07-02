@@ -41,7 +41,8 @@
             '<div class="cbc-rt"><span class="cbc-chip ' + (crit ? "red" : "amber") + '">' + esc(i.severity) + '</span></div></div>';
         }).join("")
       : '<div style="color:var(--c-muted);font-size:12.5px;padding:8px 0"><i class="fa-solid fa-circle-check" style="color:var(--c-ok)"></i> No open incidents — systems healthy.</div>';
-    return '<div class="cbc-card cbc-panel cbc-att"><div class="cbc-ph"><div><div class="cbc-eb">Needs you</div><h2>Open incidents</h2></div></div>' + rows + '</div>';
+    return '<div class="cbc-card cbc-panel cbc-att"><div class="cbc-ph"><div><div class="cbc-eb">Needs you</div><h2>Open incidents</h2></div>' +
+      '<button class="cbc-btn cbc-sm cbc-amber" data-ins-fix="1" data-ins-title="Open incidents and current AI failures — triage, diagnose root causes, and propose fixes"><i class="fa-solid fa-screwdriver-wrench"></i> Diagnose &amp; fix</button></div>' + rows + '</div>';
   }
 
   function failuresPanel(failures) {

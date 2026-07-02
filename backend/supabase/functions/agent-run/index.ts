@@ -314,6 +314,98 @@ function buildMarketingTools(adminId: string): AgentTool[] {
 }
 
 // ---------------------------------------------------------------------------
+// Ops Resolver (Phase C) — investigates, diagnoses, PROPOSES fixes.
+// ---------------------------------------------------------------------------
+// The resolver never executes anything. Its only write channel is
+// propose_action, which records a structured proposal; the Console renders
+// each proposal as an [Apply] button that calls the EXISTING secure endpoint
+// for that lever (console-config, admin-incident-update, admin-promo,
+// admin-user-adjust) — operator tap, CSRF + MFA + audit, same as manual.
+// This is the "suggest" rung of the autonomy dial; auto-apply comes later.
+const SYSTEM_RESOLVER = `You are the CareerBoost Ops Resolver — an incident-response engineer inside the
+admin console of CareerBoost (AI job-search SaaS; skills like resume-tailor and
+interview-session-step run on routed LLM providers: anthropic/openai/gemini/groq).
+
+PROCESS
+1. INVESTIGATE with the read tools before concluding anything: get_pulse,
+   get_ai_usage_breakdown (failures by skill/model), get_model_routing,
+   get_open_incidents (has the incident ids).
+2. DIAGNOSE the most likely root cause, grounded in the numbers you saw.
+3. PROPOSE fixes by calling propose_action — one call per fix, most impactful
+   first, at most 3. Allowed kinds and required params:
+   - set_model_route  { skill, provider, model? }  — fail a struggling/expensive
+     skill over to another provider (only providers you saw in get_model_routing).
+   - resolve_incident { incidentId, note? }        — close an incident that the
+     data shows is fixed or stale.
+   - ack_incident     { incidentId }               — acknowledge while monitoring.
+   - stop_promo       { }                          — halt the live promo campaign.
+   - grant_quota      { email, quota, amount }     — comp a user affected by a
+     failure (quota one of ai_resumes|ai_covers|ai_mocks|ai_research|ai_question_banks).
+4. NOTHING you propose executes by itself — the operator taps Apply. Give each
+   proposal a sharp, numbers-backed reason.
+5. Finish with a 2-4 sentence diagnosis. If everything is healthy, say so and
+   propose nothing.`;
+
+function buildResolverTools(): AgentTool[] {
+  const svc = getServiceClient();
+  // Reuse the analyst's read tools; the resolver adds incident detail + the
+  // proposal channel.
+  const reads = buildConsoleTools().filter((t) =>
+    ["get_pulse", "get_ai_usage_breakdown", "get_model_routing"].includes(t.name),
+  );
+  const VALID_KINDS: Record<string, string[]> = {
+    set_model_route: ["skill", "provider"],
+    resolve_incident: ["incidentId"],
+    ack_incident: ["incidentId"],
+    stop_promo: [],
+    grant_quota: ["email", "quota", "amount"],
+  };
+  return [
+    ...reads,
+    {
+      name: "get_open_incidents",
+      description: "Open incidents with their ids (needed for resolve/ack proposals), severity, kind, section, age and occurrence count.",
+      inputSchema: { type: "object", properties: {} },
+      run: async () => {
+        try {
+          const { data } = await svc.from("admin_incidents")
+            .select("id,kind,severity,title,section,opened_at,last_seen_at,occurrence_count")
+            .eq("status", "open").order("opened_at", { ascending: false }).limit(10);
+          return data || [];
+        } catch (e) {
+          return { note: "incidents unavailable: " + (e as Error).message };
+        }
+      },
+    },
+    {
+      name: "propose_action",
+      description: "Record ONE fix proposal for the operator's Apply button. Never executes anything itself.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: Object.keys(VALID_KINDS) },
+          params: { type: "object", description: "kind-specific params (see system prompt)" },
+          reason: { type: "string", description: "sharp, numbers-backed justification (<=300 chars)" },
+        },
+        required: ["kind", "params", "reason"],
+      },
+      run: async (input) => {
+        const kind = String(input.kind || "");
+        const required = VALID_KINDS[kind];
+        if (!required) return { error: "unknown kind: " + kind };
+        const params = (input.params && typeof input.params === "object") ? input.params as Record<string, unknown> : {};
+        const missing = required.filter((k) => params[k] === undefined || params[k] === null || params[k] === "");
+        if (missing.length) return { error: kind + " missing params: " + missing.join(", ") };
+        // The proposal itself lives in the run transcript (this tool call's
+        // input) — the Console extracts propose_action steps and renders
+        // Apply buttons. Nothing to persist here.
+        return { queued: true, kind };
+      },
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Registry + handler
 // ---------------------------------------------------------------------------
 interface AgentDef {
@@ -326,6 +418,7 @@ interface AgentDef {
 const AGENTS: Record<string, AgentDef> = {
   console: { system: SYSTEM_CONSOLE, buildTools: () => buildConsoleTools(), defaultBudget: 0.25, maxBudget: 1, maxTurns: 6 },
   marketing: { system: SYSTEM_MARKETING, buildTools: (id) => buildMarketingTools(id), defaultBudget: 0.4, maxBudget: 1.5, maxTurns: 8 },
+  resolver: { system: SYSTEM_RESOLVER, buildTools: () => buildResolverTools(), defaultBudget: 0.35, maxBudget: 1, maxTurns: 7 },
 };
 
 Deno.serve(withCors(async (req) => {
