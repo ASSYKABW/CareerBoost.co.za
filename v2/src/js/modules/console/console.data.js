@@ -488,6 +488,41 @@
       }
       return callMut("agent-run", { agent: "console", prompt: prompt });
     },
+    // ── Marketing Copilot (agent-run agent=marketing + social_drafts) ──
+    runMarketing: async function (prompt) {
+      if (isMock()) {
+        return {
+          ok: true, _mock: true, status: "done", turns: 3, costUsd: 0.18,
+          result: "(Sample) Created 2 drafts: a LinkedIn post on the '38% never tailor a resume' insight (your best-converting theme) and a TikTok script on interview nerves. Referral traffic converts at 76% — both CTAs push the referral angle.",
+        };
+      }
+      return callMut("agent-run", { agent: "marketing", prompt: prompt });
+    },
+    loadDrafts: async function () {
+      var MOCK = {
+        _mock: true,
+        drafts: [
+          { id: "d1", platform: "linkedin", status: "draft", hook: "Your CV isn't bad. It's generic.", body: "Most job seekers send the same CV to 40 companies and hear nothing back.\n\nThe data from our users is blunt: tailored applications get replies. Generic ones get silence.\n\nThree things that actually move the needle:\n1. Mirror the job's exact language\n2. Lead with proof, not duties\n3. Cut everything the role doesn't need\n\nYour experience deserves to be seen properly.", hashtags: "#JobSearchZA #CVTips #CareerBoost", link: "https://www.careerboost.co.za/?utm_source=linkedin&utm_medium=social&utm_campaign=generic-cv", rationale: "Activation data: 38% of signups never tailor a resume — the core 'aha' gap.", created_at: "2026-07-02", posted_at: null },
+          { id: "d2", platform: "tiktok", status: "approved", hook: "POV: the interviewer asks 'tell me about yourself'", body: "HOOK (0-3s): Freeze on camera. 'Tell me about yourself.' Panic.\n\nBEAT 1: 'Every interview starts here. Most people wing it.'\nON-SCREEN: 'The 60-second formula'\n\nBEAT 2: 'Present → Past → Future. What you do, what you've done, why THIS role.'\n\nBEAT 3: 'I practised mine against an AI interviewer until it was automatic.'\n\nCTA: 'Free mock interview — link in bio.'", hashtags: "#InterviewTips #JobTok #SouthAfrica", link: "https://www.careerboost.co.za/?utm_source=tiktok&utm_medium=social&utm_campaign=tell-me-about-yourself", rationale: "Mock interviews convert 3× — biggest upgrade lever.", created_at: "2026-07-01", posted_at: null },
+        ],
+      };
+      if (isMock()) return MOCK;
+      try {
+        var d = await call("console-growth", { action: "drafts-list" });
+        return (d && d.drafts) ? d : { drafts: [] };
+      } catch (e) {
+        console.warn("[console] drafts-list failed:", e.message);
+        return { drafts: [] };
+      }
+    },
+    updateDraft: async function (id, status) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("console-growth", { action: "draft-update", id: id, status: status });
+    },
+    deleteDraft: async function (id) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("console-growth", { action: "draft-delete", id: id });
+    },
     setModelRoute: async function (skill, provider, model) {
       if (isMock()) return { ok: true, _mock: true };
       return callMut("console-config", { action: "set-route", skill: skill, provider: provider || "", model: model || "" });

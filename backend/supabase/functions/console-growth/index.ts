@@ -20,6 +20,8 @@
 // zeros/empty so this endpoint NEVER 500s on a missing table. {mock:true} → fixtures.
 import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
+import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
+import { extractRequestMeta, logAdminAction } from "../_shared/admin-audit.ts";
 
 const DAY_MS = 86_400_000;
 function isoAgo(days: number): string { return new Date(Date.now() - days * DAY_MS).toISOString(); }
@@ -74,8 +76,9 @@ Deno.serve(withCors(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
+  let admin;
   try {
-    await getAuthedAdmin(req);
+    admin = await getAuthedAdmin(req);
   } catch (err) {
     return errorResponse((err as Error).message, 403);
   }
@@ -85,6 +88,44 @@ Deno.serve(withCors(async (req) => {
   if (body.mock === true) return jsonResponse({ ok: true, growth: MOCK });
 
   const svc = getServiceClient();
+
+  // ── Marketing Copilot approval queue (social_drafts) ──────────────
+  const action = String(body.action || "");
+  if (action === "drafts-list") {
+    try {
+      const { data, error } = await svc.from("social_drafts")
+        .select("id,platform,status,hook,body,hashtags,link,rationale,created_at,posted_at")
+        .order("created_at", { ascending: false }).limit(25);
+      if (error) throw error;
+      return jsonResponse({ ok: true, drafts: data || [] });
+    } catch (e) {
+      // Table missing (0047 pending) — empty queue, never a 500.
+      return jsonResponse({ ok: true, drafts: [], note: (e as Error).message });
+    }
+  }
+  if (action === "draft-update" || action === "draft-delete") {
+    const csrf = checkAdminCsrf(req);
+    if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+    const id = String(body.id || "").trim();
+    if (!id) return errorResponse("id required", 400);
+    const meta = extractRequestMeta(req);
+    if (action === "draft-delete") {
+      const { error } = await svc.from("social_drafts").delete().eq("id", id);
+      if (error) return errorResponse("Delete failed: " + error.message, 500);
+      await logAdminAction(admin, "social_draft_delete", { payload: { id }, resultStatus: "success", ...meta });
+      return jsonResponse({ ok: true });
+    }
+    const status = String(body.status || "").trim();
+    if (!["draft", "approved", "posted", "rejected"].includes(status)) {
+      return errorResponse("status must be draft|approved|posted|rejected", 400);
+    }
+    const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+    if (status === "posted") patch.posted_at = new Date().toISOString();
+    const { error } = await svc.from("social_drafts").update(patch).eq("id", id);
+    if (error) return errorResponse("Update failed: " + error.message, 500);
+    await logAdminAction(admin, "social_draft_update", { payload: { id, status }, resultStatus: "success", ...meta });
+    return jsonResponse({ ok: true });
+  }
   const since30 = isoAgo(30);
   const since60 = isoAgo(60);
 

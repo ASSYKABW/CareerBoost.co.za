@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "v2-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["v2/.claude/nocache-server.py", "5173", "v2"],
+      "port": 5173
+    },
+    {
+      "name": "extension-icons",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5174", "--directory", "extension/icons"],
+      "port": 5174
+    },
+    {
+      "name": "preview-clean",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5180", "--directory", "v2"],
+      "port": 5180
+    },
+    {
+      "name": "preview-nocache",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["v2/.claude/nocache-server.py", "5181", "v2"],
+      "port": 5181
+    }
+  ]
+}
