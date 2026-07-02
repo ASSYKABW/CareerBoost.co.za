@@ -14,24 +14,7 @@
   var D = function () { return window.CBConsole.data; };
   function esc(s) { return U().escapeHtml(s); }
 
-  function sampleBadge(on) {
-    if (!on) return "";
-    return '<div style="margin-bottom:13px;font-size:12px;color:var(--c-amber);background:rgba(255,157,74,.08);border:1px solid rgba(255,157,74,.22);border-radius:10px;padding:8px 12px">' +
-      '<i class="fa-solid fa-flask"></i> Sample data — deploy <code>console-ai-health</code> and sign in with MFA to see real AI cost + failures.</div>';
-  }
-
-  function kpiCard(d) {
-    var col = d.tone === "green" ? "#22c55e" : d.tone === "amber" ? "#ff9d4a" : d.tone === "violet" ? "#b06bff" : "#22e3ff";
-    var arrow = d.deltaDir === "down" ? "▼ " : "▲ ";
-    var spark = (d.spark && d.spark.length)
-      ? '<svg class="cbc-spark" viewBox="0 0 200 30" preserveAspectRatio="none"><path d="' + U().sparkPath(d.spark, 200, 30) + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      : "";
-    return '<div class="cbc-card cbc-kpi cbc-' + d.tone + '"><span class="cbc-ac"></span>' +
-      '<div class="cbc-lab">' + esc(d.label) + '</div>' +
-      '<div class="cbc-rw"><div class="cbc-num" data-count="' + d.value + '" data-fmt="' + esc(d.fmt) + '">0</div>' +
-      '<span class="cbc-delta ' + d.deltaDir + '">' + arrow + esc(d.delta) + '</span></div>' + spark + '</div>';
-  }
-
+  // kpiCard / kpiSkeleton / sampleBadge come from CBConsole.util (shared).
   function skillTable(bySkill) {
     if (!bySkill || !bySkill.length) return '<div style="color:var(--c-muted);font-size:12.5px">No AI usage in the last 7 days.</div>';
     var body = bySkill.map(function (s) {
@@ -72,17 +55,12 @@
       '<div class="cbc-feed" style="max-height:280px">' + rows + '</div></div>';
   }
 
-  function skeleton() {
-    var r = ""; for (var i = 0; i < 4; i++) r += '<div class="cbc-card cbc-kpi"><div class="cbc-skel" style="height:74px"></div></div>';
-    return r;
-  }
-
   async function load(bodyEl) {
-    bodyEl.innerHTML = '<section class="cbc-kpis cbc-kpis--4">' + skeleton() + '</section>';
+    bodyEl.innerHTML = '<section class="cbc-kpis cbc-kpis--4">' + U().kpiSkeleton(4) + '</section>';
     var h = await D().loadAiHealth();
     bodyEl.innerHTML =
-      sampleBadge(h._mock) +
-      '<section class="cbc-kpis cbc-kpis--4">' + (h.kpis || []).map(kpiCard).join("") + '</section>' +
+      U().sampleBadge(h._mock, "console-ai-health", "AI cost + failures") +
+      '<section class="cbc-kpis cbc-kpis--4">' + (h.kpis || []).map(U().kpiCard).join("") + '</section>' +
       '<section class="cbc-grid cbc-g-2a">' +
         '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">AI cost</div><h2>Spend by skill (7d)</h2></div></div>' + skillTable(h.bySkill) + '</div>' +
         incidentsPanel(h.incidents) +

@@ -82,9 +82,34 @@
     }
   }
 
+  // Shared section-UI helpers (used by console.money.js / console.ai.js /
+  // console.growth.js — one definition, no per-section copies).
+  function kpiCard(d) {
+    var col = d.tone === "green" ? "#22c55e" : d.tone === "amber" ? "#ff9d4a" : d.tone === "violet" ? "#b06bff" : "#22e3ff";
+    var arrow = d.deltaDir === "down" ? "▼ " : "▲ ";
+    var spark = (d.spark && d.spark.length)
+      ? '<svg class="cbc-spark" viewBox="0 0 200 30" preserveAspectRatio="none"><path d="' + sparkPath(d.spark, 200, 30) + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      : "";
+    return '<div class="cbc-card cbc-kpi cbc-' + d.tone + '"><span class="cbc-ac"></span>' +
+      '<div class="cbc-lab">' + escapeHtml(d.label) + '</div>' +
+      '<div class="cbc-rw"><div class="cbc-num" data-count="' + d.value + '" data-fmt="' + escapeHtml(d.fmt) + '">0</div>' +
+      '<span class="cbc-delta ' + d.deltaDir + '">' + arrow + escapeHtml(d.delta) + '</span></div>' + spark + '</div>';
+  }
+  function kpiSkeleton(n) {
+    var r = "";
+    for (var i = 0; i < (n || 4); i++) r += '<div class="cbc-card cbc-kpi"><div class="cbc-skel" style="height:74px"></div></div>';
+    return r;
+  }
+  function sampleBadge(on, endpoint, what) {
+    if (!on) return "";
+    return '<div style="margin-bottom:13px;font-size:12px;color:var(--c-amber);background:rgba(255,157,74,.08);border:1px solid rgba(255,157,74,.22);border-radius:10px;padding:8px 12px">' +
+      '<i class="fa-solid fa-flask"></i> Sample data — deploy <code>' + escapeHtml(endpoint) + '</code> and sign in with MFA to see real ' + escapeHtml(what) + '.</div>';
+  }
+
   window.CBConsole.util = {
     escapeHtml: escapeHtml, fmt: fmt, sparkPath: sparkPath, areaPaths: areaPaths,
     countUp: countUp, prefersReducedMotion: prefersReducedMotion, toastErr: toastErr,
+    kpiCard: kpiCard, kpiSkeleton: kpiSkeleton, sampleBadge: sampleBadge,
   };
 
   // ─── Mock fixtures (mirror the approved reference screen) ───────────
@@ -377,6 +402,48 @@
         return (d && d.aiHealth) ? d.aiHealth : MOCK;
       } catch (e) {
         console.warn("[console] console-ai-health failed, using sample data:", e.message);
+        return MOCK;
+      }
+    },
+    loadGrowth: async function () {
+      var MOCK = {
+        _mock: true,
+        kpis: [
+          { key: "signups", label: "Signups (30d)", tone: "cyan", value: 312, fmt: "int", delta: "+31%", deltaDir: "up", spark: [40, 52, 61, 70, 89] },
+          { key: "activation", label: "Activation rate", tone: "violet", value: 62, fmt: "pct", delta: "onboarded", deltaDir: "up", spark: [] },
+          { key: "referrals", label: "Referrals (30d)", tone: "green", value: 14, fmt: "int", delta: "3 rewarded", deltaDir: "up", spark: [1, 2, 1, 3, 2, 3, 2] },
+          { key: "push", label: "Push devices", tone: "cyan", value: 48, fmt: "int", delta: "5 stale", deltaDir: "up", spark: [] },
+        ],
+        channels: [
+          { channel: "Programmatic SEO", signups: 128, activated: 74, conv: 58 },
+          { channel: "linkedin.com", signups: 64, activated: 41, conv: 64 },
+          { channel: "Referrals", signups: 38, activated: 29, conv: 76 },
+          { channel: "direct", signups: 52, activated: 24, conv: 46 },
+          { channel: "google.com", signups: 30, activated: 15, conv: 50 },
+        ],
+        funnel: [
+          { stage: "Signed up", count: 312, pct: 100 },
+          { stage: "Onboarded", count: 194, pct: 62 },
+          { stage: "Engaged (used app)", count: 141, pct: 45 },
+          { stage: "Paid", count: 12, pct: 4 },
+        ],
+        referrals: { confirmed: 11, rewarded: 3, pending: 0, top: [{ email: "lerato@example.com", count: 4 }, { email: "sipho@example.com", count: 3 }] },
+        experiments: [
+          { key: "hero-cta", name: "Hero CTA copy", status: "running", variants: 2, winner: null },
+          { key: "pricing-badge", name: "Pricing badge test", status: "done", variants: 2, winner: "b" },
+        ],
+        content: [
+          { slug: "cv-tips-za", title: "CV tips for SA job seekers", views: 840, clicks: 96, signups: 22 },
+          { slug: "interview-prep", title: "Interview prep guide", views: 512, clicks: 61, signups: 9 },
+        ],
+        lifecycle: { enrolled: 86, completed: 31, stopped: 6, pushDevices: 48, pushStale: 5 },
+      };
+      if (isMock()) return MOCK;
+      try {
+        var d = await call("console-growth", {});
+        return (d && d.growth) ? d.growth : MOCK;
+      } catch (e) {
+        console.warn("[console] console-growth failed, using sample data:", e.message);
         return MOCK;
       }
     },
