@@ -96,6 +96,41 @@
   // ── Marketing Copilot panel (drafts approval queue) ────────────────
   var PLATFORM_TONE = { linkedin: "cyan", facebook: "green", tiktok: "violet", x: "dim", instagram: "amber" };
   var lastRun = null; // last copilot run summary — survives the queue re-render
+  var viewMode = "list"; // "list" | "calendar"
+
+  // Monday of the week containing the given date string (YYYY-MM-DD local).
+  function weekStartOf(dstr) {
+    var d = dstr ? new Date(dstr) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    var shift = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
+    d.setDate(d.getDate() - shift);
+    var y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+  // Calendar view (#4): drafts grouped by planned week — scheduled_for first,
+  // else posted_at, else created_at. Compact rows; switch to List to act.
+  function calendarHtml(drafts) {
+    if (!drafts.length) return '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">Nothing planned yet — generate drafts, then set &ldquo;Post on&rdquo; dates via Edit.</div>';
+    var groups = {};
+    drafts.forEach(function (d) {
+      var wk = weekStartOf(d.scheduled_for || d.posted_at || d.created_at);
+      (groups[wk] = groups[wk] || []).push(d);
+    });
+    var thisWeek = weekStartOf(null);
+    return Object.keys(groups).sort().reverse().map(function (wk) {
+      var label = wk === thisWeek ? "This week (" + wk + ")" : "Week of " + wk;
+      var rows = groups[wk]
+        .slice().sort(function (a, b) { return String(a.scheduled_for || "9999").localeCompare(String(b.scheduled_for || "9999")); })
+        .map(function (d) {
+          return '<div class="cbc-att-it"><div class="cbc-att-ic ' + (d.status === "posted" ? "cyan" : "amber") + '"><i class="fa-solid ' + (d.platform === "tiktok" ? "fa-video" : d.platform === "linkedin" ? "fa-briefcase" : "fa-hashtag") + '"></i></div>' +
+            '<div class="cbc-tx">' + esc(d.hook || (d.body || "").slice(0, 60)) +
+              '<small><span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span> <span class="cbc-chip ' + (STATUS_TONE[d.status] || "dim") + '">' + esc(d.status) + '</span>' +
+              (d.scheduled_for ? ' · post on ' + esc(d.scheduled_for) : "") +
+              (d.status === "posted" && d.signups != null ? " · ▲ " + Number(d.signups) + " signups" : "") + '</small></div></div>';
+        }).join("");
+      return '<div class="cbc-dw-sec" style="margin-top:14px">' + esc(label) + "</div>" + rows;
+    }).join("");
+  }
   function runSummaryHtml(r) {
     return '<div class="cbc-act-panel" style="margin-bottom:12px"><b>Copilot</b>' + (r._mock ? ' <span class="cbc-chip amber">sample</span>' : "") +
       '<div style="font-size:12.5px;margin-top:5px;white-space:pre-wrap">' + esc(r.result || r.error || "Done.") + '</div>' +
@@ -124,6 +159,8 @@
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
         '<span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span>' +
         '<span class="cbc-chip ' + (STATUS_TONE[d.status] || "dim") + '">' + esc(d.status) + '</span>' +
+        (d.status === "posted" && d.signups != null ? '<span class="cbc-chip green">▲ ' + Number(d.signups) + ' signup' + (Number(d.signups) === 1 ? "" : "s") + '</span>' : "") +
+        (d.scheduled_for ? '<span class="cbc-chip dim"><i class="fa-solid fa-calendar"></i> ' + esc(String(d.scheduled_for).slice(0, 10)) + '</span>' : "") +
         '<span style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(String(d.created_at || "").slice(0, 10)) + '</span>' +
         '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">' + btns + '</span></div>' +
       (d.hook ? '<div style="font-weight:700;margin-bottom:6px">' + esc(d.hook) + '</div>' : "") +
@@ -141,6 +178,10 @@
       '<input data-ef-hook class="cbc-inp" style="width:100%;margin-bottom:8px" placeholder="Hook / first line" value="' + esc(d.hook || "") + '" />' +
       '<textarea data-ef-body class="cbc-inp" rows="9" style="width:100%;margin-bottom:8px;line-height:1.5;resize:vertical">' + esc(d.body || "") + '</textarea>' +
       '<input data-ef-hash class="cbc-inp" style="width:100%;margin-bottom:10px" placeholder="#Hashtags" value="' + esc(d.hashtags || "") + '" />' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">' +
+        '<span style="font-size:12px;color:var(--c-muted)">Post on</span>' +
+        '<input data-ef-sched type="date" class="cbc-inp" value="' + esc(d.scheduled_for || "") + '" />' +
+        '<span style="font-size:11px;color:var(--c-dim)">(drives the calendar view)</span></div>' +
       '<div style="display:flex;gap:8px">' +
         '<button class="cbc-btn cbc-primary cbc-sm" data-mk-save="' + esc(d.id) + '"><i class="fa-solid fa-check"></i> Save</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-cancel>Cancel</button></div>';
@@ -148,12 +189,17 @@
 
   function copilotPanel(dq) {
     var drafts = (dq && dq.drafts) || [];
-    var list = drafts.length
-      ? drafts.map(draftCard).join("")
-      : '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">No proposals yet — hit <b>Generate drafts</b> and the Copilot will study your growth data and propose platform-native content.</div>';
+    var list = viewMode === "calendar"
+      ? calendarHtml(drafts)
+      : (drafts.length
+        ? drafts.map(draftCard).join("")
+        : '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">No proposals yet — hit <b>Generate drafts</b> and the Copilot will study your growth data and propose platform-native content.</div>');
     return '<section class="cbc-card cbc-panel cbc-insights" id="cbc-mk">' +
       '<div class="cbc-ph"><div><div class="cbc-eb">Marketing Copilot</div><h2>Content proposals</h2></div>' +
-        '<span class="cbc-chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> agent · copy-paste v1</span></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<button class="cbc-btn cbc-sm" data-mk-view="' + (viewMode === "list" ? "calendar" : "list") + '">' +
+            (viewMode === "list" ? '<i class="fa-solid fa-calendar"></i> Calendar' : '<i class="fa-solid fa-list"></i> List') + '</button>' +
+          '<span class="cbc-chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> agent · copy-paste v1</span></div></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
         '<input id="cbc-mk-brief" class="cbc-inp" style="flex:1;min-width:220px" placeholder="Optional brief, e.g. focus on voice mock interviews this week" />' +
         '<button class="cbc-btn cbc-primary cbc-sm" data-mk-gen style="height:34px"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate drafts</button></div>' +
@@ -171,8 +217,9 @@
     var byId = {};
     (drafts || []).forEach(function (d) { byId[d.id] = d; });
     host.addEventListener("click", async function (e) {
-      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset],[data-mk-editd],[data-mk-save],[data-mk-cancel]") : null;
+      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset],[data-mk-editd],[data-mk-save],[data-mk-cancel],[data-mk-view]") : null;
       if (!t) return;
+      if (t.hasAttribute("data-mk-view")) { viewMode = t.getAttribute("data-mk-view"); load(bodyEl); return; }
       if (t.hasAttribute("data-mk-editd")) {
         var d0 = byId[t.getAttribute("data-mk-editd")];
         var card0 = t.closest("[data-mk-card]");
@@ -218,6 +265,7 @@
             hook: (card1.querySelector("[data-ef-hook]") || {}).value || "",
             body: (card1.querySelector("[data-ef-body]") || {}).value || "",
             hashtags: (card1.querySelector("[data-ef-hash]") || {}).value || "",
+            scheduled_for: (card1.querySelector("[data-ef-sched]") || {}).value || "",
           });
           toast("Draft updated");
           load(bodyEl);

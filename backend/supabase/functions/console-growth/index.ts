@@ -94,10 +94,35 @@ Deno.serve(withCors(async (req) => {
   if (action === "drafts-list") {
     try {
       const { data, error } = await svc.from("social_drafts")
-        .select("id,platform,status,hook,body,hashtags,link,rationale,created_at,posted_at")
-        .order("created_at", { ascending: false }).limit(25);
+        .select("id,platform,status,hook,body,hashtags,link,rationale,created_at,posted_at,scheduled_for")
+        .order("created_at", { ascending: false }).limit(40);
       if (error) throw error;
-      return jsonResponse({ ok: true, drafts: data || [] });
+      const drafts = (data || []) as Array<Record<string, unknown>>;
+      // #3 per-post performance: attributed signups per POSTED draft, matched
+      // on the utm_campaign slug in its link (captured by signup-attribution
+      // onto profiles). Clicks aren't measurable without a redirect service,
+      // so we report the metric that matters most: signups.
+      const campaignOf = (link: string): string => {
+        const m = /[?&]utm_campaign=([^&#]+)/.exec(link || "");
+        return m ? decodeURIComponent(m[1]).toLowerCase() : "";
+      };
+      const slugs = Array.from(new Set(
+        drafts.filter((d) => d.status === "posted").map((d) => campaignOf(String(d.link || ""))).filter(Boolean),
+      ));
+      const counts: Record<string, number> = {};
+      if (slugs.length) {
+        try {
+          const { data: profs } = await svc.from("profiles").select("utm_campaign").in("utm_campaign", slugs).limit(20000);
+          for (const p of (profs || []) as Array<Record<string, unknown>>) {
+            const c = String(p.utm_campaign || "").toLowerCase();
+            if (c) counts[c] = (counts[c] || 0) + 1;
+          }
+        } catch { /* attribution unavailable — omit signups */ }
+      }
+      for (const d of drafts) {
+        if (d.status === "posted") d.signups = counts[campaignOf(String(d.link || ""))] || 0;
+      }
+      return jsonResponse({ ok: true, drafts });
     } catch (e) {
       // Table missing (0047 pending) — empty queue, never a 500.
       return jsonResponse({ ok: true, drafts: [], note: (e as Error).message });
@@ -132,6 +157,11 @@ Deno.serve(withCors(async (req) => {
     }
     if (body.hook !== undefined) patch.hook = String(body.hook || "").slice(0, 200) || null;
     if (body.hashtags !== undefined) patch.hashtags = String(body.hashtags || "").slice(0, 200) || null;
+    if (body.scheduled_for !== undefined) {
+      // #4 calendar: planned posting date. Blank/invalid → unplanned (null).
+      const s = String(body.scheduled_for || "").trim();
+      patch.scheduled_for = /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+    }
     if (Object.keys(patch).length === 1) return errorResponse("Nothing to update.", 400);
     const { error } = await svc.from("social_drafts").update(patch).eq("id", id);
     if (error) return errorResponse("Update failed: " + error.message, 500);

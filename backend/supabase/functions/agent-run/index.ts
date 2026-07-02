@@ -241,13 +241,34 @@ function buildMarketingTools(adminId: string): AgentTool[] {
     },
     {
       name: "get_recent_drafts",
-      description: "The 10 most recent social drafts (any status) — check this to avoid repeating topics.",
+      description: "The 15 most recent social drafts (any status) with attributed SIGNUPS for posted ones — use this to avoid repeats AND to double down on what converted.",
       inputSchema: { type: "object", properties: {} },
       run: async () => {
         try {
           const { data } = await svc.from("social_drafts")
-            .select("platform,status,hook,created_at").order("created_at", { ascending: false }).limit(10);
-          return data || [];
+            .select("platform,status,hook,link,created_at").order("created_at", { ascending: false }).limit(15);
+          const drafts = (data || []) as Array<Record<string, unknown>>;
+          // Learning loop (#3): signups per posted draft via its utm_campaign.
+          const campaignOf = (link: string): string => {
+            const m = /[?&]utm_campaign=([^&#]+)/.exec(link || "");
+            return m ? decodeURIComponent(m[1]).toLowerCase() : "";
+          };
+          const slugs = Array.from(new Set(
+            drafts.filter((d) => d.status === "posted").map((d) => campaignOf(String(d.link || ""))).filter(Boolean),
+          ));
+          const counts: Record<string, number> = {};
+          if (slugs.length) {
+            const { data: profs } = await svc.from("profiles").select("utm_campaign").in("utm_campaign", slugs).limit(20000);
+            for (const p of (profs || []) as Array<Record<string, unknown>>) {
+              const c = String(p.utm_campaign || "").toLowerCase();
+              if (c) counts[c] = (counts[c] || 0) + 1;
+            }
+          }
+          return drafts.map((d) => ({
+            platform: d.platform, status: d.status, hook: d.hook,
+            created_at: String(d.created_at || "").slice(0, 10),
+            signups: d.status === "posted" ? (counts[campaignOf(String(d.link || ""))] || 0) : undefined,
+          }));
         } catch {
           return { note: "no drafts table yet (migration 0047 pending) — proceed fresh" };
         }
@@ -283,7 +304,7 @@ function buildMarketingTools(adminId: string): AgentTool[] {
           hashtags: String(input.hashtags || "").slice(0, 200) || null,
           link: link || null,
           rationale: String(input.rationale || "").slice(0, 400) || null,
-          created_by: adminId,
+          created_by: adminId || null, // null on autopilot (cron) runs
         }).select("id").single();
         if (error) return { error: "save failed: " + error.message + " (is migration 0047 applied?)" };
         return { ok: true, id: data?.id, platform };
@@ -312,23 +333,37 @@ Deno.serve(withCors(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
-  const csrf = checkAdminCsrf(req);
-  if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+  // #5 Weekly autopilot: the scheduler authenticates with X-Cron-Secret
+  // (same pattern as promo-cron/marketing-cron). Cron runs are restricted to
+  // the MARKETING agent (proposal-writing only — never the ops toolbox),
+  // skip CSRF/rate-limit (no browser, no operator), and ledger with
+  // created_by = null so autopilot runs are distinguishable in agent_runs.
+  const cronSecret = (Deno.env.get("CRON_SECRET") || "").trim();
+  const providedSecret = (req.headers.get("X-Cron-Secret") || "").trim();
+  const isCron = Boolean(cronSecret && providedSecret === cronSecret);
 
-  let admin;
-  try {
-    admin = await getAuthedAdmin(req);
-  } catch (err) {
-    const msg = (err as Error).message || "Admin access denied.";
-    return errorResponse(msg, msg.includes("required") ? 403 : 401);
+  let adminId: string | null = null;
+  if (!isCron) {
+    const csrf = checkAdminCsrf(req);
+    if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+    let admin;
+    try {
+      admin = await getAuthedAdmin(req);
+    } catch (err) {
+      const msg = (err as Error).message || "Admin access denied.";
+      return errorResponse(msg, msg.includes("required") ? 403 : 401);
+    }
+    const rate = await enforceAdminRate(admin, "agent-run");
+    if (!rate.allowed) return errorResponse(rate.reason || "Admin rate limit exceeded.", 429);
+    adminId = admin.id;
   }
-
-  const rate = await enforceAdminRate(admin, "agent-run");
-  if (!rate.allowed) return errorResponse(rate.reason || "Admin rate limit exceeded.", 429);
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { return errorResponse("Invalid JSON body.", 400); }
   const agentName = String(body.agent || "console");
+  if (isCron && agentName !== "marketing") {
+    return errorResponse("Cron runs are limited to the marketing agent.", 403);
+  }
   const def = AGENTS[agentName];
   if (!def) return errorResponse("Unknown agent: " + agentName, 400);
   const prompt = String(body.prompt || "").trim();
@@ -339,8 +374,8 @@ Deno.serve(withCors(async (req) => {
     agent: agentName,
     system: def.system,
     prompt,
-    tools: def.buildTools(admin.id),
-    createdBy: admin.id,
+    tools: def.buildTools(adminId || ""),
+    createdBy: adminId,
     budgetUsd: Math.min(def.maxBudget, Math.max(0.05, Number(body.budgetUsd) || def.defaultBudget)),
     maxTurns: def.maxTurns,
     maxTokens: agentName === "marketing" ? 2400 : 1200,
