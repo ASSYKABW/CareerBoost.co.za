@@ -474,6 +474,20 @@
         return MOCK;
       }
     },
+    // ── Console Assistant (agent-run) ─────────────────────────────────
+    runAgent: async function (prompt) {
+      if (isMock()) {
+        return {
+          ok: true, _mock: true, status: "done", turns: 2, costUsd: 0.04,
+          result: "(Sample) Signups are up 14% this week (86 vs 75), AI spend fell 3% to ~$128, and there is 1 open incident (job-feed latency). Recommendation: review the incident in AI & Health.",
+          steps: [
+            { type: "tool", tool: "get_pulse", input: { days: 7 }, output: '{"signups":86,"aiCalls":1240,"aiFailed":5,"openIncidents":["critical: job-feed latency"]}' },
+            { type: "text", text: "Signups and spend look healthy; one incident needs review." },
+          ],
+        };
+      }
+      return callMut("agent-run", { agent: "console", prompt: prompt });
+    },
     setModelRoute: async function (skill, provider, model) {
       if (isMock()) return { ok: true, _mock: true };
       return callMut("console-config", { action: "set-route", skill: skill, provider: provider || "", model: model || "" });

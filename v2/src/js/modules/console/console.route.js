@@ -117,6 +117,7 @@
         "</div>" +
         '<div class="cbc-top-actions">' +
           '<button class="cbc-search" data-cmd-open><i class="fa-solid fa-magnifying-glass"></i> <span>Search users, actions…</span> <span class="cbc-k">⌘K</span></button>' +
+          '<button class="cbc-btn" data-assist title="Ask the Console Assistant"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--c-violet)"></i> Assistant</button>' +
           '<div class="cbc-seg" id="cbc-seg">' +
             '<button data-range="24h"' + (state.range === "24h" ? ' class="is-on"' : "") + ">24h</button>" +
             '<button data-range="7d"' + (state.range === "7d" ? ' class="is-on"' : "") + ">7d</button>" +
@@ -388,6 +389,60 @@
     var s = $(".cbc-scrim"); if (s) s.classList.add("is-show");
     d.classList.add("is-show");
   }
+
+  // ── Console Assistant (agent-run) ──────────────────────────────────
+  // Single-shot Q&A: each Ask = one audited, budget-capped agent run with
+  // read-only tools. The transcript lives in the drawer DOM only.
+  function assistantShell() {
+    return '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#b06bff,#22e3ff)"><i class="fa-solid fa-wand-magic-sparkles"></i></div>' +
+        '<div><div class="cbc-nm">Console Assistant</div><div class="cbc-em">read-only · audited · budget-capped</div></div></div>' +
+      '<div id="cbc-as-log" class="cbc-feed" style="max-height:none"></div>' +
+      '<div class="cbc-dw-sec">Ask</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<input id="cbc-as-input" class="cbc-inp" style="flex:1" placeholder="e.g. Why did AI spend jump this week?" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-assist-ask style="height:34px">Ask</button></div>' +
+      '<div style="font-size:11px;color:var(--c-dim);margin-top:8px">Try: &ldquo;Which channel converts best?&rdquo; &middot; &ldquo;Find thabo&rdquo; &middot; &ldquo;What model is resume-tailor using?&rdquo;</div>';
+  }
+  function openAssistant() {
+    openDrawerHtml(assistantShell());
+    var input = $("#cbc-as-input");
+    if (input) {
+      setTimeout(function () { input.focus(); }, 80);
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { var b = $("[data-assist-ask]"); if (b && !b.disabled) submitAssistant(b); }
+      });
+    }
+  }
+  async function submitAssistant(btn) {
+    var input = $("#cbc-as-input"), log = $("#cbc-as-log");
+    if (!input || !log) return;
+    var q = input.value.trim(); if (!q) return;
+    input.value = ""; btn.disabled = true;
+    log.insertAdjacentHTML("beforeend",
+      '<div class="cbc-fi violet"><span class="cbc-fd"></span><div><div class="cbc-ft"><b>You</b></div><div class="cbc-fm">' + U().escapeHtml(q) + '</div></div></div>' +
+      '<div class="cbc-fi" id="cbc-as-wait"><span class="cbc-fd"></span><div><div class="cbc-ft"><i class="fa-solid fa-circle-notch fa-spin"></i> Investigating&hellip;</div></div></div>');
+    try {
+      var r = await window.CBConsole.data.runAgent(q);
+      var wait = $("#cbc-as-wait"); if (wait) wait.remove();
+      var toolSteps = (r.steps || []).filter(function (s) { return s.type === "tool"; });
+      var stepsHtml = toolSteps.length
+        ? '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11.5px;color:var(--c-dim)">' + toolSteps.length + ' tool call' + (toolSteps.length === 1 ? "" : "s") + ' &middot; $' + Number(r.costUsd || 0).toFixed(2) + '</summary>' +
+          toolSteps.map(function (s) {
+            return '<div style="font-family:var(--c-mono);font-size:11px;color:var(--c-muted);margin-top:5px">&#128295; ' + U().escapeHtml(s.tool || "") + ' &rarr; ' + U().escapeHtml(String(s.output || "").slice(0, 160)) + '</div>';
+          }).join("") + '</details>'
+        : "";
+      log.insertAdjacentHTML("beforeend",
+        '<div class="cbc-fi green"><span class="cbc-fd"></span><div style="min-width:0"><div class="cbc-ft"><b>Assistant</b>' + (r._mock ? ' <span class="cbc-chip amber">sample</span>' : "") + '</div>' +
+        '<div style="font-size:13px;line-height:1.5;margin-top:3px;white-space:pre-wrap">' + U().escapeHtml(r.result || r.error || "No answer.") + '</div>' + stepsHtml + "</div></div>");
+    } catch (err) {
+      var w = $("#cbc-as-wait"); if (w) w.remove();
+      log.insertAdjacentHTML("beforeend",
+        '<div class="cbc-fi red"><span class="cbc-fd"></span><div><div class="cbc-ft">Failed</div><div class="cbc-fm">' + U().escapeHtml((err && err.message) || "Agent run failed") + "</div></div></div>");
+    }
+    btn.disabled = false;
+    log.scrollTop = log.scrollHeight;
+  }
   function openCmd() { var c = $("#cbc-cmd"); if (c) { c.classList.add("is-show"); var i = $("#cbc-cmd-input"); if (i) setTimeout(function () { i.focus(); }, 60); } }
   function closeCmd() { var c = $("#cbc-cmd"); if (c) c.classList.remove("is-show"); }
   function openNav() { var s = $("#cbc-sb"); if (s) s.classList.add("is-open"); var sc = $(".cbc-scrim"); if (sc) sc.classList.add("is-show"); }
@@ -396,8 +451,10 @@
   // Single delegated click handler for the whole console — survives the
   // body being re-rendered on every section/range switch.
   function onClick(e) {
-    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-resolve],[data-spender],[data-ins-go],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go]") : null;
+    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-resolve],[data-spender],[data-ins-go],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
     if (!t) return;
+    if (t.hasAttribute("data-assist")) { openAssistant(); return; }
+    if (t.hasAttribute("data-assist-ask")) { submitAssistant(t); return; }
     if (t.hasAttribute("data-sec")) { switchSection(t.getAttribute("data-sec")); return; }
     if (t.hasAttribute("data-range")) {
       state.range = t.getAttribute("data-range");
