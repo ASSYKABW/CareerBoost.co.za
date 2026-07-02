@@ -210,6 +210,11 @@ YOUR JOB
    - facebook: conversational, community tone, a question to spark comments.
    - tiktok: a 30–45s video SCRIPT — HOOK (first 3 seconds), 3–4 beats with on-screen text
      cues, closing CTA.
+   - x: a punchy thread (3–6 numbered tweets, each <280 chars, first tweet is the hook,
+     last tweet is the CTA with the link).
+   - instagram: a caption — strong first line (shows before the fold), short story or
+     tip list, CTA "link in bio", 5–8 hashtags; add a one-line visual suggestion in
+     rationale.
 3. Every draft's link MUST be a UTM-tagged URL:
    https://www.careerboost.co.za/?utm_source=<platform>&utm_medium=social&utm_campaign=<short-kebab-slug>
 4. In rationale, say WHY this piece, grounded in the data you read.
@@ -254,7 +259,7 @@ function buildMarketingTools(adminId: string): AgentTool[] {
       inputSchema: {
         type: "object",
         properties: {
-          platform: { type: "string", enum: ["linkedin", "facebook", "tiktok"] },
+          platform: { type: "string", enum: ["linkedin", "facebook", "tiktok", "x", "instagram"] },
           hook: { type: "string", description: "headline / first line / TikTok hook (<=200 chars)" },
           body: { type: "string", description: "full post text or video script (<=3000 chars)" },
           hashtags: { type: "string", description: "space-separated hashtags" },
@@ -265,7 +270,7 @@ function buildMarketingTools(adminId: string): AgentTool[] {
       },
       run: async (input) => {
         const platform = String(input.platform || "").toLowerCase();
-        if (!["linkedin", "facebook", "tiktok"].includes(platform)) return { error: "invalid platform" };
+        if (!["linkedin", "facebook", "tiktok", "x", "instagram"].includes(platform)) return { error: "invalid platform" };
         const body = String(input.body || "").slice(0, 3000);
         if (body.length < 40) return { error: "body too short" };
         const link = String(input.link || "").slice(0, 300);

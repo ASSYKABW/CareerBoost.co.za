@@ -103,13 +103,16 @@
   }
   var STATUS_TONE = { draft: "amber", approved: "cyan", posted: "green", rejected: "red" };
   function draftCard(d) {
+    var editBtn = '<button class="cbc-btn cbc-sm" data-mk-editd="' + esc(d.id) + '"><i class="fa-solid fa-pen"></i> Edit</button>';
     var btns = "";
     if (d.status === "draft") {
-      btns = '<button class="cbc-btn cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy</button>' +
+      btns = editBtn +
+        '<button class="cbc-btn cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy</button>' +
         '<button class="cbc-btn cbc-primary cbc-sm" data-mk-status="approved" data-mk-id="' + esc(d.id) + '">Approve</button>' +
         '<button class="cbc-btn cbc-danger cbc-sm" data-mk-status="rejected" data-mk-id="' + esc(d.id) + '">Reject</button>';
     } else if (d.status === "approved") {
-      btns = '<button class="cbc-btn cbc-primary cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy to post</button>' +
+      btns = editBtn +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy to post</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-status="posted" data-mk-id="' + esc(d.id) + '"><i class="fa-solid fa-check"></i> Mark posted</button>' +
         '<button class="cbc-btn cbc-danger cbc-sm" data-mk-status="rejected" data-mk-id="' + esc(d.id) + '">Reject</button>';
     } else if (d.status === "posted") {
@@ -117,7 +120,7 @@
     } else {
       btns = '<button class="cbc-btn cbc-danger cbc-sm" data-mk-del="' + esc(d.id) + '"><i class="fa-solid fa-trash"></i> Delete</button>';
     }
-    return '<div class="cbc-card" style="padding:13px 14px;margin-bottom:10px">' +
+    return '<div class="cbc-card" style="padding:13px 14px;margin-bottom:10px" data-mk-card="' + esc(d.id) + '">' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
         '<span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span>' +
         '<span class="cbc-chip ' + (STATUS_TONE[d.status] || "dim") + '">' + esc(d.status) + '</span>' +
@@ -130,6 +133,19 @@
       (d.rationale ? '<div style="font-size:11.5px;color:var(--c-muted);font-style:italic;margin-top:7px"><i class="fa-solid fa-chart-line" style="color:var(--c-violet)"></i> ' + esc(d.rationale) + '</div>' : "") +
       '</div>';
   }
+  // Inline edit form — replaces the card's content until Save/Cancel.
+  function editFields(d) {
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span>' +
+        '<span style="font-size:12px;color:var(--c-muted)">Editing draft</span></div>' +
+      '<input data-ef-hook class="cbc-inp" style="width:100%;margin-bottom:8px" placeholder="Hook / first line" value="' + esc(d.hook || "") + '" />' +
+      '<textarea data-ef-body class="cbc-inp" rows="9" style="width:100%;margin-bottom:8px;line-height:1.5;resize:vertical">' + esc(d.body || "") + '</textarea>' +
+      '<input data-ef-hash class="cbc-inp" style="width:100%;margin-bottom:10px" placeholder="#Hashtags" value="' + esc(d.hashtags || "") + '" />' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-save="' + esc(d.id) + '"><i class="fa-solid fa-check"></i> Save</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-cancel>Cancel</button></div>';
+  }
+
   function copilotPanel(dq) {
     var drafts = (dq && dq.drafts) || [];
     var list = drafts.length
@@ -155,8 +171,15 @@
     var byId = {};
     (drafts || []).forEach(function (d) { byId[d.id] = d; });
     host.addEventListener("click", async function (e) {
-      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset]") : null;
+      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset],[data-mk-editd],[data-mk-save],[data-mk-cancel]") : null;
       if (!t) return;
+      if (t.hasAttribute("data-mk-editd")) {
+        var d0 = byId[t.getAttribute("data-mk-editd")];
+        var card0 = t.closest("[data-mk-card]");
+        if (d0 && card0) card0.innerHTML = editFields(d0);
+        return;
+      }
+      if (t.hasAttribute("data-mk-cancel")) { load(bodyEl); return; }
       if (t.hasAttribute("data-mk-preset")) {
         var inp = host.querySelector("#cbc-mk-brief");
         if (inp) { inp.value = t.getAttribute("data-mk-preset"); inp.focus(); }
@@ -187,6 +210,17 @@
             if (slot) slot.innerHTML = '<div class="cbc-act-panel" style="margin-bottom:12px"><b style="color:var(--c-danger)">Copilot failed</b><div style="font-size:12.5px;margin-top:5px">' + esc((genErr && genErr.message) || "Unknown error") + '</div><div style="font-size:11.5px;color:var(--c-muted);margin-top:5px">Usual fixes: redeploy <code>agent-run</code> + <code>console-growth</code>, apply migration 0047, or retry in a minute.</div></div>';
             t.disabled = false;
           }
+          return;
+        }
+        if (t.hasAttribute("data-mk-save")) {
+          var card1 = t.closest("[data-mk-card]");
+          await D().updateDraft(t.getAttribute("data-mk-save"), {
+            hook: (card1.querySelector("[data-ef-hook]") || {}).value || "",
+            body: (card1.querySelector("[data-ef-body]") || {}).value || "",
+            hashtags: (card1.querySelector("[data-ef-hash]") || {}).value || "",
+          });
+          toast("Draft updated");
+          load(bodyEl);
           return;
         }
         if (t.hasAttribute("data-mk-status")) {

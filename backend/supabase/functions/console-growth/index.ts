@@ -115,12 +115,24 @@ Deno.serve(withCors(async (req) => {
       await logAdminAction(admin, "social_draft_delete", { payload: { id }, resultStatus: "success", ...meta });
       return jsonResponse({ ok: true });
     }
+    // Patch = status change and/or inline content edits (hook/body/hashtags).
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const status = String(body.status || "").trim();
-    if (!["draft", "approved", "posted", "rejected"].includes(status)) {
-      return errorResponse("status must be draft|approved|posted|rejected", 400);
+    if (status) {
+      if (!["draft", "approved", "posted", "rejected"].includes(status)) {
+        return errorResponse("status must be draft|approved|posted|rejected", 400);
+      }
+      patch.status = status;
+      if (status === "posted") patch.posted_at = new Date().toISOString();
     }
-    const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
-    if (status === "posted") patch.posted_at = new Date().toISOString();
+    if (body.body !== undefined) {
+      const text = String(body.body || "").slice(0, 3000);
+      if (text.length < 20) return errorResponse("body too short (min 20 chars).", 400);
+      patch.body = text;
+    }
+    if (body.hook !== undefined) patch.hook = String(body.hook || "").slice(0, 200) || null;
+    if (body.hashtags !== undefined) patch.hashtags = String(body.hashtags || "").slice(0, 200) || null;
+    if (Object.keys(patch).length === 1) return errorResponse("Nothing to update.", 400);
     const { error } = await svc.from("social_drafts").update(patch).eq("id", id);
     if (error) return errorResponse("Update failed: " + error.message, 500);
     await logAdminAction(admin, "social_draft_update", { payload: { id, status }, resultStatus: "success", ...meta });

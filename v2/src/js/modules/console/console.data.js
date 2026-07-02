@@ -527,9 +527,12 @@
         return { drafts: [] };
       }
     },
-    updateDraft: async function (id, status) {
+    // patch = {status?} and/or inline edits {hook?, body?, hashtags?}.
+    // Accepts a bare status string for the older call sites.
+    updateDraft: async function (id, patch) {
       if (isMock()) return { ok: true, _mock: true };
-      return callMut("console-growth", { action: "draft-update", id: id, status: status });
+      if (typeof patch === "string") patch = { status: patch };
+      return callMut("console-growth", Object.assign({ action: "draft-update", id: id }, patch || {}));
     },
     deleteDraft: async function (id) {
       if (isMock()) return { ok: true, _mock: true };
