@@ -212,5 +212,7 @@
     fetchAndRender(bodyEl);
   }
 
-  window.CBConsole.sections.users = { load: load };
+  // openUser exposed so other sections (e.g. Pulse's top-spenders table) can
+  // open the same real user drawer (quota, timeline, actions).
+  window.CBConsole.sections.users = { load: load, openUser: openUser };
 })();

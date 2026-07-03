@@ -234,11 +234,24 @@
         '<span><i class="fa-solid fa-minus" style="color:var(--c-violet)"></i> previous</span></div></div>';
   }
   function renderAttention(items) {
-    var rows = items.map(function (a) {
-      return '<div class="cbc-att-it"><div class="cbc-att-ic ' + a.tone + '"><i class="fa-solid ' + a.icon + '"></i></div>' +
-        '<div class="cbc-tx">' + U().escapeHtml(a.title) + "<small>" + U().escapeHtml(a.sub) + "</small></div>" +
-        '<div class="cbc-rt"><span class="cbc-ct">' + a.count + '</span><button class="cbc-btn cbc-sm cbc-amber" data-resolve>' + U().escapeHtml(a.action) + "</button></div></div>";
-    }).join("");
+    // Real actions: incidents ack/resolve via admin-incident-update (audited);
+    // failed payments jump to Money. No fake "mark resolved" left.
+    var rows = (items && items.length)
+      ? items.map(function (a) {
+          var btns;
+          if (a.kind === "incident" && a.id) {
+            btns = '<button class="cbc-btn cbc-sm" data-att-act="ack" data-att-id="' + U().escapeHtml(a.id) + '">Ack</button>' +
+              '<button class="cbc-btn cbc-sm cbc-amber" data-att-act="resolve" data-att-id="' + U().escapeHtml(a.id) + '">Resolve</button>';
+          } else if (a.kind === "payments") {
+            btns = '<button class="cbc-btn cbc-sm cbc-amber" data-ins-go="money">Open Money</button>';
+          } else {
+            btns = '<button class="cbc-btn cbc-sm cbc-amber" data-ins-fix data-ins-title="' + U().escapeHtml(a.title) + '">Diagnose</button>';
+          }
+          return '<div class="cbc-att-it"><div class="cbc-att-ic ' + a.tone + '"><i class="fa-solid ' + a.icon + '"></i></div>' +
+            '<div class="cbc-tx">' + U().escapeHtml(a.title) + "<small>" + U().escapeHtml(a.sub) + "</small></div>" +
+            '<div class="cbc-rt"><span class="cbc-ct">' + a.count + "</span>" + btns + "</div></div>";
+        }).join("")
+      : '<div style="color:var(--c-muted);font-size:12.5px;padding:10px 0"><i class="fa-solid fa-circle-check" style="color:var(--c-ok)"></i> All clear — nothing needs you right now.</div>';
     return '<div class="cbc-card cbc-panel cbc-att"><div class="cbc-ph"><div><div class="cbc-eb">Needs you</div><h2>Attention queue</h2></div></div>' + rows + "</div>";
   }
   function renderFeed(items) {
@@ -258,15 +271,25 @@
         '<td class="n">' + u.calls + '</td><td class="n">' + U().escapeHtml(u.spend) + "</td>" +
         '<td class="n"><span class="cbc-chip ' + u.statusTone + '">' + U().escapeHtml(u.status) + "</span></td></tr>";
     }).join("");
+    // Quick actions — all REAL: status-aware promo start/stop (admin-promo,
+    // two-step confirm), the Ops Resolver, the Marketing Copilot, and the
+    // live Supabase function logs.
+    var promo = (state.pulse && state.pulse.promo) || { active: false, percent: 0, endDate: null };
+    var promoChip = promo.active
+      ? '<span class="cbc-chip green"><span class="cbc-dot"></span> promo live · ' + (Number(promo.percent) || 0) + "%" + (promo.endDate ? " · ends " + U().escapeHtml(String(promo.endDate)) : "") + "</span>"
+      : '<span class="cbc-chip dim">promo off</span>';
+    var promoBtn = promo.active
+      ? '<button class="cbc-btn cbc-danger cbc-sm" data-qa-promo="stop"><i class="fa-solid fa-circle-stop"></i> Stop promo</button>'
+      : '<button class="cbc-btn cbc-primary cbc-sm" data-qa-promo="start"><i class="fa-solid fa-play"></i> Start promo</button>';
     return '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Abuse watch</div><h2>Top AI spenders (7d)</h2></div>' +
-      '<button class="cbc-btn cbc-sm" data-toast="Would open AI & Health → AI Cost">View all</button></div>' +
+      '<button class="cbc-btn cbc-sm" data-ins-go="ai">View all</button></div>' +
       '<table class="cbc-table"><thead><tr><th>User</th><th>Plan</th><th style="text-align:right">Calls</th><th style="text-align:right">Spend</th><th style="text-align:right">Status</th></tr></thead>' +
       "<tbody>" + body + "</tbody></table>" +
-      '<div class="cbc-qa" style="margin-top:16px">' +
-        '<button class="cbc-btn cbc-primary cbc-sm" data-toast="Compose broadcast (mock)"><i class="fa-solid fa-bullhorn"></i> Broadcast</button>' +
-        '<button class="cbc-btn cbc-sm" data-toast="Promotions (mock)"><i class="fa-solid fa-tag"></i> Promo</button>' +
-        '<button class="cbc-btn cbc-sm" data-toast="Opened logs (mock)"><i class="fa-solid fa-terminal"></i> Logs</button>' +
-        '<button class="cbc-btn cbc-danger cbc-sm" data-toast="Stop promotion now (mock)"><i class="fa-solid fa-circle-stop"></i> Stop promo</button></div></div>';
+      '<div class="cbc-qa" style="margin-top:16px;align-items:center">' +
+        promoChip + promoBtn +
+        '<button class="cbc-btn cbc-sm" data-ins-fix data-ins-title="general system health check"><i class="fa-solid fa-wrench"></i> Resolver</button>' +
+        '<button class="cbc-btn cbc-sm" data-ins-go="growth"><i class="fa-solid fa-wand-magic-sparkles"></i> Copilot</button>' +
+        '<a class="cbc-btn cbc-sm" href="https://supabase.com/dashboard/project/kddffkhwpbngiupfmcse/functions" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-terminal"></i> Function logs</a></div></div>';
   }
   function renderSampleBadge(isMock) {
     if (!isMock) return "";
@@ -512,7 +535,7 @@
   // Single delegated click handler for the whole console — survives the
   // body being re-rendered on every section/range switch.
   function onClick(e) {
-    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-resolve],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
+    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-att-act],[data-qa-promo],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
     if (!t) return;
     if (t.hasAttribute("data-assist")) { openAssistant("console"); return; }
     if (t.hasAttribute("data-assist-ask")) { submitAssistant(t); return; }
@@ -527,8 +550,19 @@
       $$("#cbc-seg button").forEach(function (b) { b.classList.toggle("is-on", b.getAttribute("data-range") === state.range); });
       state.pulse = null; loadAndRenderPulse(); return;
     }
-    if (t.hasAttribute("data-resolve")) { var it = t.closest(".cbc-att-it"); if (it) it.classList.add("is-gone"); toast("Marked resolved"); return; }
-    if (t.hasAttribute("data-spender")) { var idx = Number(t.getAttribute("data-spender")); if (state.pulse && state.pulse.spenders[idx]) openDrawer(state.pulse.spenders[idx]); return; }
+    if (t.hasAttribute("data-att-act")) { attActClick(t); return; }
+    if (t.hasAttribute("data-qa-promo")) { qaPromoClick(t); return; }
+    if (t.hasAttribute("data-spender")) {
+      var idx = Number(t.getAttribute("data-spender"));
+      var sp = state.pulse && state.pulse.spenders[idx];
+      if (!sp) return;
+      // Real user detail (quota, timeline, actions) via the Users section
+      // when the payload carries the user id; legacy summary drawer otherwise.
+      var usersSec = window.CBConsole.sections && window.CBConsole.sections.users;
+      if (sp.id && usersSec && typeof usersSec.openUser === "function") usersSec.openUser(sp.id);
+      else openDrawer(sp);
+      return;
+    }
     if (t.hasAttribute("data-ins-go")) { switchSection(t.getAttribute("data-ins-go")); toast("Jumped to the section to act on this"); return; }
     if (t.hasAttribute("data-go")) { closeCmd(); switchSection(t.getAttribute("data-go")); return; }
     if (t.hasAttribute("data-toast")) { toast(t.getAttribute("data-toast")); return; }
@@ -536,6 +570,52 @@
     if (t.hasAttribute("data-hamb")) { openNav(); return; }
     if (t.hasAttribute("data-drawer-close")) { closeDrawer(); closeNav(); return; }
   }
+  // Attention queue: ack/resolve an incident via admin-incident-update.
+  async function attActClick(t) {
+    var act = t.getAttribute("data-att-act"), id = t.getAttribute("data-att-id");
+    t.disabled = true;
+    try {
+      if (act === "resolve") await window.CBConsole.data.resolveIncident(id, "Resolved from Pulse");
+      else await window.CBConsole.data.ackIncident(id);
+      toast(act === "resolve" ? "Incident resolved" : "Incident acknowledged");
+      var it = t.closest(".cbc-att-it");
+      if (act === "resolve") { if (it) it.classList.add("is-gone"); }
+      else if (it) { var ackBtn = it.querySelector('[data-att-act="ack"]'); if (ackBtn) ackBtn.outerHTML = '<span class="cbc-chip cyan">acked</span>'; }
+    } catch (err) {
+      t.disabled = false;
+      toast((err && err.message) || "Incident update failed");
+    }
+  }
+  // Quick action: start/stop the live promotion (admin-promo). Two-step
+  // confirm — first click arms the button, second executes; disarms in 4s.
+  async function qaPromoClick(t) {
+    var mode = t.getAttribute("data-qa-promo");
+    if (t.dataset.confirm !== "1") {
+      t.dataset.confirm = "1";
+      t.innerHTML = mode === "stop" ? "Confirm stop?" : "Confirm start?";
+      setTimeout(function () {
+        if (t.isConnected && t.dataset.confirm === "1") {
+          t.dataset.confirm = "";
+          t.innerHTML = mode === "stop"
+            ? '<i class="fa-solid fa-circle-stop"></i> Stop promo'
+            : '<i class="fa-solid fa-play"></i> Start promo';
+        }
+      }, 4000);
+      return;
+    }
+    t.disabled = true;
+    try {
+      if (mode === "stop") await window.CBConsole.data.stopPromo();
+      else await window.CBConsole.data.startPromo();
+      toast(mode === "stop" ? "Promotion stopped — banner comes down live" : "Promotion started — banner goes up live");
+      state.pulse = null;
+      loadAndRenderPulse();
+    } catch (err) {
+      t.disabled = false;
+      toast((err && err.message) || "Promo update failed");
+    }
+  }
+
   function onKey(e) {
     if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === "k") { e.preventDefault(); openCmd(); }
     if (e.key === "Escape") { closeCmd(); closeDrawer(); }

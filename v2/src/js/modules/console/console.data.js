@@ -164,10 +164,9 @@
   };
   var MOCK_COMMON = {
     attention: [
-      { icon: "fa-triangle-exclamation", tone: "red", title: "Open incident", sub: "job-feed latency · 38 min", count: 1, action: "Review" },
-      { icon: "fa-star", tone: "amber", title: "Testimonials to approve", sub: "2 submitted today", count: 2, action: "Open" },
-      { icon: "fa-credit-card", tone: "amber", title: "Failed payment", sub: "Pro renewal · retry scheduled", count: 1, action: "Resolve" },
-      { icon: "fa-bolt", tone: "cyan", title: "AI cost spike watch", sub: "resume-tailor · +22% vs avg", count: 1, action: "Inspect" },
+      { kind: "incident", id: "inc1", icon: "fa-triangle-exclamation", tone: "red", title: "job-feed latency", sub: "health · since 2026-07-01", count: 1 },
+      { kind: "incident", id: "inc2", icon: "fa-bolt", tone: "amber", title: "AI cost spike watch", sub: "ai-cost · since 2026-07-02", count: 1 },
+      { kind: "payments", icon: "fa-credit-card", tone: "amber", title: "Failed payments", sub: "renewal retry pending", count: 1 },
     ],
     feed: [
       { text: "<b>New signup</b> — thabo@gmail.com", meta: "organic · just now", tone: "cyan" },
@@ -178,11 +177,11 @@
       { text: "<b>Referral converted</b> · +1 paid", meta: "growth · 12m", tone: "green" },
     ],
     spenders: [
-      { name: "Lerato M.", email: "lerato@…", plan: "Pro", planTone: "violet", calls: 142, spend: "$11.40", status: "normal", statusTone: "green" },
-      { name: "Sipho K.", email: "sipho@…", plan: "Career", planTone: "cyan", calls: 98, spend: "$8.10", status: "normal", statusTone: "green" },
-      { name: "Anon (free)", email: "q***@…", plan: "Free", planTone: "dim", calls: 71, spend: "$0.00", status: "watch", statusTone: "amber" },
-      { name: "Naledi P.", email: "naledi@…", plan: "Plus", planTone: "cyan", calls: 54, spend: "$4.30", status: "normal", statusTone: "green" },
-      { name: "Bot? 41.x", email: "burner@…", plan: "Free", planTone: "dim", calls: 230, spend: "$0.00", status: "flagged", statusTone: "red" },
+      { id: "u1", name: "Lerato M.", email: "lerato@…", plan: "Pro", planTone: "violet", calls: 142, spend: "$11.40", status: "normal", statusTone: "green" },
+      { id: "u2", name: "Sipho K.", email: "sipho@…", plan: "Career", planTone: "cyan", calls: 98, spend: "$8.10", status: "normal", statusTone: "green" },
+      { id: "u6", name: "Anon (free)", email: "q***@…", plan: "Free", planTone: "dim", calls: 71, spend: "$0.00", status: "watch", statusTone: "amber" },
+      { id: "u3", name: "Naledi P.", email: "naledi@…", plan: "Plus", planTone: "cyan", calls: 54, spend: "$4.30", status: "normal", statusTone: "green" },
+      { id: "u4", name: "Bot? 41.x", email: "burner@…", plan: "Free", planTone: "dim", calls: 230, spend: "$0.00", status: "flagged", statusTone: "red" },
     ],
   };
   function mockPulse(range) {
@@ -192,6 +191,7 @@
     return {
       _mock: true, range: base.range, kpis: base.kpis,
       northStar: { title: "New activations / day", trend: "▲ 18% vs prev", cur: cur, prev: prev },
+      promo: { active: true, percent: 30, endDate: "2026-07-31" },
       attention: MOCK_COMMON.attention, feed: MOCK_COMMON.feed, spenders: MOCK_COMMON.spenders,
     };
   }
@@ -546,6 +546,10 @@
     stopPromo: async function () {
       if (isMock()) return { ok: true, _mock: true };
       return callMut("admin-promo", { action: "update", enabled: false });
+    },
+    startPromo: async function () {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-promo", { action: "update", enabled: true });
     },
     grantQuotaByEmail: async function (email, quota, amount) {
       if (isMock()) return { ok: true, _mock: true };

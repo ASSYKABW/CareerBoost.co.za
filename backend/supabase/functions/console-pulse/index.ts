@@ -90,14 +90,17 @@ Deno.serve(withCors(async (req) => {
   const sparkBuckets = days === 1 ? 12 : days === 30 ? 30 : 7;
 
   // ── KPI: signups ──────────────────────────────────────────────────
-  let kSignups = { value: 0, delta: "steady", dir: "up", spark: [] as number[] };
+  let kSignups = { value: 0, delta: "steady", dir: "up", spark: [] as number[], prevSpark: [] as number[] };
   try {
     const { data } = await svc.from("profiles").select("created_at").gte("created_at", sincePrev).limit(20000);
     const rows = (data || []) as Array<Record<string, unknown>>;
-    const cur = rows.filter((r) => String(r.created_at) >= sinceCur).length;
-    const prev = rows.length - cur;
-    const d = pctDelta(cur, prev);
-    kSignups = { value: cur, delta: d.delta, dir: d.dir, spark: bucketByDay(rows, "created_at", sparkBuckets) };
+    const curRows = rows.filter((r) => String(r.created_at) >= sinceCur);
+    const prevRows = rows.filter((r) => String(r.created_at) < sinceCur);
+    const d = pctDelta(curRows.length, prevRows.length);
+    // prev series for the north-star chart: bucket the previous window over
+    // 2N days, take the first N (the shifted window), aligned oldest→newest.
+    const prevSpark = bucketByDay(prevRows, "created_at", sparkBuckets * 2).slice(0, sparkBuckets);
+    kSignups = { value: curRows.length, delta: d.delta, dir: d.dir, spark: bucketByDay(curRows, "created_at", sparkBuckets), prevSpark };
   } catch (_e) { /* keep fallback */ }
 
   // ── KPI: active users (distinct over the window) ──────────────────
@@ -153,15 +156,22 @@ Deno.serve(withCors(async (req) => {
   // ── Attention queue (open incidents + past-due payments) ──────────
   const attention: Array<Record<string, unknown>> = [];
   try {
-    const { data } = await svc.from("admin_incidents").select("title,severity,section,opened_at").eq("status", "open").order("opened_at", { ascending: false }).limit(10);
+    const { data } = await svc.from("admin_incidents").select("id,title,severity,section,opened_at").eq("status", "open").order("opened_at", { ascending: false }).limit(10);
     for (const i of (data || []) as Array<Record<string, unknown>>) {
-      attention.push({ icon: "fa-triangle-exclamation", tone: i.severity === "critical" ? "red" : "amber", title: String(i.title || "Incident"), sub: String(i.section || "system"), count: 1, action: "Review" });
+      attention.push({ kind: "incident", id: String(i.id), icon: "fa-triangle-exclamation", tone: i.severity === "critical" ? "red" : "amber", title: String(i.title || "Incident"), sub: String(i.section || "system") + " · since " + String(i.opened_at || "").slice(0, 10), count: 1 });
     }
   } catch (_e) { /* ignore */ }
   try {
     const { count } = await svc.from("subscriptions").select("user_id", { count: "exact", head: true }).eq("status", "past_due");
-    if (count && count > 0) attention.push({ icon: "fa-credit-card", tone: "amber", title: "Failed payments", sub: "renewal retry pending", count, action: "Resolve" });
+    if (count && count > 0) attention.push({ kind: "payments", icon: "fa-credit-card", tone: "amber", title: "Failed payments", sub: "renewal retry pending", count });
   } catch (_e) { /* ignore */ }
+
+  // Live promo state → powers the real Start/Stop promo quick action.
+  let promo: Record<string, unknown> = { active: false, percent: 0, endDate: null };
+  try {
+    const { data } = await svc.from("promo_settings").select("enabled,percent,end_date").eq("id", 1).maybeSingle();
+    if (data) promo = { active: !!data.enabled, percent: Number(data.percent) || 0, endDate: data.end_date ? String(data.end_date) : null };
+  } catch (_e) { /* keep default */ }
 
   // ── Activity feed (recent events) ─────────────────────────────────
   const feed: Array<Record<string, unknown>> = [];
@@ -186,6 +196,7 @@ Deno.serve(withCors(async (req) => {
     } catch (_e) { /* ignore */ }
     const flagged = s.calls > 150 && plan === "Free";
     spenders.push({
+      id: s.user_id,
       name: email.split("@")[0], email, plan, planTone: plan === "Free" ? "dim" : "cyan",
       calls: s.calls, spend: "$" + (s.calls * 0.012).toFixed(2),
       status: flagged ? "flagged" : "normal", statusTone: flagged ? "red" : "green",
@@ -202,7 +213,8 @@ Deno.serve(withCors(async (req) => {
       { key: "aispend", label: "AI spend (est)", tone: "amber", fmt: "usd", value: kSpend.value, delta: kSpend.delta, deltaDir: kSpend.dir, spark: kSpend.spark },
       { key: "errors", label: "AI error rate", tone: "green", fmt: "pct", value: kErrors.value, delta: kErrors.delta, deltaDir: kErrors.dir, spark: kErrors.spark },
     ],
-    northStar: { title: "New signups / day", trend: "live", cur: kSignups.spark, prev: [] },
+    northStar: { title: "New signups / day", trend: "vs previous " + days + "d", cur: kSignups.spark, prev: kSignups.prevSpark },
+    promo,
     attention,
     feed: feed.length ? feed : [{ text: "<b>No recent events</b>", meta: "quiet", tone: "cyan" }],
     spenders,
