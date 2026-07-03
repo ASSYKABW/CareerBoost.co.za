@@ -78,7 +78,22 @@
     var s = mfa.getSnapshot();
     if (!s || !s.loaded) return "loading";
     if (s.currentLevel === "aal2") return "ok";
+    // A FAILED factor lookup must never masquerade as "no factors enrolled"
+    // (dead sessions make listFactors error → the enroll nudge would wrongly
+    // tell an enrolled operator to set up MFA again). Distinct state instead.
+    if (s.error) return "error";
     return (s.verifiedFactors && s.verifiedFactors.length) ? "challenge" : "enroll";
+  }
+  function renderSessionProblem() {
+    return '<div class="cbc" style="min-height:100vh"><div class="cbc-main" style="max-width:560px;margin:14vh auto 0">' +
+      '<section class="cbc-card cbc-panel" style="text-align:center;padding:34px">' +
+        '<div style="margin-bottom:12px;font-size:26px;color:var(--c-amber)"><i class="fa-solid fa-rotate"></i></div>' +
+        '<h1 style="font-size:20px;font-weight:800">Session check failed</h1>' +
+        '<p style="color:var(--c-muted);margin:8px 0 6px">Your sign-in session has expired (usually after signing in on another tab or device), so the security check couldn\'t complete.</p>' +
+        '<p style="color:var(--c-muted);margin:0 0 18px"><b>Your existing MFA factor is untouched</b> — do NOT enroll a new one. Sign out and back in, then enter your usual 6-digit code.</p>' +
+        '<button class="cbc-btn cbc-primary" data-cbc-signout><i class="fa-solid fa-right-from-bracket"></i> Sign out &amp; sign in again</button> ' +
+        '<button class="cbc-btn" data-cbc-mfa-retry><i class="fa-solid fa-rotate-right"></i> Retry check</button>' +
+      "</section></div></div>";
   }
 
   // ─── Shell ─────────────────────────────────────────────────────────
@@ -177,6 +192,7 @@
     if (m === "loading") return '<div class="cbc" style="min-height:100vh">' + window.CBAdmin.mfa.renderLoadingScreen() + "</div>";
     if (m === "challenge") return '<div class="cbc" style="min-height:100vh">' + window.CBAdmin.mfa.renderChallengeScreen() + "</div>";
     if (m === "enroll") return '<div class="cbc" style="min-height:100vh">' + window.CBAdmin.mfa.renderEnrollNudge() + "</div>";
+    if (m === "error") return renderSessionProblem();
     return '<div class="cbc">' + renderShell() + "</div>";
   }
 
@@ -535,7 +551,7 @@
   // Single delegated click handler for the whole console — survives the
   // body being re-rendered on every section/range switch.
   function onClick(e) {
-    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-att-act],[data-qa-promo],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
+    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-att-act],[data-qa-promo],[data-cbc-signout],[data-cbc-mfa-retry],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
     if (!t) return;
     if (t.hasAttribute("data-assist")) { openAssistant("console"); return; }
     if (t.hasAttribute("data-assist-ask")) { submitAssistant(t); return; }
@@ -552,6 +568,8 @@
     }
     if (t.hasAttribute("data-att-act")) { attActClick(t); return; }
     if (t.hasAttribute("data-qa-promo")) { qaPromoClick(t); return; }
+    if (t.hasAttribute("data-cbc-signout")) { consoleSignOut(t); return; }
+    if (t.hasAttribute("data-cbc-mfa-retry")) { mfaRetry(t); return; }
     if (t.hasAttribute("data-spender")) {
       var idx = Number(t.getAttribute("data-spender"));
       var sp = state.pulse && state.pulse.spenders[idx];
@@ -616,6 +634,30 @@
     }
   }
 
+  // Session-problem screen: clean sign-out then reload (bootstrap routes to
+  // the sign-in page); retry re-runs the MFA/session check without reloading.
+  async function consoleSignOut(t) {
+    t.disabled = true;
+    try {
+      var auth = window.CBV2 && window.CBV2.auth;
+      var client = auth && auth.getClient ? auth.getClient() : null;
+      if (client && client.auth) await client.auth.signOut();
+    } catch (e) { /* stale session may reject the sign-out call — proceed */ }
+    try { window.location.hash = "#/auth"; } catch (e) { /* ignore */ }
+    window.location.reload();
+  }
+  function mfaRetry(t) {
+    t.disabled = true;
+    var mfa = window.CBAdmin && window.CBAdmin.mfa;
+    if (mfa && mfa.refreshSnapshot) {
+      mfa.refreshSnapshot().then(function () {
+        if (window.CBV2.renderCurrentRoute) window.CBV2.renderCurrentRoute();
+      });
+    } else {
+      window.location.reload();
+    }
+  }
+
   function onKey(e) {
     if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === "k") { e.preventDefault(); openCmd(); }
     if (e.key === "Escape") { closeCmd(); closeDrawer(); }
@@ -624,17 +666,9 @@
   var wired = false;
   function bindConsole() {
     if (!hasAccess()) return;
-    var m = mfaState();
-    if (m === "loading") {
-      var mfa = window.CBAdmin && window.CBAdmin.mfa;
-      if (mfa && mfa.refreshSnapshot) mfa.refreshSnapshot().then(function () { if (window.CBV2.renderCurrentRoute) window.CBV2.renderCurrentRoute(); });
-      return;
-    }
-    if (m === "challenge") { if (window.CBAdmin.mfa && window.CBAdmin.mfa.bindChallengeForm) window.CBAdmin.mfa.bindChallengeForm(); return; }
-    if (m === "enroll") return;
-    state.section = "pulse"; state.pulse = null;
-    // Delegated handlers are attached once to document; re-binding the route
-    // (e.g. navigating away and back) must not stack duplicates.
+    // Attach the delegated handlers BEFORE any MFA-gate early-return so the
+    // session-problem screen's buttons (sign out / retry) work when the
+    // console lands directly on it. Attached once; guarded against dupes.
     if (!wired) {
       document.addEventListener("click", function (e) {
         if (!e.target.closest || !e.target.closest(".cbc")) return;
@@ -643,6 +677,15 @@
       document.addEventListener("keydown", function (e) { if ($(".cbc")) onKey(e); });
       wired = true;
     }
+    var m = mfaState();
+    if (m === "loading") {
+      var mfa = window.CBAdmin && window.CBAdmin.mfa;
+      if (mfa && mfa.refreshSnapshot) mfa.refreshSnapshot().then(function () { if (window.CBV2.renderCurrentRoute) window.CBV2.renderCurrentRoute(); });
+      return;
+    }
+    if (m === "challenge") { if (window.CBAdmin.mfa && window.CBAdmin.mfa.bindChallengeForm) window.CBAdmin.mfa.bindChallengeForm(); return; }
+    if (m === "enroll" || m === "error") return;
+    state.section = "pulse"; state.pulse = null;
     loadAndRenderPulse();
   }
 
