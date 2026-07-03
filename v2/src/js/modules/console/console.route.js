@@ -303,6 +303,7 @@
       "<tbody>" + body + "</tbody></table>" +
       '<div class="cbc-qa" style="margin-top:16px;align-items:center">' +
         promoChip + promoBtn +
+        '<button class="cbc-btn cbc-sm" data-qa-promo-cfg><i class="fa-solid fa-sliders"></i> Configure</button>' +
         '<button class="cbc-btn cbc-sm" data-ins-fix data-ins-title="general system health check"><i class="fa-solid fa-wrench"></i> Resolver</button>' +
         '<button class="cbc-btn cbc-sm" data-ins-go="growth"><i class="fa-solid fa-wand-magic-sparkles"></i> Copilot</button>' +
         '<a class="cbc-btn cbc-sm" href="https://supabase.com/dashboard/project/kddffkhwpbngiupfmcse/functions" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-terminal"></i> Function logs</a></div></div>';
@@ -551,7 +552,7 @@
   // Single delegated click handler for the whole console — survives the
   // body being re-rendered on every section/range switch.
   function onClick(e) {
-    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-att-act],[data-qa-promo],[data-cbc-signout],[data-cbc-mfa-retry],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
+    var t = e.target.closest ? e.target.closest("[data-sec],[data-range],[data-att-act],[data-qa-promo],[data-qa-promo-cfg],[data-pc-save],[data-pc-toggle],[data-pc-grant],[data-pc-revoke],[data-cbc-signout],[data-cbc-mfa-retry],[data-spender],[data-ins-go],[data-ins-fix],[data-rs-apply],[data-toast],[data-cmd-open],[data-drawer-close],[data-hamb],[data-go],[data-assist],[data-assist-ask]") : null;
     if (!t) return;
     if (t.hasAttribute("data-assist")) { openAssistant("console"); return; }
     if (t.hasAttribute("data-assist-ask")) { submitAssistant(t); return; }
@@ -568,6 +569,8 @@
     }
     if (t.hasAttribute("data-att-act")) { attActClick(t); return; }
     if (t.hasAttribute("data-qa-promo")) { qaPromoClick(t); return; }
+    if (t.hasAttribute("data-qa-promo-cfg")) { openPromoCenter(); return; }
+    if (t.hasAttribute("data-pc-save") || t.hasAttribute("data-pc-toggle") || t.hasAttribute("data-pc-grant") || t.hasAttribute("data-pc-revoke")) { promoCenterAction(t); return; }
     if (t.hasAttribute("data-cbc-signout")) { consoleSignOut(t); return; }
     if (t.hasAttribute("data-cbc-mfa-retry")) { mfaRetry(t); return; }
     if (t.hasAttribute("data-spender")) {
@@ -655,6 +658,112 @@
       });
     } else {
       window.location.reload();
+    }
+  }
+
+  // ── Promo Center: full campaign editor + per-user grants ───────────
+  var PC_PLANS = [["plus", "Plus"], ["pro", "Pro"], ["career", "Career"]];
+  function promoCenterSkeleton() {
+    return '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#ff9d4a,#b06bff)"><i class="fa-solid fa-tag"></i></div>' +
+        '<div><div class="cbc-nm">Promo Center</div><div class="cbc-em">campaign + per-user discounts</div></div></div>' +
+      '<div class="cbc-skel" style="height:220px;margin-bottom:14px"></div><div class="cbc-skel" style="height:220px"></div>';
+  }
+  async function openPromoCenter() {
+    openDrawerHtml(promoCenterSkeleton());
+    var promo = {}, grants = [];
+    try { var pr = await window.CBConsole.data.getPromo(); promo = (pr && pr.promo) || {}; } catch (e) { /* ignore */ }
+    try { var gr = await window.CBConsole.data.listGrants(); grants = (gr && gr.grants) || []; } catch (e) { /* ignore */ }
+    renderPromoCenter(promo, grants);
+  }
+  function renderPromoCenter(promo, grants) {
+    var d = $("#cbc-drawer"); if (!d) return;
+    var esc = U().escapeHtml;
+    var planChecks = PC_PLANS.map(function (p) {
+      var on = !promo.plans || promo.plans.indexOf(p[0]) >= 0;
+      return '<label style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:13px"><input type="checkbox" data-pc-plan="' + p[0] + '"' + (on ? " checked" : "") + " /> " + p[1] + "</label>";
+    }).join("");
+    var active = (grants || []).filter(function (g) { return g.status === "active"; });
+    var grantRows = active.length ? active.map(function (g) {
+      var label = g.kind === "free_months" ? (g.free_months + " mo " + esc(g.plan_id || "") + " comp") : (g.percent + "% off");
+      return '<div class="cbc-att-it"><div class="cbc-att-ic cyan"><i class="fa-solid fa-user-tag"></i></div>' +
+        '<div class="cbc-tx">' + esc(g.email || g.user_id || "user") + "<small>" + esc(label) + (g.expires_at ? " · expires " + String(g.expires_at).slice(0, 10) : "") + "</small></div>" +
+        '<div class="cbc-rt"><button class="cbc-btn cbc-danger cbc-sm" data-pc-revoke="' + esc(g.id) + '">Revoke</button></div></div>';
+    }).join("") : '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">No active per-user grants.</div>';
+    d.innerHTML =
+      '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#ff9d4a,#b06bff)"><i class="fa-solid fa-tag"></i></div>' +
+        '<div><div class="cbc-nm">Promo Center</div><div class="cbc-em">campaign + per-user discounts</div></div></div>' +
+      '<div class="cbc-dw-sec">Site-wide campaign</div>' +
+      '<div class="cbc-act-panel">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--c-muted)">Discount</span>' +
+          '<input id="pc-pct" class="cbc-inp" type="number" min="1" max="99" value="' + (Number(promo.percent) || 30) + '" style="width:74px" /><span style="font-size:12px;color:var(--c-muted)">% off first period</span></div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--c-muted)">Ends</span>' +
+          '<input id="pc-end" class="cbc-inp" type="date" value="' + esc(promo.end_date ? String(promo.end_date).slice(0, 10) : "") + '" /><span style="font-size:11px;color:var(--c-dim)">(blank = no end)</span></div>' +
+        '<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--c-muted);margin-bottom:6px">Applies to plans</div>' + planChecks + "</div>" +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="cbc-btn cbc-primary cbc-sm" data-pc-save>Save campaign</button>' +
+          (promo.enabled ? '<button class="cbc-btn cbc-danger cbc-sm" data-pc-toggle="off">Stop</button>' : '<button class="cbc-btn cbc-sm" data-pc-toggle="on">Start</button>') +
+          '<span class="cbc-chip ' + (promo.enabled ? "green" : "dim") + '">' + (promo.enabled ? "live" : "off") + "</span></div></div>" +
+      '<div class="cbc-dw-sec">Discount a specific user</div>' +
+      '<div class="cbc-act-panel">' +
+        '<input id="pc-email" class="cbc-inp" style="width:100%;margin-bottom:8px" placeholder="user@email.com" autocomplete="off" />' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">' +
+          '<select id="pc-kind" class="cbc-inp"><option value="percent">% discount</option><option value="free_months">Free months (comp)</option></select>' +
+          '<span id="pc-pct-wrap"><input id="pc-gpct" class="cbc-inp" type="number" min="1" max="99" value="20" style="width:66px" /> % off</span>' +
+          '<span id="pc-comp-wrap" style="display:none"><select id="pc-plan" class="cbc-inp"><option value="plus">Plus</option><option value="pro">Pro</option><option value="career">Career</option></select> × <input id="pc-months" class="cbc-inp" type="number" min="1" max="24" value="1" style="width:56px" /> mo</span></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px" id="pc-exp-wrap"><span style="font-size:12px;color:var(--c-muted)">Expires</span><input id="pc-gexp" class="cbc-inp" type="date" /><span style="font-size:11px;color:var(--c-dim)">(optional)</span></div>' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-pc-grant><i class="fa-solid fa-gift"></i> Grant to this user</button>' +
+        '<div style="font-size:11px;color:var(--c-dim);margin-top:7px">% discount = coupon on their next checkout. Free months = comp their plan now (only for accounts without an active paid sub).</div></div>' +
+      '<div class="cbc-dw-sec">Active per-user grants</div>' + grantRows;
+    var kind = d.querySelector("#pc-kind");
+    if (kind) kind.addEventListener("change", function () {
+      var comp = kind.value === "free_months";
+      d.querySelector("#pc-pct-wrap").style.display = comp ? "none" : "";
+      d.querySelector("#pc-comp-wrap").style.display = comp ? "" : "none";
+      d.querySelector("#pc-exp-wrap").style.display = comp ? "none" : "";
+    });
+  }
+  async function promoCenterAction(t) {
+    var d = $("#cbc-drawer"); if (!d) return;
+    var data = window.CBConsole.data;
+    t.disabled = true;
+    try {
+      if (t.hasAttribute("data-pc-save")) {
+        var pct = Math.max(1, Math.min(99, parseInt(d.querySelector("#pc-pct").value, 10) || 30));
+        var end = (d.querySelector("#pc-end").value || "").trim();
+        var plans = Array.prototype.slice.call(d.querySelectorAll("[data-pc-plan]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-pc-plan"); });
+        if (!plans.length) { toast("Select at least one plan."); t.disabled = false; return; }
+        await data.updatePromo({ percent: pct, end_date: end, plans: plans });
+        toast("Campaign saved — live within seconds");
+        state.pulse = null; openPromoCenter();
+      } else if (t.hasAttribute("data-pc-toggle")) {
+        var on = t.getAttribute("data-pc-toggle") === "on";
+        await (on ? data.startPromo() : data.stopPromo());
+        toast(on ? "Promotion started" : "Promotion stopped");
+        state.pulse = null; openPromoCenter();
+      } else if (t.hasAttribute("data-pc-grant")) {
+        var email = (d.querySelector("#pc-email").value || "").trim();
+        if (!email || email.indexOf("@") < 0) { toast("Enter a valid email."); t.disabled = false; return; }
+        if (d.querySelector("#pc-kind").value === "free_months") {
+          var plan = d.querySelector("#pc-plan").value;
+          var months = Math.max(1, Math.min(24, parseInt(d.querySelector("#pc-months").value, 10) || 1));
+          await data.grantComp(email, plan, months);
+          toast(months + " free month" + (months === 1 ? "" : "s") + " of " + plan + " → " + email);
+        } else {
+          var gpct = Math.max(1, Math.min(99, parseInt(d.querySelector("#pc-gpct").value, 10) || 20));
+          var exp = (d.querySelector("#pc-gexp").value || "").trim();
+          await data.grantPromo(email, gpct, exp || null);
+          toast(gpct + "% discount → " + email);
+        }
+        openPromoCenter();
+      } else if (t.hasAttribute("data-pc-revoke")) {
+        await data.revokeGrant(t.getAttribute("data-pc-revoke"));
+        toast("Grant revoked");
+        openPromoCenter();
+      }
+    } catch (err) {
+      t.disabled = false;
+      toast((err && err.message) || "Action failed.");
     }
   }
 

@@ -560,6 +560,30 @@
       if (isMock()) return { ok: true, _mock: true };
       return callMut("admin-promo", { action: "update", enabled: true });
     },
+    // ── Promo Center (campaign editor + per-user grants) ─────────────
+    getPromo: async function () {
+      if (isMock()) return { ok: true, promo: { enabled: true, percent: 30, end_date: "2026-07-31", plans: ["plus", "pro", "career"], intervals: ["monthly"] } };
+      return call("admin-promo", { action: "get" });
+    },
+    updatePromo: async function (patch) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-promo", Object.assign({ action: "update" }, patch || {}));
+    },
+    listGrants: async function () {
+      if (isMock()) return { ok: true, grants: [
+        { id: "g1", email: "lerato@example.com", kind: "percent", percent: 20, status: "active", expires_at: "2026-08-01" },
+        { id: "g2", email: "sipho@example.com", kind: "free_months", free_months: 2, plan_id: "pro", status: "active", expires_at: "2026-09-01" },
+      ] };
+      return call("admin-promo", { action: "grants-list" });
+    },
+    revokeGrant: async function (id) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("admin-promo", { action: "grant-revoke", id: id });
+    },
+    grantComp: async function (email, planId, months) {
+      if (isMock()) return { ok: true, _mock: true };
+      return call("admin-promo", { action: "grant-create", email: email, kind: "free_months", plan_id: planId, free_months: Number(months) || 1 });
+    },
     grantQuotaByEmail: async function (email, quota, amount) {
       if (isMock()) return { ok: true, _mock: true };
       return callMut("admin-user-adjust", { targetEmail: email, action: "grant_quota", payload: { quota: quota, amount: Number(amount) || 1 } });
