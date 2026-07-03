@@ -250,14 +250,23 @@
   // Pull the REAL error message out of a supabase-js FunctionsHttpError —
   // the default .message is the useless "Edge Function returned a non-2xx
   // status code"; the actual { error } body lives on error.context (Response).
+  // Dead-session detection: Supabase revokes older sessions when you sign in
+  // elsewhere (or they age out). The raw error is cryptic — translate it to
+  // the action that actually fixes it.
+  function friendly(msg, fnName) {
+    if (/session_id claim|Session rejected|Invalid Refresh Token|JWT expired|refresh_token_not_found/i.test(msg)) {
+      return "Your admin session has expired (signed in elsewhere?). Refresh the page, sign in again with your MFA code, then retry.";
+    }
+    return fnName + ": " + msg;
+  }
   async function realError(err, fnName) {
     try {
       if (err && err.context && typeof err.context.json === "function") {
         var body = await err.context.json();
-        if (body && body.error) return new Error(fnName + ": " + body.error);
+        if (body && body.error) return new Error(friendly(String(body.error), fnName));
       }
     } catch (e) { /* body not json */ }
-    return new Error(fnName + ": " + ((err && err.message) || "Edge function error."));
+    return new Error(friendly(String((err && err.message) || "Edge function error."), fnName));
   }
   async function call(fnName, body) {
     var auth = window.CBV2 && window.CBV2.auth;
