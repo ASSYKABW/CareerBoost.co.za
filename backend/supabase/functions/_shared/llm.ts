@@ -10,6 +10,8 @@
 //   - Cache-token usage captured into LLMCallOutput.
 //   - Streaming pass-through for SSE-capable callers (Anthropic only).
 
+import { getProviderKey } from "./runtime-config.ts";
+
 export type LLMProvider = "gemini" | "openai" | "anthropic" | "groq";
 
 export interface LLMCallInput {
@@ -59,8 +61,8 @@ function combineSystem(i: LLMCallInput): string {
 // OpenAI
 // ---------------------------------------------------------------------------
 async function callOpenAI(i: LLMCallInput): Promise<LLMCallOutput> {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+  const apiKey = await getProviderKey("openai");
+  if (!apiKey) throw new Error("No OpenAI key configured (env OPENAI_API_KEY or Console)");
   const model = i.model || Deno.env.get("LLM_MODEL") || "gpt-4o-mini";
 
   const { signal, cancel } = abortAfter(i.timeoutMs ?? TIMEOUT_MS);
@@ -124,8 +126,8 @@ async function callOpenAI(i: LLMCallInput): Promise<LLMCallOutput> {
 // Gemini
 // ---------------------------------------------------------------------------
 async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
-  const apiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  const apiKey = await getProviderKey("gemini");
+  if (!apiKey) throw new Error("No Gemini key configured (env GEMINI_API_KEY or Console)");
   const clientModel = (i.model || "").trim();
   const model =
     clientModel && /^gemini/i.test(clientModel)
@@ -196,8 +198,8 @@ async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
 // Anthropic (with prompt caching + tool use)
 // ---------------------------------------------------------------------------
 async function callAnthropic(i: LLMCallInput): Promise<LLMCallOutput> {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
+  const apiKey = await getProviderKey("anthropic");
+  if (!apiKey) throw new Error("No Anthropic key configured (env ANTHROPIC_API_KEY or Console)");
   const model = i.model || Deno.env.get("LLM_MODEL") || "claude-haiku-4-5";
 
   const { signal, cancel } = abortAfter(i.timeoutMs ?? TIMEOUT_MS);
@@ -330,8 +332,8 @@ export interface StreamEvent {
  * "just works" and we parse the final text once on stop.
  */
 export async function* streamAnthropic(i: LLMCallInput): AsyncGenerator<StreamEvent, void, unknown> {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
+  const apiKey = await getProviderKey("anthropic");
+  if (!apiKey) throw new Error("No Anthropic key configured (env ANTHROPIC_API_KEY or Console)");
   const model = i.model || Deno.env.get("LLM_MODEL") || "claude-sonnet-4-5";
 
   const systemBlocks: Array<Record<string, unknown>> = [];
@@ -417,8 +419,8 @@ export async function* streamAnthropic(i: LLMCallInput): AsyncGenerator<StreamEv
 // Groq
 // ---------------------------------------------------------------------------
 async function callGroq(i: LLMCallInput): Promise<LLMCallOutput> {
-  const apiKey = Deno.env.get("GROQ_API_KEY");
-  if (!apiKey) throw new Error("GROQ_API_KEY is not set");
+  const apiKey = await getProviderKey("groq");
+  if (!apiKey) throw new Error("No Groq key configured (env GROQ_API_KEY or Console)");
   const model = i.model || Deno.env.get("LLM_MODEL") || "llama-3.3-70b-versatile";
 
   const { signal, cancel } = abortAfter(i.timeoutMs ?? TIMEOUT_MS);

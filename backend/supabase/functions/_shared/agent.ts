@@ -16,6 +16,7 @@
 // product spend.
 import { getServiceClient } from "./auth.ts";
 import { computeCostUSD } from "./pricing.ts";
+import { getProviderKey } from "./runtime-config.ts";
 
 export interface AgentTool {
   name: string;
@@ -64,9 +65,9 @@ function capJson(value: unknown): string {
 }
 
 export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  const apiKey = await getProviderKey("anthropic");
   if (!apiKey) {
-    return { runId: null, status: "failed", result: "", steps: [], turns: 0, costUsd: 0, error: "ANTHROPIC_API_KEY not configured." };
+    return { runId: null, status: "failed", result: "", steps: [], turns: 0, costUsd: 0, error: "No Anthropic key configured (env ANTHROPIC_API_KEY or Console)." };
   }
   const model = opts.model || "claude-sonnet-4-5";
   const budgetUsd = Math.min(2, Math.max(0.02, opts.budgetUsd ?? 0.25));

@@ -55,7 +55,9 @@
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(80% 26% at 28% 0%, rgba(34, 227, 255, .10), transparent 60%);
 }
-.cbc-brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 6px; position: relative; }
+.cbc-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 2px 8px 8px; position: relative; }
+.cbc-logo-img { max-width: 190px; width: 100%; height: auto; display: block; }
+.cbc-eb-console { font-size: 9.5px; letter-spacing: .22em; color: var(--c-dim); font-weight: 700; }
 .cbc-brand .cbc-mk {
   width: 34px; height: 34px; border-radius: 10px; background: var(--c-grad); box-shadow: var(--c-glow);
   display: grid; place-items: center; color: #04121a; font-weight: 800; font-size: 14px; letter-spacing: -.02em; flex: none;
@@ -81,7 +83,10 @@
   background: rgba(255, 157, 74, .16); color: var(--c-amber); border: 1px solid rgba(255, 157, 74, .32);
 }
 .cbc-sb-foot { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: var(--c-glass); border: 1px solid var(--c-border); }
-.cbc-av { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #6b7dff, #b06bff); flex: none; }
+.cbc-av { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #6b7dff, #b06bff); flex: none; object-fit: cover; }
+.cbc-av--initial { display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px; }
+.cbc-backapp { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; padding: 9px 10px; border-radius: 10px; font-size: 12.5px; color: var(--c-muted); border: 1px solid var(--c-border); background: rgba(255, 255, 255, .02); text-decoration: none; transition: color .16s, border-color .16s; }
+.cbc-backapp:hover { color: var(--c-text); border-color: rgba(34, 227, 255, .3); }
 .cbc-sb-foot .cbc-who { font-size: 12.5px; font-weight: 600; line-height: 1.2; }
 .cbc-sb-foot .cbc-ro { font-size: 11px; color: var(--c-muted); }
 .cbc-mfa { margin-left: auto; font-size: 10px; font-weight: 700; color: var(--c-ok); border: 1px solid rgba(34, 197, 94, .3); background: rgba(34, 197, 94, .1); padding: 2px 7px; border-radius: 999px; }

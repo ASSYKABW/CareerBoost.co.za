@@ -1,8 +1,8 @@
 // CareerBoost Console — route module (Phase 1: Pulse + Insights + section maps).
 //
-// Registers the `console` route (reached at #/console). Rendered fullscreen
-// by bootstrap.js (added to FULLSCREEN_AUTHED_ROUTES). The legacy admin stays
-// untouched at #/admin until cutover (Phase 3).
+// Registers the `admin` route (reached at #/admin) — this Console IS the
+// admin console. The legacy admin was deleted at the 2026-07 cutover.
+// Rendered fullscreen by bootstrap.js (in FULLSCREEN_AUTHED_ROUTES).
 //
 // Architecture: renderConsole() returns the shell synchronously (sidebar +
 // topbar + an empty #cbc-body skeleton). afterRender → bindConsole() wires the
@@ -105,22 +105,33 @@
     }).join("");
   }
   function renderSidebar() {
+    var op = currentOperator();
     return (
       '<aside class="cbc-sb" id="cbc-sb">' +
-        '<div class="cbc-brand"><div class="cbc-mk">CB</div>' +
-          '<div><div class="cbc-nm">Career<span>Boost</span></div><div class="cbc-eb">CONSOLE</div></div></div>' +
+        '<div class="cbc-brand">' +
+          '<img class="cbc-logo-img" src="./src/assets/logo.svg" alt="CareerBoost" ' +
+            'onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'./src/assets/logo-default.svg\';}" />' +
+          '<span class="cbc-eb-console">CONSOLE</span></div>' +
         '<nav class="cbc-navg"><p>Operate</p>' + renderNav() + "</nav>" +
-        '<div class="cbc-sb-foot"><div class="cbc-av"></div>' +
-          '<div><div class="cbc-who">' + currentOperatorName() + '</div><div class="cbc-ro">Owner</div></div>' +
-          '<span class="cbc-mfa"><i class="fa-solid fa-shield-halved"></i> MFA</span></div>' +
+        '<div class="cbc-sb-foot">' + operatorAvatar(op) +
+          '<div style="min-width:0;overflow:hidden"><div class="cbc-who">' + U().escapeHtml(op.name) + '</div>' +
+          '<div class="cbc-ro" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + U().escapeHtml(op.email || "Operator") + '</div></div>' +
+          '<span class="cbc-mfa" title="MFA-verified session"><i class="fa-solid fa-shield-halved"></i></span></div>' +
+        '<a class="cbc-backapp" href="#/dashboard"><i class="fa-solid fa-arrow-left"></i> Back to app</a>' +
       "</aside>"
     );
   }
-  function currentOperatorName() {
+  function currentOperator() {
     var auth = window.CBV2 && window.CBV2.auth;
     var user = auth && auth.getUser ? auth.getUser() : null;
-    var nm = (user && (user.user_metadata && user.user_metadata.full_name)) || (user && user.email) || "Operator";
-    return U().escapeHtml(String(nm).split("@")[0]);
+    var p = (window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || {};
+    var email = (user && user.email) || "";
+    var name = (p && p.full_name) || (user && user.user_metadata && user.user_metadata.full_name) || (email ? email.split("@")[0] : "Operator");
+    return { name: name, email: email, avatarUrl: (p && p.avatar_url) || "", initial: String(name || email || "?").charAt(0).toUpperCase() };
+  }
+  function operatorAvatar(op) {
+    if (op.avatarUrl) return '<img class="cbc-av" src="' + U().escapeHtml(op.avatarUrl) + '" alt="" referrerpolicy="no-referrer" />';
+    return '<div class="cbc-av cbc-av--initial">' + U().escapeHtml(op.initial) + "</div>";
   }
   function renderTopbar() {
     var s = SECTIONS[state.section] || SECTIONS.pulse;
@@ -131,6 +142,7 @@
           '<div><h1 id="cbc-title">' + s.title + '</h1><div class="cbc-sub" id="cbc-sub">' + s.sub + "</div></div>" +
         "</div>" +
         '<div class="cbc-top-actions">' +
+          '<a class="cbc-btn" href="#/dashboard" title="Back to your CareerBoost dashboard"><i class="fa-solid fa-arrow-left"></i> App</a>' +
           '<button class="cbc-search" data-cmd-open><i class="fa-solid fa-magnifying-glass"></i> <span>Search users, actions…</span> <span class="cbc-k">⌘K</span></button>' +
           '<button class="cbc-btn" data-assist title="Ask the Console Assistant"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--c-violet)"></i> Assistant</button>' +
           '<div class="cbc-seg" id="cbc-seg">' +
@@ -313,9 +325,21 @@
     return '<div style="margin-bottom:13px;font-size:12px;color:var(--c-amber);background:rgba(255,157,74,.08);border:1px solid rgba(255,157,74,.22);border-radius:10px;padding:8px 12px">' +
       '<i class="fa-solid fa-flask"></i> Sample data — the <code>console-pulse</code> / <code>console-insights</code> endpoints aren\'t live yet. Deploy them to see real numbers.</div>';
   }
+  // Provider-issue banner (ask #3) — top of Pulse when a key is dead/dry.
+  function renderProviderBanner(alert) {
+    if (!alert || !alert.count) return "";
+    var items = (alert.providers || []).map(function (c) {
+      var reason = c.status === "credit" ? "out of credit" : "API key invalid";
+      return '<a class="cbc-btn cbc-sm cbc-danger" href="' + U().escapeHtml(c.topup) + '" target="_blank" rel="noopener noreferrer">' + U().escapeHtml(c.label) + " — " + reason + " →</a>";
+    }).join(" ");
+    return '<div style="background:linear-gradient(180deg,rgba(239,72,85,.14),var(--c-glass));border:1px solid rgba(239,72,85,.4);border-radius:12px;padding:12px 15px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+      '<span style="font-weight:700;color:#ff9aa2"><i class="fa-solid fa-triangle-exclamation"></i> AI provider issue</span>' +
+      '<span style="font-size:12.5px;color:var(--c-muted)">Some AI features will fail until this is fixed.</span>' + items + "</div>";
+  }
   function renderPulseBody() {
     var p = state.pulse, ins = state.insights;
     return renderSampleBadge(p && p._mock) +
+      renderProviderBanner(p && p.providerAlert) +
       renderKpis(p.kpis) +
       renderInsights(ins) +
       '<section class="cbc-grid cbc-g-2a">' + renderChart(p.northStar) + renderAttention(p.attention) + "</section>" +
@@ -802,6 +826,6 @@
   // drawer + toast without re-implementing them.
   window.CBConsole.ui = { openDrawer: openDrawerHtml, closeDrawer: closeDrawer, toast: toast, openAssistant: openAssistant };
 
-  window.CBV2.routes.console = renderConsole;
-  window.CBV2.afterRender.console = bindConsole;
+  window.CBV2.routes.admin = renderConsole;
+  window.CBV2.afterRender.admin = bindConsole;
 })();
