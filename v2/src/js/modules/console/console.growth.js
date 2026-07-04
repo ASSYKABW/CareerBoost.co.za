@@ -1,0 +1,362 @@
+// CareerBoost Console — Growth & Marketing section (Phase 2 — final section).
+//
+// Registers window.CBConsole.sections.growth = { load(bodyEl) }. Renders:
+//   - KPI strip: signups 30d / activation rate / referrals 30d / push devices
+//   - Acquisition channels (utm_source → referrer_host → direct) with conv%
+//   - Funnel: signed up → onboarded → engaged → paid (30d)
+//   - Referrals: totals + top referrers
+//   - A/B experiments: status / variants / winner
+//   - Content scorecard: views / clicks / attributed signups
+//   - Lifecycle: email drips + push health
+// Read-only. Grounded via console-growth (which degrades gracefully when the
+// 0036–0042 marketing tables aren't applied yet). Uses the shared
+// kpiCard/kpiSkeleton/sampleBadge helpers from CBConsole.util.
+(function () {
+  window.CBConsole = window.CBConsole || {};
+  window.CBConsole.sections = window.CBConsole.sections || {};
+  var U = function () { return window.CBConsole.util; };
+  var D = function () { return window.CBConsole.data; };
+  function esc(s) { return U().escapeHtml(s); }
+
+  function channelsTable(channels) {
+    if (!channels || !channels.length) return '<div style="color:var(--c-muted);font-size:12.5px">No attributed signups in the last 30 days.</div>';
+    var body = channels.map(function (c) {
+      var tone = c.conv >= 60 ? "green" : c.conv >= 40 ? "cyan" : "amber";
+      return '<tr><td>' + esc(c.channel) + '</td><td class="n">' + c.signups + '</td><td class="n">' + c.activated + '</td>' +
+        '<td class="n"><span class="cbc-chip ' + tone + '">' + c.conv + '%</span></td></tr>';
+    }).join("");
+    return '<table class="cbc-table"><thead><tr><th>Channel</th><th style="text-align:right">Signups</th><th style="text-align:right">Activated</th><th style="text-align:right">Conv.</th></tr></thead><tbody>' + body + '</tbody></table>';
+  }
+
+  function funnelPanel(funnel) {
+    var rows = (funnel || []).map(function (f) {
+      return '<div class="cbc-qbar"><div class="cbc-ql"><span>' + esc(f.stage) + '</span><span>' + f.count + ' · ' + f.pct + '%</span></div>' +
+        '<div class="cbc-track"><i style="width:' + Math.max(2, Math.min(100, f.pct)) + '%"></i></div></div>';
+    }).join("");
+    return '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Pipeline</div><h2>Signup funnel (30d)</h2></div></div>' +
+      (rows || '<div style="color:var(--c-muted);font-size:12.5px">No signups yet this month.</div>') + '</div>';
+  }
+
+  function referralsPanel(r) {
+    r = r || { confirmed: 0, rewarded: 0, pending: 0, top: [] };
+    var stats =
+      '<div style="display:flex;gap:26px;margin-bottom:14px">' +
+        '<div><div style="font-family:var(--c-mono);font-size:24px;font-weight:700">' + (r.confirmed || 0) + '</div><div style="font-size:11.5px;color:var(--c-muted)">confirmed</div></div>' +
+        '<div><div style="font-family:var(--c-mono);font-size:24px;font-weight:700">' + (r.rewarded || 0) + '</div><div style="font-size:11.5px;color:var(--c-muted)">rewarded</div></div>' +
+        '<div><div style="font-family:var(--c-mono);font-size:24px;font-weight:700">' + (r.pending || 0) + '</div><div style="font-size:11.5px;color:var(--c-muted)">pending</div></div>' +
+      '</div>';
+    var top = (r.top && r.top.length)
+      ? r.top.map(function (t) {
+          return '<div class="cbc-fi green"><span class="cbc-fd"></span><div><div class="cbc-ft">' + esc(t.email) + '</div>' +
+            '<div class="cbc-fm">' + t.count + ' referral' + (t.count === 1 ? '' : 's') + '</div></div></div>';
+        }).join("")
+      : '<div style="color:var(--c-muted);font-size:12.5px">No referrers yet — the leaderboard fills as invites convert.</div>';
+    return '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Growth loop</div><h2>Referrals</h2></div></div>' +
+      stats + '<div class="cbc-dw-sec" style="margin-top:4px">Top referrers</div>' + top + '</div>';
+  }
+
+  function experimentsTable(exps) {
+    if (!exps || !exps.length) return '<div style="color:var(--c-muted);font-size:12.5px">No experiments yet. Create one in Content Studio (legacy admin) — it shows up here.</div>';
+    var body = exps.map(function (e) {
+      var tone = e.status === "running" ? "green" : e.status === "done" ? "violet" : "dim";
+      var winner = e.winner ? '<span class="cbc-chip cyan">' + esc(e.winner) + '</span>' : '<span style="color:var(--c-dim)">—</span>';
+      return '<tr><td><div style="font-weight:600">' + esc(e.name) + '</div><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(e.key) + '</div></td>' +
+        '<td><span class="cbc-chip ' + tone + '">' + esc(e.status) + '</span></td>' +
+        '<td class="n">' + e.variants + '</td><td class="n">' + winner + '</td></tr>';
+    }).join("");
+    return '<table class="cbc-table"><thead><tr><th>Experiment</th><th>Status</th><th style="text-align:right">Variants</th><th style="text-align:right">Winner</th></tr></thead><tbody>' + body + '</tbody></table>';
+  }
+
+  function contentTable(content) {
+    if (!content || !content.length) return '<div style="color:var(--c-muted);font-size:12.5px">No content pieces tracked yet.</div>';
+    var body = content.map(function (c) {
+      return '<tr><td><div style="font-weight:600">' + esc(c.title) + '</div><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(c.slug) + '</div></td>' +
+        '<td class="n">' + c.views + '</td><td class="n">' + c.clicks + '</td><td class="n">' + c.signups + '</td></tr>';
+    }).join("");
+    return '<table class="cbc-table"><thead><tr><th>Piece</th><th style="text-align:right">Views</th><th style="text-align:right">Clicks</th><th style="text-align:right">Signups</th></tr></thead><tbody>' + body + '</tbody></table>';
+  }
+
+  function lifecyclePanel(l) {
+    l = l || {};
+    function stat(v, label) {
+      return '<div><div style="font-family:var(--c-mono);font-size:24px;font-weight:700">' + (v || 0) + '</div><div style="font-size:11.5px;color:var(--c-muted)">' + label + '</div></div>';
+    }
+    var pushNote = (l.pushStale || 0) > 0
+      ? '<span class="cbc-chip amber">' + l.pushStale + ' stale device' + (l.pushStale === 1 ? '' : 's') + '</span>'
+      : '<span class="cbc-chip green">healthy</span>';
+    return '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Lifecycle</div><h2>Email &amp; push</h2></div>' + pushNote + '</div>' +
+      '<div class="cbc-dw-sec" style="margin-top:0">Email drips</div>' +
+      '<div style="display:flex;gap:26px;margin-bottom:16px">' +
+        stat(l.enrolled, "enrolled") + stat(l.completed, "completed") + stat(l.stopped, "stopped") +
+      '</div>' +
+      '<div class="cbc-dw-sec">Web push</div>' +
+      '<div style="display:flex;gap:26px">' + stat(l.pushDevices, "devices") + stat(l.pushStale, "stale") + '</div></div>';
+  }
+
+  // ── Marketing Copilot panel (drafts approval queue) ────────────────
+  var PLATFORM_TONE = { linkedin: "cyan", facebook: "green", tiktok: "violet", x: "dim", instagram: "amber" };
+  var lastRun = null; // last copilot run summary — survives the queue re-render
+  var viewMode = "list"; // "list" | "calendar"
+
+  // Monday of the week containing the given date string (YYYY-MM-DD local).
+  function weekStartOf(dstr) {
+    var d = dstr ? new Date(dstr) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    var shift = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
+    d.setDate(d.getDate() - shift);
+    var y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+  // Calendar view (#4): drafts grouped by planned week — scheduled_for first,
+  // else posted_at, else created_at. Compact rows; switch to List to act.
+  function calendarHtml(drafts) {
+    if (!drafts.length) return '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">Nothing planned yet — generate drafts, then set &ldquo;Post on&rdquo; dates via Edit.</div>';
+    var groups = {};
+    drafts.forEach(function (d) {
+      var wk = weekStartOf(d.scheduled_for || d.posted_at || d.created_at);
+      (groups[wk] = groups[wk] || []).push(d);
+    });
+    var thisWeek = weekStartOf(null);
+    return Object.keys(groups).sort().reverse().map(function (wk) {
+      var label = wk === thisWeek ? "This week (" + wk + ")" : "Week of " + wk;
+      var rows = groups[wk]
+        .slice().sort(function (a, b) { return String(a.scheduled_for || "9999").localeCompare(String(b.scheduled_for || "9999")); })
+        .map(function (d) {
+          return '<div class="cbc-att-it"><div class="cbc-att-ic ' + (d.status === "posted" ? "cyan" : "amber") + '"><i class="fa-solid ' + (d.platform === "tiktok" ? "fa-video" : d.platform === "linkedin" ? "fa-briefcase" : "fa-hashtag") + '"></i></div>' +
+            '<div class="cbc-tx">' + esc(d.hook || (d.body || "").slice(0, 60)) +
+              '<small><span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span> <span class="cbc-chip ' + (STATUS_TONE[d.status] || "dim") + '">' + esc(d.status) + '</span>' +
+              (d.scheduled_for ? ' · post on ' + esc(d.scheduled_for) : "") +
+              (d.status === "posted" && d.signups != null ? " · ▲ " + Number(d.signups) + " signups" : "") + '</small></div></div>';
+        }).join("");
+      return '<div class="cbc-dw-sec" style="margin-top:14px">' + esc(label) + "</div>" + rows;
+    }).join("");
+  }
+  function runSummaryHtml(r) {
+    return '<div class="cbc-act-panel" style="margin-bottom:12px"><b>Copilot</b>' + (r._mock ? ' <span class="cbc-chip amber">sample</span>' : "") +
+      '<div style="font-size:12.5px;margin-top:5px;white-space:pre-wrap">' + esc(r.result || r.error || "Done.") + '</div>' +
+      (r.costUsd ? '<div style="font-size:11px;color:var(--c-dim);margin-top:5px;font-family:var(--c-mono)">run cost $' + Number(r.costUsd).toFixed(2) + '</div>' : "") + '</div>';
+  }
+  var STATUS_TONE = { draft: "amber", approved: "cyan", posted: "green", rejected: "red" };
+  function draftCard(d) {
+    var editBtn = '<button class="cbc-btn cbc-sm" data-mk-editd="' + esc(d.id) + '"><i class="fa-solid fa-pen"></i> Edit</button>';
+    var btns = "";
+    if (d.status === "draft") {
+      btns = editBtn +
+        '<button class="cbc-btn cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy</button>' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-status="approved" data-mk-id="' + esc(d.id) + '">Approve</button>' +
+        '<button class="cbc-btn cbc-danger cbc-sm" data-mk-status="rejected" data-mk-id="' + esc(d.id) + '">Reject</button>';
+    } else if (d.status === "approved") {
+      btns = editBtn +
+        '<button class="cbc-btn cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy</button>' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-pub="' + esc(d.id) + '"><i class="fa-solid fa-paper-plane"></i> Publish</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-status="posted" data-mk-id="' + esc(d.id) + '"><i class="fa-solid fa-check"></i> Mark posted</button>' +
+        '<button class="cbc-btn cbc-danger cbc-sm" data-mk-status="rejected" data-mk-id="' + esc(d.id) + '">Reject</button>';
+    } else if (d.status === "posted") {
+      btns = '<button class="cbc-btn cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy</button>';
+    } else {
+      btns = '<button class="cbc-btn cbc-danger cbc-sm" data-mk-del="' + esc(d.id) + '"><i class="fa-solid fa-trash"></i> Delete</button>';
+    }
+    return '<div class="cbc-card" style="padding:13px 14px;margin-bottom:10px" data-mk-card="' + esc(d.id) + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+        '<span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span>' +
+        '<span class="cbc-chip ' + (STATUS_TONE[d.status] || "dim") + '">' + esc(d.status) + '</span>' +
+        (d.status === "posted" && d.signups != null ? '<span class="cbc-chip green">▲ ' + Number(d.signups) + ' signup' + (Number(d.signups) === 1 ? "" : "s") + '</span>' : "") +
+        (d.scheduled_for ? '<span class="cbc-chip dim"><i class="fa-solid fa-calendar"></i> ' + esc(String(d.scheduled_for).slice(0, 10)) + '</span>' : "") +
+        '<span style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(String(d.created_at || "").slice(0, 10)) + '</span>' +
+        '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">' + btns + '</span></div>' +
+      (d.hook ? '<div style="font-weight:700;margin-bottom:6px">' + esc(d.hook) + '</div>' : "") +
+      '<div style="font-size:12.5px;line-height:1.55;white-space:pre-wrap;max-height:150px;overflow:auto;color:var(--c-text)">' + esc(d.body) + '</div>' +
+      (d.hashtags ? '<div style="font-size:11.5px;color:var(--c-cyan);margin-top:7px">' + esc(d.hashtags) + '</div>' : "") +
+      (d.link ? '<div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono);margin-top:3px;word-break:break-all">' + esc(d.link) + '</div>' : "") +
+      (d.rationale ? '<div style="font-size:11.5px;color:var(--c-muted);font-style:italic;margin-top:7px"><i class="fa-solid fa-chart-line" style="color:var(--c-violet)"></i> ' + esc(d.rationale) + '</div>' : "") +
+      '</div>';
+  }
+  // Inline edit form — replaces the card's content until Save/Cancel.
+  function editFields(d) {
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<span class="cbc-chip ' + (PLATFORM_TONE[d.platform] || "dim") + '">' + esc(d.platform) + '</span>' +
+        '<span style="font-size:12px;color:var(--c-muted)">Editing draft</span></div>' +
+      '<input data-ef-hook class="cbc-inp" style="width:100%;margin-bottom:8px" placeholder="Hook / first line" value="' + esc(d.hook || "") + '" />' +
+      '<textarea data-ef-body class="cbc-inp" rows="9" style="width:100%;margin-bottom:8px;line-height:1.5;resize:vertical">' + esc(d.body || "") + '</textarea>' +
+      '<input data-ef-hash class="cbc-inp" style="width:100%;margin-bottom:10px" placeholder="#Hashtags" value="' + esc(d.hashtags || "") + '" />' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">' +
+        '<span style="font-size:12px;color:var(--c-muted)">Post on</span>' +
+        '<input data-ef-sched type="date" class="cbc-inp" value="' + esc(d.scheduled_for || "") + '" />' +
+        '<span style="font-size:11px;color:var(--c-dim)">(drives the calendar view)</span></div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-save="' + esc(d.id) + '"><i class="fa-solid fa-check"></i> Save</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-cancel>Cancel</button></div>';
+  }
+
+  function copilotPanel(dq) {
+    var drafts = (dq && dq.drafts) || [];
+    var list = viewMode === "calendar"
+      ? calendarHtml(drafts)
+      : (drafts.length
+        ? drafts.map(draftCard).join("")
+        : '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">No proposals yet — hit <b>Generate drafts</b> and the Copilot will study your growth data and propose platform-native content.</div>');
+    return '<section class="cbc-card cbc-panel cbc-insights" id="cbc-mk">' +
+      '<div class="cbc-ph"><div><div class="cbc-eb">Marketing Copilot</div><h2>Content proposals</h2></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<button class="cbc-btn cbc-sm" data-mk-view="' + (viewMode === "list" ? "calendar" : "list") + '">' +
+            (viewMode === "list" ? '<i class="fa-solid fa-calendar"></i> Calendar' : '<i class="fa-solid fa-list"></i> List') + '</button>' +
+          '<button class="cbc-btn cbc-sm" data-mk-pubcfg><i class="fa-solid fa-paper-plane"></i> Publishing</button>' +
+          '<span class="cbc-chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> agent · copy + publish</span></div></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+        '<input id="cbc-mk-brief" class="cbc-inp" style="flex:1;min-width:220px" placeholder="Optional brief, e.g. focus on voice mock interviews this week" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-gen style="height:34px"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate drafts</button></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="Campaign week on voice mock interviews — the Pro plan hero feature. Angle: interview nerves are beatable with practice.">🎤 Voice interviews</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="CV / resume tailoring tips for SA job seekers. Angle: generic CVs get silence; tailored ones get replies.">📄 CV tips</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="Referral push: invite a friend who is job hunting. Warm, community angle.">🤝 Referrals</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-preset="Free plan awareness: you can start the whole workflow free, no card. Angle: lower the barrier.">🆓 Free plan</button></div>' +
+      '<div id="cbc-mk-pubcfg"></div>' +
+      '<div id="cbc-mk-result">' + (lastRun ? runSummaryHtml(lastRun) : "") + '</div>' +
+      '<div id="cbc-mk-list">' + list + '</div></section>';
+  }
+  // Auto-publish setup (Phase D): a webhook the operator points at
+  // Zapier/Make/Buffer; Publish POSTs approved drafts there server-side.
+  function pubCfgForm() {
+    return '<div class="cbc-act-panel" style="margin-bottom:12px">' +
+      '<div style="font-size:12.5px;margin-bottom:6px"><b>Auto-publish setup</b> — <span id="cbc-mk-pubstatus" style="color:var(--c-muted)">checking…</span></div>' +
+      '<div style="font-size:11.5px;color:var(--c-muted);margin-bottom:8px">Paste an outbound webhook URL (Zapier &ldquo;Catch Hook&rdquo;, Make, Buffer, n8n, custom). When you <b>Publish</b> an approved draft it&rsquo;s POSTed there as JSON, so your automation posts it to LinkedIn / Facebook / etc. Leave blank to disable.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<input id="cbc-mk-puburl" class="cbc-inp" style="flex:1;min-width:240px" placeholder="https://hooks.zapier.com/hooks/catch/..." autocomplete="off" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-pubsave>Save</button></div></div>';
+  }
+  function refreshPubStatus(host) {
+    D().getPublishConfig().then(function (c) {
+      var s = host.querySelector("#cbc-mk-pubstatus");
+      if (s) s.textContent = c && c.configured ? "connected · " + (c.urlMasked || "webhook set") : "not connected";
+    }).catch(function () {});
+  }
+  function togglePubCfg(host) {
+    var slot = host.querySelector("#cbc-mk-pubcfg");
+    if (!slot) return;
+    if (slot.innerHTML) { slot.innerHTML = ""; return; }
+    slot.innerHTML = pubCfgForm();
+    refreshPubStatus(host);
+  }
+
+  function bindCopilot(bodyEl, drafts) {
+    var host = bodyEl.querySelector("#cbc-mk"); if (!host) return;
+    var toast = (window.CBConsole.ui && window.CBConsole.ui.toast) || function (m) { console.log(m); };
+    var byId = {};
+    (drafts || []).forEach(function (d) { byId[d.id] = d; });
+    host.addEventListener("click", async function (e) {
+      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset],[data-mk-editd],[data-mk-save],[data-mk-cancel],[data-mk-view],[data-mk-pub],[data-mk-pubcfg],[data-mk-pubsave]") : null;
+      if (!t) return;
+      if (t.hasAttribute("data-mk-view")) { viewMode = t.getAttribute("data-mk-view"); load(bodyEl); return; }
+      if (t.hasAttribute("data-mk-pubcfg")) { togglePubCfg(host); return; }
+      if (t.hasAttribute("data-mk-editd")) {
+        var d0 = byId[t.getAttribute("data-mk-editd")];
+        var card0 = t.closest("[data-mk-card]");
+        if (d0 && card0) card0.innerHTML = editFields(d0);
+        return;
+      }
+      if (t.hasAttribute("data-mk-cancel")) { load(bodyEl); return; }
+      if (t.hasAttribute("data-mk-preset")) {
+        var inp = host.querySelector("#cbc-mk-brief");
+        if (inp) { inp.value = t.getAttribute("data-mk-preset"); inp.focus(); }
+        return;
+      }
+      if (t.hasAttribute("data-mk-copy")) {
+        var d = byId[t.getAttribute("data-mk-copy")];
+        if (d) {
+          var text = [d.hook, d.body, d.hashtags, d.link].filter(Boolean).join("\n\n");
+          try { await navigator.clipboard.writeText(text); toast("Copied — paste it into " + d.platform); }
+          catch (err) { toast("Copy failed — select the text manually"); }
+        }
+        return;
+      }
+      t.disabled = true;
+      try {
+        if (t.hasAttribute("data-mk-pubsave")) {
+          var purl = ((host.querySelector("#cbc-mk-puburl") || {}).value || "").trim();
+          await D().setPublishWebhook(purl);
+          toast(purl ? "Publish webhook saved" : "Publish webhook cleared");
+          refreshPubStatus(host);
+          t.disabled = false;
+          return;
+        }
+        if (t.hasAttribute("data-mk-pub")) {
+          await D().publishDraft(t.getAttribute("data-mk-pub"));
+          toast("Published via your webhook");
+          load(bodyEl);
+          return;
+        }
+        if (t.hasAttribute("data-mk-gen")) {
+          var brief = (host.querySelector("#cbc-mk-brief") || {}).value || "";
+          var slot = host.querySelector("#cbc-mk-result");
+          if (slot) slot.innerHTML = '<div class="cbc-act-panel" style="margin-bottom:12px"><i class="fa-solid fa-circle-notch fa-spin"></i> Copilot is studying your growth data and writing drafts&hellip; (~30&ndash;60s, budget-capped)</div>';
+          try {
+            var r = await D().runMarketing(brief.trim() || "Study the current growth and content data, then propose this week's content: one LinkedIn post, one Facebook post, and one TikTok script.");
+            lastRun = r; // shown by copilotPanel after the reload below
+            load(bodyEl); // refresh queue with new drafts
+          } catch (genErr) {
+            // Show the REAL backend error in place of the spinner (stale
+            // deploy, missing migration, budget, rate limit, …).
+            if (slot) slot.innerHTML = '<div class="cbc-act-panel" style="margin-bottom:12px"><b style="color:var(--c-danger)">Copilot failed</b><div style="font-size:12.5px;margin-top:5px">' + esc((genErr && genErr.message) || "Unknown error") + '</div><div style="font-size:11.5px;color:var(--c-muted);margin-top:5px">Usual fixes: redeploy <code>agent-run</code> + <code>console-growth</code>, apply migration 0047, or retry in a minute.</div></div>';
+            t.disabled = false;
+          }
+          return;
+        }
+        if (t.hasAttribute("data-mk-save")) {
+          var card1 = t.closest("[data-mk-card]");
+          await D().updateDraft(t.getAttribute("data-mk-save"), {
+            hook: (card1.querySelector("[data-ef-hook]") || {}).value || "",
+            body: (card1.querySelector("[data-ef-body]") || {}).value || "",
+            hashtags: (card1.querySelector("[data-ef-hash]") || {}).value || "",
+            scheduled_for: (card1.querySelector("[data-ef-sched]") || {}).value || "",
+          });
+          toast("Draft updated");
+          load(bodyEl);
+          return;
+        }
+        if (t.hasAttribute("data-mk-status")) {
+          await D().updateDraft(t.getAttribute("data-mk-id"), t.getAttribute("data-mk-status"));
+          toast("Draft " + t.getAttribute("data-mk-status"));
+          load(bodyEl);
+          return;
+        }
+        if (t.hasAttribute("data-mk-del")) {
+          await D().deleteDraft(t.getAttribute("data-mk-del"));
+          toast("Draft deleted");
+          load(bodyEl);
+          return;
+        }
+      } catch (err) {
+        t.disabled = false;
+        toast((err && err.message) ? err.message : "Action failed.");
+      }
+    });
+  }
+
+  async function load(bodyEl) {
+    bodyEl.innerHTML = '<section class="cbc-kpis cbc-kpis--4">' + U().kpiSkeleton(4) + '</section>';
+    var both = await Promise.all([D().loadGrowth(), D().loadDrafts()]);
+    var g = both[0], dq = both[1];
+    bodyEl.innerHTML =
+      U().sampleBadge(g._mock, "console-growth", "acquisition + marketing data") +
+      copilotPanel(dq) +
+      '<section class="cbc-kpis cbc-kpis--4">' + (g.kpis || []).map(U().kpiCard).join("") + '</section>' +
+      '<section class="cbc-grid cbc-g-2a">' +
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Acquisition</div><h2>Channels (30d)</h2></div></div>' + channelsTable(g.channels) + '</div>' +
+        funnelPanel(g.funnel) +
+      '</section>' +
+      '<section class="cbc-grid cbc-g-2b">' +
+        referralsPanel(g.referrals) +
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Optimization</div><h2>A/B experiments</h2></div></div>' + experimentsTable(g.experiments) + '</div>' +
+      '</section>' +
+      '<section class="cbc-grid cbc-g-2a">' +
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Content</div><h2>Content scorecard</h2></div></div>' + contentTable(g.content) + '</div>' +
+        lifecyclePanel(g.lifecycle) +
+      '</section>';
+    bodyEl.querySelectorAll(".cbc-num[data-count]").forEach(function (n) {
+      U().countUp(n, Number(n.getAttribute("data-count")), n.getAttribute("data-fmt"));
+    });
+    bindCopilot(bodyEl, (dq && dq.drafts) || []);
+  }
+
+  window.CBConsole.sections.growth = { load: load };
+})();

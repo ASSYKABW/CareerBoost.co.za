@@ -25,7 +25,7 @@
   // parses the URL token. Without this entry, the bootstrap would mount
   // the normal app shell + redirect them to dashboard before they ever
   // see the "Choose a new password" form.
-  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin", "auth/confirmed", "auth/reset"];
+  const FULLSCREEN_AUTHED_ROUTES = ["onboarding", "admin", "console", "auth/confirmed", "auth/reset"];
 
   function mountAppShell() {
     const app = document.getElementById("app");

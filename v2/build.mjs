@@ -151,6 +151,12 @@ const SCRIPTS = [
   "./src/js/modules/admin/sections/content-studio.js",
   "./src/js/modules/admin/admin.mfa.js",
   "./src/js/modules/admin/admin.route.js",
+  "./src/js/modules/console/console.data.js",
+  "./src/js/modules/console/console.route.js",
+  "./src/js/modules/console/console.users.js",
+  "./src/js/modules/console/console.money.js",
+  "./src/js/modules/console/console.ai.js",
+  "./src/js/modules/console/console.growth.js",
   "./src/js/app/share-handler.js",
   "./src/js/app/router.js",
   "./src/js/app/bootstrap.js",
@@ -171,6 +177,7 @@ const SHEETS = [
   "./src/styles/design-system.css",
   "./src/styles/phase5-cleanup.css",
   "./src/styles/admin.css",
+  "./src/styles/console.css",
 ];
 
 async function bundleJS() {

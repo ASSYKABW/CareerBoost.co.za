@@ -1,0 +1,44 @@
+# Marketing Copilot autopilot — weekly.
+#
+# Every Monday morning it asks the marketing agent (agent-run) to study the
+# latest growth + content-performance data and fill the Console approval
+# queue with this week's platform-native drafts. Nothing publishes itself:
+# proposals land as status='draft' in social_drafts for the operator to
+# review, edit, approve and copy-paste.
+#
+# Reuses the same repo secrets as the other cron workflows:
+#   SUPABASE_FUNCTIONS_URL = https://kddffkhwpbngiupfmcse.functions.supabase.co
+#   MARKETING_CRON_SECRET  = <same value as the function's CRON_SECRET>
+# Until both are set the scheduled run no-ops (the function returns 403).
+# Also requires Anthropic API credits — a run without credits fails cleanly
+# and is visible in agent_runs (status='failed').
+#
+# 05:00 UTC Monday ≈ 07:00 SAST — queue is full before the week starts.
+
+name: Copilot cron
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  copilot-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run weekly marketing autopilot
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.MARKETING_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / MARKETING_CRON_SECRET not set — skipping (see workflow header)."
+            exit 0
+          fi
+          echo "→ copilot autopilot"
+          curl -fsS -X POST "$FN_URL/agent-run" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"agent":"marketing","prompt":"Weekly autopilot run. Study the current growth, content performance and recent drafts (especially signups on posted content), then fill this week'\''s queue: one LinkedIn post, one Facebook post, one TikTok script, and one X thread. Double down on themes that drove signups; avoid repeating recent hooks.","budgetUsd":0.6}'
+          echo ""

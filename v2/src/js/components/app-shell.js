@@ -129,6 +129,11 @@
     const adminLink = canAdmin
       ? '<a class="user-menu-item" role="menuitem" href="#/admin"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Admin console</a>'
       : "";
+    // Temporary link to the new Console (Phase 1) — same admin gate. Removed
+    // when the console replaces the legacy admin at cutover (Phase 3).
+    const consoleLink = canAdmin
+      ? '<a class="user-menu-item" role="menuitem" href="#/console"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Console <span class="chip chip-sm cyan" style="margin-left:auto;">beta</span></a>'
+      : "";
 
     return `
       <div class="user-chip" data-user-chip>
@@ -155,6 +160,7 @@
             <i class="fa-solid fa-gear" aria-hidden="true"></i> Settings
           </a>
           ${adminLink}
+          ${consoleLink}
           <div class="user-menu-divider" role="separator"></div>
           <button class="user-menu-item user-menu-item--danger" type="button" role="menuitem" data-signout>
             <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out

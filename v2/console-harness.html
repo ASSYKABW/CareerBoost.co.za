@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Console harness — real modules, mock data</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<!-- The REAL production stylesheets (tokens first, then the new console layer) -->
+<link rel="stylesheet" href="./src/styles/tokens.css" />
+<link rel="stylesheet" href="./src/styles/console.css" />
+<style> body { margin: 0; background: #06070f; } </style>
+</head>
+<body>
+  <div style="position:fixed;inset:0 0 auto 0;z-index:200;background:rgba(255,157,74,.13);border-bottom:1px solid rgba(255,157,74,.28);color:#ffd9b0;font:12px Inter,sans-serif;text-align:center;padding:6px 12px">
+    Harness — loads the <b>real</b> console.css + console.data.js + console.route.js with a CBV2 shim (backend off → mock data). Proves the modular build renders.
+  </div>
+  <div style="padding-top:29px"><main id="route-view"></main></div>
+
+  <!-- Minimal CBV2 shim: backend OFF so the console runs in local/mock mode. -->
+  <script>
+    window.CBV2 = {
+      config: { isBackendEnabled: function () { return false; } },
+      routes: {}, afterRender: {},
+      auth: { isAuthenticated: function () { return false; }, getUser: function () { return null; }, getClient: function () { return null; } },
+      toast: { show: function (m) { console.log("[toast]", m); }, error: function (m) { console.warn("[toast]", m); } }
+    };
+    window.CBConsole = {};
+  </script>
+  <!-- The real production modules, in bundle order. -->
+  <script src="./src/js/modules/console/console.data.js"></script>
+  <script src="./src/js/modules/console/console.route.js"></script>
+  <script src="./src/js/modules/console/console.users.js"></script>
+  <script src="./src/js/modules/console/console.money.js"></script>
+  <script src="./src/js/modules/console/console.ai.js"></script>
+  <script src="./src/js/modules/console/console.growth.js"></script>
+  <script>
+    document.getElementById("route-view").innerHTML = window.CBV2.routes.console();
+    window.CBV2.afterRender.console({});
+  </script>
+</body>
+</html>
