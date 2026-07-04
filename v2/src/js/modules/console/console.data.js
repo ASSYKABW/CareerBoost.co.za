@@ -192,6 +192,7 @@
       _mock: true, range: base.range, kpis: base.kpis,
       northStar: { title: "New activations / day", trend: "▲ 18% vs prev", cur: cur, prev: prev },
       promo: { active: true, percent: 30, endDate: "2026-07-31" },
+      providerAlert: { count: 1, providers: [{ label: "Anthropic (Claude)", status: "credit", topup: "https://console.anthropic.com/settings/billing" }] },
       attention: MOCK_COMMON.attention, feed: MOCK_COMMON.feed, spenders: MOCK_COMMON.spenders,
     };
   }
@@ -421,6 +422,13 @@
           { model: "claude-opus-4-8", calls: 140, spend: "$31.40" },
         ],
         incidents: [{ title: "job-feed latency", severity: "critical", section: "health", when: "2026-06-30" }],
+        providers: [
+          { id: "anthropic", label: "Anthropic (Claude)", configured: true, status: "credit", failures: 12, successes: 0, lastError: "anthropic: HTTP 400 …credit balance is too low", topup: "https://console.anthropic.com/settings/billing" },
+          { id: "openai", label: "OpenAI", configured: true, status: "healthy", failures: 0, successes: 84, lastError: "", topup: "https://platform.openai.com/account/billing/overview" },
+          { id: "gemini", label: "Google Gemini", configured: true, status: "healthy", failures: 0, successes: 210, lastError: "", topup: "https://aistudio.google.com/app/apikey" },
+          { id: "groq", label: "Groq", configured: false, status: "no-key", failures: 0, successes: 0, lastError: "", topup: "https://console.groq.com/keys" },
+        ],
+        critical: [{ id: "anthropic", label: "Anthropic (Claude)", status: "credit", topup: "https://console.anthropic.com/settings/billing" }],
         failures: [
           { skill: "interview session step", model: "claude-sonnet-5", error: "provider timeout (529)", when: "2026-06-30" },
           { skill: "resume tailor", model: "claude-haiku-4-5", error: "rate limit (429)", when: "2026-06-29" },

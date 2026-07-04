@@ -16,6 +16,7 @@
 // Every block is isolated in try/catch; {mock:true} returns fixtures.
 import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
+import { getProviderHealth } from "../_shared/provider-health.ts";
 
 const DAY_MS = 86_400_000;
 const USD_PER_M_INPUT = 1.0;
@@ -60,6 +61,13 @@ const MOCK = {
     { model: "claude-opus-4-8", calls: 140, spend: "$31.40" },
   ],
   incidents: [{ title: "job-feed latency", severity: "critical", section: "health", when: "2026-06-30" }],
+  providers: [
+    { id: "anthropic", label: "Anthropic (Claude)", configured: true, status: "credit", failures: 12, successes: 0, lastError: "anthropic: HTTP 400 …credit balance is too low", topup: "https://console.anthropic.com/settings/billing" },
+    { id: "openai", label: "OpenAI", configured: true, status: "healthy", failures: 0, successes: 84, lastError: "", topup: "https://platform.openai.com/account/billing/overview" },
+    { id: "gemini", label: "Google Gemini", configured: true, status: "healthy", failures: 0, successes: 210, lastError: "", topup: "https://aistudio.google.com/app/apikey" },
+    { id: "groq", label: "Groq", configured: false, status: "no-key", failures: 0, successes: 0, lastError: "", topup: "https://console.groq.com/keys" },
+  ],
+  critical: [{ id: "anthropic", label: "Anthropic (Claude)", status: "credit", topup: "https://console.anthropic.com/settings/billing" }],
   failures: [
     { skill: "interview session step", model: "claude-sonnet-5", error: "provider timeout (529)", when: "2026-06-30" },
     { skill: "resume tailor", model: "claude-haiku-4-5", error: "rate limit (429)", when: "2026-06-29" },
@@ -147,6 +155,7 @@ Deno.serve(withCors(async (req) => {
     }
   } catch (_e) { /* ignore */ }
 
+  const ph = await getProviderHealth();
   const aiHealth = {
     kpis: [
       { key: "spend", label: "AI spend 7d (est)", tone: "amber", fmt: "usd", value: Math.round(curSpend), delta: dSpend.delta, deltaDir: dSpend.dir === "down" ? "gd" : "down", spark: bucketByDay(cur, "created_at", 7) },
@@ -155,6 +164,7 @@ Deno.serve(withCors(async (req) => {
       { key: "incidents", label: "Open incidents", tone: incidents.length ? "amber" : "green", fmt: "int", value: incidents.length, delta: criticalCount ? criticalCount + " critical" : "all clear", deltaDir: incidents.length ? "down" : "up", spark: [] },
     ],
     bySkill, byModel, incidents, failures,
+    providers: ph.providers, critical: ph.critical,
   };
   return jsonResponse({ ok: true, aiHealth });
 }));

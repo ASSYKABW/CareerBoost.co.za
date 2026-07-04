@@ -56,6 +56,43 @@
       '<div class="cbc-feed" style="max-height:280px">' + rows + '</div></div>';
   }
 
+  // ── Provider health & credits (ask #3 — know when a key runs dry) ──
+  var PROV_STATUS = {
+    healthy: { tone: "green", label: "healthy", icon: "fa-circle-check" },
+    credit: { tone: "red", label: "OUT OF CREDIT", icon: "fa-triangle-exclamation" },
+    key: { tone: "red", label: "KEY INVALID", icon: "fa-triangle-exclamation" },
+    rate: { tone: "amber", label: "rate-limited", icon: "fa-gauge-high" },
+    errors: { tone: "amber", label: "errors", icon: "fa-circle-exclamation" },
+    "no-key": { tone: "dim", label: "no key set", icon: "fa-ban" },
+    idle: { tone: "dim", label: "idle", icon: "fa-moon" },
+  };
+  function providerPanel(h) {
+    var provs = h.providers || [];
+    var critical = h.critical || [];
+    var banner = critical.length
+      ? '<div style="background:linear-gradient(180deg,rgba(239,72,85,.12),var(--c-glass));border:1px solid rgba(239,72,85,.35);border-radius:12px;padding:13px 15px;margin-bottom:13px">' +
+          '<div style="font-weight:700;color:#ff9aa2;font-size:14px"><i class="fa-solid fa-triangle-exclamation"></i> ' + critical.length + ' AI provider' + (critical.length === 1 ? "" : "s") + ' need attention</div>' +
+          critical.map(function (c) {
+            var reason = c.status === "credit" ? "out of credit" : "API key invalid or expired";
+            return '<div style="font-size:12.5px;margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>' + esc(c.label) + '</b> — ' + reason + ' <a class="cbc-btn cbc-sm cbc-danger" href="' + esc(c.topup) + '" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Top up / fix key</a></div>';
+          }).join("") + "</div>"
+      : "";
+    var rows = provs.map(function (p) {
+      var st = PROV_STATUS[p.status] || PROV_STATUS.idle;
+      var last = p.lastError ? '<span title="' + esc(p.lastError) + '" style="color:var(--c-dim);cursor:help">why?</span>' : "";
+      var fix = (p.status === "credit" || p.status === "key")
+        ? '<a class="cbc-btn cbc-sm" href="' + esc(p.topup) + '" target="_blank" rel="noopener noreferrer">Fix</a>'
+        : last;
+      return '<tr><td>' + esc(p.label) + '</td>' +
+        '<td>' + (p.configured ? '<span class="cbc-chip green">key set</span>' : '<span class="cbc-chip dim">no key</span>') + "</td>" +
+        '<td class="n">' + p.successes + '</td><td class="n">' + p.failures + "</td>" +
+        '<td class="n"><span class="cbc-chip ' + st.tone + '"><i class="fa-solid ' + st.icon + '"></i> ' + esc(st.label) + "</span></td>" +
+        '<td class="n">' + fix + "</td></tr>";
+    }).join("");
+    return banner + '<section class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Ops control</div><h2>Provider health &amp; credits</h2></div><span class="cbc-chip dim">last 24h</span></div>' +
+      '<table class="cbc-table"><thead><tr><th>Provider</th><th>Key</th><th style="text-align:right">OK</th><th style="text-align:right">Fail</th><th style="text-align:right">Status</th><th style="text-align:right"></th></tr></thead><tbody>' + rows + "</tbody></table></section>";
+  }
+
   // ── Model Control (live per-skill LLM routing via console-config) ──
   function sourceChip(s) {
     if (s.source === "admin") return '<span class="cbc-chip violet">admin</span>';
@@ -144,6 +181,7 @@
     var h = both[0], mc = both[1];
     bodyEl.innerHTML =
       U().sampleBadge(h._mock, "console-ai-health", "AI cost + failures") +
+      providerPanel(h) +
       '<section class="cbc-kpis cbc-kpis--4">' + (h.kpis || []).map(U().kpiCard).join("") + '</section>' +
       modelControlPanel(mc) +
       '<section class="cbc-grid cbc-g-2a">' +

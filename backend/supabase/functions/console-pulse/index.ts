@@ -12,6 +12,7 @@
 // to get fixtures (deploy smoke-test without touching data).
 import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
+import { getProviderHealth } from "../_shared/provider-health.ts";
 
 type Range = "24h" | "7d" | "30d";
 const DAY_MS = 86_400_000;
@@ -60,6 +61,7 @@ function mockPulse(range: Range) {
       { key: "errors", label: "AI error rate", tone: "green", value: 0.4, fmt: "pct", delta: "-0.2pt", deltaDir: "gd", spark: [9, 8, 7, 6, 6, 5, 4] },
     ],
     northStar: { title: "New activations / day", trend: "▲ 18% vs prev", cur: [8, 10, 9, 12, 11, 14, 13, 16, 15, 18], prev: [6, 7, 8, 8, 10, 10, 12, 12, 14, 14] },
+    providerAlert: null,
     attention: [{ icon: "fa-triangle-exclamation", tone: "red", title: "Open incident", sub: "sample", count: 1, action: "Review" }],
     feed: [{ text: "<b>Sample event</b>", meta: "mock", tone: "cyan" }],
     spenders: [{ name: "Sample", email: "—", plan: "Pro", planTone: "violet", calls: 0, spend: "$0.00", status: "normal", statusTone: "green" }],
@@ -203,6 +205,7 @@ Deno.serve(withCors(async (req) => {
     });
   }
 
+  const providerHealth = await getProviderHealth();
   const pulse = {
     range,
     kpis: [
@@ -215,6 +218,9 @@ Deno.serve(withCors(async (req) => {
     ],
     northStar: { title: "New signups / day", trend: "vs previous " + days + "d", cur: kSignups.spark, prev: kSignups.prevSpark },
     promo,
+    providerAlert: providerHealth.critical.length
+      ? { count: providerHealth.critical.length, providers: providerHealth.critical.map((c) => ({ label: c.label, status: c.status, topup: c.topup })) }
+      : null,
     attention,
     feed: feed.length ? feed : [{ text: "<b>No recent events</b>", meta: "quiet", tone: "cyan" }],
     spenders,

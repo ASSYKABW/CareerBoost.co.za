@@ -325,9 +325,21 @@
     return '<div style="margin-bottom:13px;font-size:12px;color:var(--c-amber);background:rgba(255,157,74,.08);border:1px solid rgba(255,157,74,.22);border-radius:10px;padding:8px 12px">' +
       '<i class="fa-solid fa-flask"></i> Sample data — the <code>console-pulse</code> / <code>console-insights</code> endpoints aren\'t live yet. Deploy them to see real numbers.</div>';
   }
+  // Provider-issue banner (ask #3) — top of Pulse when a key is dead/dry.
+  function renderProviderBanner(alert) {
+    if (!alert || !alert.count) return "";
+    var items = (alert.providers || []).map(function (c) {
+      var reason = c.status === "credit" ? "out of credit" : "API key invalid";
+      return '<a class="cbc-btn cbc-sm cbc-danger" href="' + U().escapeHtml(c.topup) + '" target="_blank" rel="noopener noreferrer">' + U().escapeHtml(c.label) + " — " + reason + " →</a>";
+    }).join(" ");
+    return '<div style="background:linear-gradient(180deg,rgba(239,72,85,.14),var(--c-glass));border:1px solid rgba(239,72,85,.4);border-radius:12px;padding:12px 15px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+      '<span style="font-weight:700;color:#ff9aa2"><i class="fa-solid fa-triangle-exclamation"></i> AI provider issue</span>' +
+      '<span style="font-size:12.5px;color:var(--c-muted)">Some AI features will fail until this is fixed.</span>' + items + "</div>";
+  }
   function renderPulseBody() {
     var p = state.pulse, ins = state.insights;
     return renderSampleBadge(p && p._mock) +
+      renderProviderBanner(p && p.providerAlert) +
       renderKpis(p.kpis) +
       renderInsights(ins) +
       '<section class="cbc-grid cbc-g-2a">' + renderChart(p.northStar) + renderAttention(p.attention) + "</section>" +
