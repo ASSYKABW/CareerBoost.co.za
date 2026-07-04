@@ -105,22 +105,33 @@
     }).join("");
   }
   function renderSidebar() {
+    var op = currentOperator();
     return (
       '<aside class="cbc-sb" id="cbc-sb">' +
-        '<div class="cbc-brand"><div class="cbc-mk">CB</div>' +
-          '<div><div class="cbc-nm">Career<span>Boost</span></div><div class="cbc-eb">CONSOLE</div></div></div>' +
+        '<div class="cbc-brand">' +
+          '<img class="cbc-logo-img" src="./src/assets/logo.svg" alt="CareerBoost" ' +
+            'onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'./src/assets/logo-default.svg\';}" />' +
+          '<span class="cbc-eb-console">CONSOLE</span></div>' +
         '<nav class="cbc-navg"><p>Operate</p>' + renderNav() + "</nav>" +
-        '<div class="cbc-sb-foot"><div class="cbc-av"></div>' +
-          '<div><div class="cbc-who">' + currentOperatorName() + '</div><div class="cbc-ro">Owner</div></div>' +
-          '<span class="cbc-mfa"><i class="fa-solid fa-shield-halved"></i> MFA</span></div>' +
+        '<div class="cbc-sb-foot">' + operatorAvatar(op) +
+          '<div style="min-width:0;overflow:hidden"><div class="cbc-who">' + U().escapeHtml(op.name) + '</div>' +
+          '<div class="cbc-ro" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + U().escapeHtml(op.email || "Operator") + '</div></div>' +
+          '<span class="cbc-mfa" title="MFA-verified session"><i class="fa-solid fa-shield-halved"></i></span></div>' +
+        '<a class="cbc-backapp" href="#/dashboard"><i class="fa-solid fa-arrow-left"></i> Back to app</a>' +
       "</aside>"
     );
   }
-  function currentOperatorName() {
+  function currentOperator() {
     var auth = window.CBV2 && window.CBV2.auth;
     var user = auth && auth.getUser ? auth.getUser() : null;
-    var nm = (user && (user.user_metadata && user.user_metadata.full_name)) || (user && user.email) || "Operator";
-    return U().escapeHtml(String(nm).split("@")[0]);
+    var p = (window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || {};
+    var email = (user && user.email) || "";
+    var name = (p && p.full_name) || (user && user.user_metadata && user.user_metadata.full_name) || (email ? email.split("@")[0] : "Operator");
+    return { name: name, email: email, avatarUrl: (p && p.avatar_url) || "", initial: String(name || email || "?").charAt(0).toUpperCase() };
+  }
+  function operatorAvatar(op) {
+    if (op.avatarUrl) return '<img class="cbc-av" src="' + U().escapeHtml(op.avatarUrl) + '" alt="" referrerpolicy="no-referrer" />';
+    return '<div class="cbc-av cbc-av--initial">' + U().escapeHtml(op.initial) + "</div>";
   }
   function renderTopbar() {
     var s = SECTIONS[state.section] || SECTIONS.pulse;
@@ -131,6 +142,7 @@
           '<div><h1 id="cbc-title">' + s.title + '</h1><div class="cbc-sub" id="cbc-sub">' + s.sub + "</div></div>" +
         "</div>" +
         '<div class="cbc-top-actions">' +
+          '<a class="cbc-btn" href="#/dashboard" title="Back to your CareerBoost dashboard"><i class="fa-solid fa-arrow-left"></i> App</a>' +
           '<button class="cbc-search" data-cmd-open><i class="fa-solid fa-magnifying-glass"></i> <span>Search users, actions…</span> <span class="cbc-k">⌘K</span></button>' +
           '<button class="cbc-btn" data-assist title="Ask the Console Assistant"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--c-violet)"></i> Assistant</button>' +
           '<div class="cbc-seg" id="cbc-seg">' +
