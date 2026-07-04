@@ -10,7 +10,7 @@ REM  Daily use: keep this window open, work happens, press F5 in the
 REM  browser to see changes. Close this window (or Ctrl+C) to stop.
 REM
 REM  URLs:
-REM    http://localhost:5173/#/console            -> the REAL console
+REM    http://localhost:5173/#/admin            -> the REAL console
 REM       (sign in with email+password, then your 6-digit MFA code)
 REM    http://localhost:5173/console-harness.html -> instant preview,
 REM       sample data, no sign-in (visual checks only)
@@ -22,11 +22,11 @@ start "CareerBoost build watcher" cmd /k "cd /d "%~dp0v2" && npm run build:watch
 
 REM Give the first build a moment, then open the browser.
 timeout /t 3 /nobreak >nul
-start "" "http://localhost:5173/#/console"
+start "" "http://localhost:5173/#/admin"
 
 echo.
 echo  CareerBoost dev server running at http://localhost:5173
-echo  Console:  http://localhost:5173/#/console
+echo  Console:  http://localhost:5173/#/admin
 echo  Harness:  http://localhost:5173/console-harness.html  (sample data)
 echo  Press Ctrl+C (or close this window) to stop.
 echo.
