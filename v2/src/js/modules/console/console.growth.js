@@ -147,7 +147,8 @@
         '<button class="cbc-btn cbc-danger cbc-sm" data-mk-status="rejected" data-mk-id="' + esc(d.id) + '">Reject</button>';
     } else if (d.status === "approved") {
       btns = editBtn +
-        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy to post</button>' +
+        '<button class="cbc-btn cbc-sm" data-mk-copy="' + esc(d.id) + '"><i class="fa-solid fa-copy"></i> Copy</button>' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-pub="' + esc(d.id) + '"><i class="fa-solid fa-paper-plane"></i> Publish</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-status="posted" data-mk-id="' + esc(d.id) + '"><i class="fa-solid fa-check"></i> Mark posted</button>' +
         '<button class="cbc-btn cbc-danger cbc-sm" data-mk-status="rejected" data-mk-id="' + esc(d.id) + '">Reject</button>';
     } else if (d.status === "posted") {
@@ -199,7 +200,8 @@
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<button class="cbc-btn cbc-sm" data-mk-view="' + (viewMode === "list" ? "calendar" : "list") + '">' +
             (viewMode === "list" ? '<i class="fa-solid fa-calendar"></i> Calendar' : '<i class="fa-solid fa-list"></i> List') + '</button>' +
-          '<span class="cbc-chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> agent · copy-paste v1</span></div></div>' +
+          '<button class="cbc-btn cbc-sm" data-mk-pubcfg><i class="fa-solid fa-paper-plane"></i> Publishing</button>' +
+          '<span class="cbc-chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> agent · copy + publish</span></div></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
         '<input id="cbc-mk-brief" class="cbc-inp" style="flex:1;min-width:220px" placeholder="Optional brief, e.g. focus on voice mock interviews this week" />' +
         '<button class="cbc-btn cbc-primary cbc-sm" data-mk-gen style="height:34px"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate drafts</button></div>' +
@@ -208,18 +210,44 @@
         '<button class="cbc-btn cbc-sm" data-mk-preset="CV / resume tailoring tips for SA job seekers. Angle: generic CVs get silence; tailored ones get replies.">📄 CV tips</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-preset="Referral push: invite a friend who is job hunting. Warm, community angle.">🤝 Referrals</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-preset="Free plan awareness: you can start the whole workflow free, no card. Angle: lower the barrier.">🆓 Free plan</button></div>' +
+      '<div id="cbc-mk-pubcfg"></div>' +
       '<div id="cbc-mk-result">' + (lastRun ? runSummaryHtml(lastRun) : "") + '</div>' +
       '<div id="cbc-mk-list">' + list + '</div></section>';
   }
+  // Auto-publish setup (Phase D): a webhook the operator points at
+  // Zapier/Make/Buffer; Publish POSTs approved drafts there server-side.
+  function pubCfgForm() {
+    return '<div class="cbc-act-panel" style="margin-bottom:12px">' +
+      '<div style="font-size:12.5px;margin-bottom:6px"><b>Auto-publish setup</b> — <span id="cbc-mk-pubstatus" style="color:var(--c-muted)">checking…</span></div>' +
+      '<div style="font-size:11.5px;color:var(--c-muted);margin-bottom:8px">Paste an outbound webhook URL (Zapier &ldquo;Catch Hook&rdquo;, Make, Buffer, n8n, custom). When you <b>Publish</b> an approved draft it&rsquo;s POSTed there as JSON, so your automation posts it to LinkedIn / Facebook / etc. Leave blank to disable.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<input id="cbc-mk-puburl" class="cbc-inp" style="flex:1;min-width:240px" placeholder="https://hooks.zapier.com/hooks/catch/..." autocomplete="off" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-pubsave>Save</button></div></div>';
+  }
+  function refreshPubStatus(host) {
+    D().getPublishConfig().then(function (c) {
+      var s = host.querySelector("#cbc-mk-pubstatus");
+      if (s) s.textContent = c && c.configured ? "connected · " + (c.urlMasked || "webhook set") : "not connected";
+    }).catch(function () {});
+  }
+  function togglePubCfg(host) {
+    var slot = host.querySelector("#cbc-mk-pubcfg");
+    if (!slot) return;
+    if (slot.innerHTML) { slot.innerHTML = ""; return; }
+    slot.innerHTML = pubCfgForm();
+    refreshPubStatus(host);
+  }
+
   function bindCopilot(bodyEl, drafts) {
     var host = bodyEl.querySelector("#cbc-mk"); if (!host) return;
     var toast = (window.CBConsole.ui && window.CBConsole.ui.toast) || function (m) { console.log(m); };
     var byId = {};
     (drafts || []).forEach(function (d) { byId[d.id] = d; });
     host.addEventListener("click", async function (e) {
-      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset],[data-mk-editd],[data-mk-save],[data-mk-cancel],[data-mk-view]") : null;
+      var t = e.target.closest ? e.target.closest("[data-mk-gen],[data-mk-copy],[data-mk-status],[data-mk-del],[data-mk-preset],[data-mk-editd],[data-mk-save],[data-mk-cancel],[data-mk-view],[data-mk-pub],[data-mk-pubcfg],[data-mk-pubsave]") : null;
       if (!t) return;
       if (t.hasAttribute("data-mk-view")) { viewMode = t.getAttribute("data-mk-view"); load(bodyEl); return; }
+      if (t.hasAttribute("data-mk-pubcfg")) { togglePubCfg(host); return; }
       if (t.hasAttribute("data-mk-editd")) {
         var d0 = byId[t.getAttribute("data-mk-editd")];
         var card0 = t.closest("[data-mk-card]");
@@ -243,6 +271,20 @@
       }
       t.disabled = true;
       try {
+        if (t.hasAttribute("data-mk-pubsave")) {
+          var purl = ((host.querySelector("#cbc-mk-puburl") || {}).value || "").trim();
+          await D().setPublishWebhook(purl);
+          toast(purl ? "Publish webhook saved" : "Publish webhook cleared");
+          refreshPubStatus(host);
+          t.disabled = false;
+          return;
+        }
+        if (t.hasAttribute("data-mk-pub")) {
+          await D().publishDraft(t.getAttribute("data-mk-pub"));
+          toast("Published via your webhook");
+          load(bodyEl);
+          return;
+        }
         if (t.hasAttribute("data-mk-gen")) {
           var brief = (host.querySelector("#cbc-mk-brief") || {}).value || "";
           var slot = host.querySelector("#cbc-mk-result");

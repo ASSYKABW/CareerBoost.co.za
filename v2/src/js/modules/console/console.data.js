@@ -617,6 +617,19 @@
       if (isMock()) return { ok: true, _mock: true };
       return callMut("console-growth", { action: "draft-delete", id: id });
     },
+    // ── Auto-publish bridge (console-publish) ────────────────────────
+    getPublishConfig: async function () {
+      if (isMock()) return { ok: true, configured: false, urlMasked: null };
+      return call("console-publish", { action: "get-config" });
+    },
+    setPublishWebhook: async function (url) {
+      if (isMock()) return { ok: true, _mock: true, configured: !!url };
+      return callMut("console-publish", { action: "set-config", url: url });
+    },
+    publishDraft: async function (id) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("console-publish", { action: "publish", draftId: id });
+    },
     setModelRoute: async function (skill, provider, model) {
       if (isMock()) return { ok: true, _mock: true };
       return callMut("console-config", { action: "set-route", skill: skill, provider: provider || "", model: model || "" });
