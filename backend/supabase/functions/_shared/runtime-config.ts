@@ -68,3 +68,35 @@ export async function getAiRouteOverride(skill: string): Promise<AiRouteOverride
   if (!provider && !model) return null;
   return { provider, model };
 }
+
+// ---------------------------------------------------------------------------
+// Provider API keys
+//
+// Second consumer: provider_keys — a live key the operator pushed from the
+// Console (AI & Health → "Set key"). Used to ROTATE a dead/dry key without a
+// redeploy. Purely additive: when no override is set (the default), every
+// provider resolves to exactly its env secret, so behaviour is identical to
+// before this existed. FAIL-OPEN — a config read error falls back to env and
+// never strands a working env key.
+// ---------------------------------------------------------------------------
+const PROVIDER_ENV: Record<string, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  gemini: "GEMINI_API_KEY",
+  groq: "GROQ_API_KEY",
+};
+
+/** Resolve a provider's API key: the operator's live Console override if set,
+ *  else the env secret. Returns "" when neither is configured. */
+export async function getProviderKey(provider: string): Promise<string> {
+  const envName = PROVIDER_ENV[provider];
+  const envKey = envName ? (Deno.env.get(envName) || "") : "";
+  const keys = await getRuntimeConfig<Record<string, string>>("provider_keys", {});
+  const override = keys && typeof keys[provider] === "string" ? keys[provider].trim() : "";
+  return override || envKey;
+}
+
+/** Which env secret backs a provider (for status display / messaging). */
+export function providerEnvName(provider: string): string | undefined {
+  return PROVIDER_ENV[provider];
+}

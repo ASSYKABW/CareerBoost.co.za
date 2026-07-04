@@ -646,5 +646,16 @@
       if (isMock()) return { ok: true, _mock: true };
       return callMut("console-config", { action: "clear-route", skill: skill });
     },
+
+    // Push a live provider API key (rotate a dead/dry key with no redeploy).
+    // Never returned to the browser; getProviderKey() picks it up in ≤60s.
+    setProviderKey: async function (provider, key) {
+      if (isMock()) return { ok: true, _mock: true, provider: provider, hasOverride: true };
+      return callMut("console-config", { action: "set-key", provider: provider, key: key });
+    },
+    clearProviderKey: async function (provider) {
+      if (isMock()) return { ok: true, _mock: true, provider: provider, hasOverride: false };
+      return callMut("console-config", { action: "clear-key", provider: provider });
+    },
   };
 })();

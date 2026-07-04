@@ -39,6 +39,8 @@ export interface ProviderHealth {
   successes: number;
   lastError: string;
   topup: string;
+  /** true when a key pushed from the Console (not the env secret) is in effect */
+  overrideActive: boolean;
 }
 
 export async function getProviderHealth(): Promise<{ providers: ProviderHealth[]; critical: ProviderHealth[] }> {
@@ -79,7 +81,7 @@ export async function getProviderHealth(): Promise<{ providers: ProviderHealth[]
     else if (counts.errors > 0) status = "errors";
     else status = "idle";
 
-    return { id: p.id, label: p.label, configured, status, failures, successes, lastError, topup: p.topup };
+    return { id: p.id, label: p.label, configured, status, failures, successes, lastError, topup: p.topup, overrideActive: !!overrides[p.id] };
   });
 
   const critical = providers.filter((p) => p.status === "credit" || p.status === "key");

@@ -1,5 +1,6 @@
 // POST /functions/v1/console-config
-// Body: { action: "get" | "set-route" | "clear-route", skill?, provider?, model? }
+// Body: { action: "get"|"set-route"|"clear-route"|"set-key"|"clear-key",
+//         skill?, provider?, model?, key? }
 // Auth: admin role + AAL2/MFA (getAuthedAdmin). Mutations additionally require
 // the X-CB-Admin-Nonce CSRF header and are audit-logged + rate-limited.
 //
@@ -118,6 +119,51 @@ Deno.serve(withCors(async (req) => {
   if (!rate.allowed) return errorResponse(rate.reason || "Admin rate limit exceeded.", 429);
 
   const meta = extractRequestMeta(req);
+
+  // ── set-key / clear-key (live provider API-key override) ──────────
+  // Lets the operator rotate a dead/dry key from the Console without a
+  // redeploy. Stored in runtime_config 'provider_keys'; getProviderKey()
+  // reads it (override beats env). The key value is NEVER returned to the
+  // browser and NEVER written to the audit log — only the provider name.
+  if (action === "set-key" || action === "clear-key") {
+    const provider = String(body.provider || "").trim().toLowerCase();
+    if (!PROVIDERS.includes(provider as LLMProvider)) {
+      return errorResponse("provider must be one of: " + PROVIDERS.join(", "), 400);
+    }
+    const keys = await getRuntimeConfig<Record<string, string>>("provider_keys", {});
+    const next: Record<string, string> = { ...keys };
+
+    if (action === "set-key") {
+      const key = String(body.key || "").trim();
+      if (key.length < 8 || key.length > 512) {
+        return errorResponse("That key looks wrong (expected 8–512 characters).", 400);
+      }
+      if (/\s/.test(key)) return errorResponse("Key must not contain spaces.", 400);
+      next[provider] = key;
+    } else {
+      if (!keys[provider]) return jsonResponse({ ok: true, provider, hasOverride: false }); // already clear
+      delete next[provider];
+    }
+
+    const { error } = await svc.from("runtime_config").upsert({
+      key: "provider_keys", value: next, updated_by: admin.id, updated_at: new Date().toISOString(),
+    }, { onConflict: "key" });
+    if (error) {
+      return errorResponse(
+        "Save failed: " + error.message +
+        (error.message.includes("runtime_config") || error.code === "42P01"
+          ? " — apply migration 0046_runtime_config_and_agents.sql first."
+          : ""),
+        500,
+      );
+    }
+    bustRuntimeConfig("provider_keys");
+    await logAdminAction(admin, action === "set-key" ? "config_set_provider_key" : "config_clear_provider_key", {
+      payload: { provider }, resultStatus: "success", ...meta,
+    });
+    return jsonResponse({ ok: true, provider, hasOverride: action === "set-key" });
+  }
+
   const skill = String(body.skill || "").trim();
   const validSkill = skill === "_global" || Object.prototype.hasOwnProperty.call(SKILL_ROUTING, skill);
   if (!validSkill) return errorResponse("Unknown skill: " + (skill || "(missing)"), 400);

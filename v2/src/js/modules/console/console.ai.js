@@ -74,23 +74,79 @@
           '<div style="font-weight:700;color:#ff9aa2;font-size:14px"><i class="fa-solid fa-triangle-exclamation"></i> ' + critical.length + ' AI provider' + (critical.length === 1 ? "" : "s") + ' need attention</div>' +
           critical.map(function (c) {
             var reason = c.status === "credit" ? "out of credit" : "API key invalid or expired";
-            return '<div style="font-size:12.5px;margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>' + esc(c.label) + '</b> — ' + reason + ' <a class="cbc-btn cbc-sm cbc-danger" href="' + esc(c.topup) + '" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Top up / fix key</a></div>';
+            return '<div style="font-size:12.5px;margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>' + esc(c.label) + '</b> — ' + reason +
+              ' <a class="cbc-btn cbc-sm cbc-danger" href="' + esc(c.topup) + '" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Top up / manage billing</a>' +
+              ' <button class="cbc-btn cbc-sm" data-pk-edit="' + esc(c.id) + '" data-pk-label="' + esc(c.label) + '"><i class="fa-solid fa-key"></i> Paste new key</button></div>';
           }).join("") + "</div>"
       : "";
     var rows = provs.map(function (p) {
       var st = PROV_STATUS[p.status] || PROV_STATUS.idle;
-      var last = p.lastError ? '<span title="' + esc(p.lastError) + '" style="color:var(--c-dim);cursor:help">why?</span>' : "";
-      var fix = (p.status === "credit" || p.status === "key")
-        ? '<a class="cbc-btn cbc-sm" href="' + esc(p.topup) + '" target="_blank" rel="noopener noreferrer">Fix</a>'
+      var last = p.lastError ? '<span title="' + esc(p.lastError) + '" style="color:var(--c-dim);cursor:help">why?</span> ' : "";
+      var keyCell = p.overrideActive
+        ? '<span class="cbc-chip violet" title="A key you pushed from this Console is in use — it overrides the deployed env secret">Console key</span>'
+        : (p.configured ? '<span class="cbc-chip green">env key</span>' : '<span class="cbc-chip dim">no key</span>');
+      var topup = (p.status === "credit" || p.status === "key")
+        ? '<a class="cbc-btn cbc-sm cbc-danger" href="' + esc(p.topup) + '" target="_blank" rel="noopener noreferrer" title="Buy credit / manage billing">Top up ↗</a> '
         : last;
+      var setBtn = '<button class="cbc-btn cbc-sm" data-pk-edit="' + esc(p.id) + '" data-pk-label="' + esc(p.label) + '">' + (p.overrideActive ? "Replace key" : "Set key") + '</button>';
+      var clearBtn = p.overrideActive
+        ? ' <button class="cbc-btn cbc-sm" data-pk-clear="' + esc(p.id) + '" title="Remove the Console key and fall back to the deployed env secret">Use env</button>'
+        : "";
       return '<tr><td>' + esc(p.label) + '</td>' +
-        '<td>' + (p.configured ? '<span class="cbc-chip green">key set</span>' : '<span class="cbc-chip dim">no key</span>') + "</td>" +
+        '<td>' + keyCell + "</td>" +
         '<td class="n">' + p.successes + '</td><td class="n">' + p.failures + "</td>" +
         '<td class="n"><span class="cbc-chip ' + st.tone + '"><i class="fa-solid ' + st.icon + '"></i> ' + esc(st.label) + "</span></td>" +
-        '<td class="n">' + fix + "</td></tr>";
+        '<td class="n" style="white-space:nowrap">' + topup + setBtn + clearBtn + "</td></tr>";
     }).join("");
-    return banner + '<section class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Ops control</div><h2>Provider health &amp; credits</h2></div><span class="cbc-chip dim">last 24h</span></div>' +
-      '<table class="cbc-table"><thead><tr><th>Provider</th><th>Key</th><th style="text-align:right">OK</th><th style="text-align:right">Fail</th><th style="text-align:right">Status</th><th style="text-align:right"></th></tr></thead><tbody>' + rows + "</tbody></table></section>";
+    return banner + '<section class="cbc-card cbc-panel" id="cbc-pk"><div class="cbc-ph"><div><div class="cbc-eb">Ops control</div><h2>Provider health &amp; credits</h2></div><span class="cbc-chip dim">last 24h</span></div>' +
+      '<div style="font-size:12px;color:var(--c-muted);margin-bottom:11px">Runs dry or the key expires? Buy credit (or generate a new key) at the provider, then paste the key here — it goes live for every AI call within ~60s, no redeploy. Keys are stored server-side and never shown again.</div>' +
+      '<div id="cbc-pk-edit"></div>' +
+      '<table class="cbc-table"><thead><tr><th>Provider</th><th>Key</th><th style="text-align:right">OK</th><th style="text-align:right">Fail</th><th style="text-align:right">Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' + rows + "</tbody></table></section>";
+  }
+
+  // Inline "paste a new key" form (rendered into #cbc-pk-edit).
+  function keyForm(id, label) {
+    return '<div class="cbc-act-panel" style="margin-bottom:12px">' +
+      '<div style="font-size:12.5px;margin-bottom:8px">Paste a new <b>' + esc(label) + '</b> API key. It replaces the current key for <b>all</b> AI calls within ~60s, then is stored server-side and never displayed again.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<input id="cbc-pk-val" class="cbc-inp" type="password" autocomplete="off" spellcheck="false" placeholder="paste key (e.g. sk-…)" style="min-width:320px" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-pk-save="' + esc(id) + '">Save key</button>' +
+        '<button class="cbc-btn cbc-sm" data-pk-cancel>Cancel</button></div>' +
+      '<div style="font-size:11.5px;color:var(--c-dim);margin-top:7px"><i class="fa-solid fa-shield-halved"></i> Admin + MFA only. The key is never written to logs or returned to the browser.</div></div>';
+  }
+
+  function bindProviderKeys(bodyEl) {
+    var host = bodyEl.querySelector("#cbc-pk"); if (!host) return;
+    var toast = (window.CBConsole.ui && window.CBConsole.ui.toast) || function (m) { console.log(m); };
+    host.addEventListener("click", async function (e) {
+      var t = e.target.closest ? e.target.closest("[data-pk-edit],[data-pk-save],[data-pk-cancel],[data-pk-clear]") : null;
+      if (!t) return;
+      var slot = host.querySelector("#cbc-pk-edit");
+      if (t.hasAttribute("data-pk-cancel")) { slot.innerHTML = ""; return; }
+      if (t.hasAttribute("data-pk-edit")) {
+        slot.innerHTML = keyForm(t.getAttribute("data-pk-edit"), t.getAttribute("data-pk-label") || t.getAttribute("data-pk-edit"));
+        var inp = slot.querySelector("#cbc-pk-val"); if (inp) inp.focus();
+        slot.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+      }
+      t.disabled = true;
+      try {
+        if (t.hasAttribute("data-pk-save")) {
+          var val = ((host.querySelector("#cbc-pk-val") || {}).value || "").trim();
+          if (val.length < 8) { toast("That key looks too short — paste the full key."); t.disabled = false; return; }
+          await D().setProviderKey(t.getAttribute("data-pk-save"), val);
+          toast("Key saved — live for all AI calls within 60s");
+        } else if (t.hasAttribute("data-pk-clear")) {
+          if (!window.confirm("Remove the Console key and fall back to the deployed environment secret for this provider?")) { t.disabled = false; return; }
+          await D().clearProviderKey(t.getAttribute("data-pk-clear"));
+          toast("Reverted to the environment key");
+        }
+        load(bodyEl); // repaint with fresh health + override state
+      } catch (err) {
+        t.disabled = false;
+        toast((err && err.message) ? err.message : "Save failed.");
+      }
+    });
   }
 
   // ── Model Control (live per-skill LLM routing via console-config) ──
@@ -196,6 +252,7 @@
       U().countUp(n, Number(n.getAttribute("data-count")), n.getAttribute("data-fmt"));
     });
     bindModelControl(bodyEl, mc);
+    bindProviderKeys(bodyEl);
   }
 
   window.CBConsole.sections.ai = { load: load };
