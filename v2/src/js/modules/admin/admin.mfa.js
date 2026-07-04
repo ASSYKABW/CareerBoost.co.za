@@ -264,4 +264,58 @@
     });
   }
   maybeSubscribe();
+
+  // ── Admin access gate ────────────────────────────────────────────────
+  // Relocated here from the (now-deleted) legacy admin.route.js at the
+  // 2026-07 cutover. Menu-visibility helper ONLY — real access control is
+  // server-side (getAuthedAdmin: role + AAL2/MFA). app-shell.js reads
+  // canAccess() to decide whether to show the Admin link; the Console's own
+  // MFA gate (mfaState in console.route.js) handles elevation at entry.
+  function adminRoles() {
+    const cfg = window.CB_CONFIG || {};
+    const adminAccess = cfg.adminAccess && typeof cfg.adminAccess === "object" ? cfg.adminAccess : {};
+    return []
+      .concat(adminAccess.roles || [])
+      .concat(["admin", "owner", "developer"])
+      .map(function (x) { return String(x || "").toLowerCase().trim(); })
+      .filter(function (x, i, arr) { return x && arr.indexOf(x) === i; });
+  }
+  function roleListFromUser(user) {
+    if (!user) return [];
+    const appMeta = user.app_metadata || {};
+    return []
+      .concat(appMeta.role || [])
+      .concat(appMeta.roles || [])
+      .map(function (x) { return String(x || "").toLowerCase().trim(); })
+      .filter(Boolean);
+  }
+  function adminAccessState(opts) {
+    const skipMfa = !!(opts && opts.skipMfa);
+    const backendOn = window.CBV2.config && window.CBV2.config.isBackendEnabled && window.CBV2.config.isBackendEnabled();
+    const auth = window.CBV2.auth;
+    if (!backendOn) return { ok: true, mode: "local-preview", label: "Local preview" };
+    if (!auth || !auth.isAuthenticated || !auth.isAuthenticated()) return { ok: false, reason: "signed-out", label: "Sign in required" };
+    const user = auth.getUser ? auth.getUser() : null;
+    const profile = (window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || null;
+    const byRole = roleListFromUser(user).some(function (role) { return adminRoles().indexOf(role) >= 0; });
+    if (!byRole) return { ok: false, reason: "forbidden", label: "Supabase admin role required", user: user, profile: profile };
+    const mfa = !skipMfa && window.CBAdmin.mfa;
+    if (mfa && typeof mfa.getSnapshot === "function") {
+      const snap = mfa.getSnapshot();
+      if (!snap.loaded) return { ok: false, reason: "mfa-loading", label: "Checking MFA", user: user, profile: profile };
+      if (snap.error) {
+        console.warn("[admin.mfa] MFA snapshot error, allowing through:", snap.error);
+      } else {
+        const hasFactor = snap.verifiedFactors && snap.verifiedFactors.length > 0;
+        const currentAal = String(snap.currentLevel || "aal1").toLowerCase();
+        if (!hasFactor) return { ok: false, reason: "mfa-enroll", label: "MFA enrollment required", user: user, profile: profile };
+        if (currentAal !== "aal2") return { ok: false, reason: "mfa-challenge", label: "MFA challenge required", user: user, profile: profile };
+      }
+    }
+    return { ok: true, mode: "role", label: "Supabase role verified", user: user, profile: profile };
+  }
+  window.CBAdmin.access = {
+    state: adminAccessState,
+    canAccess: function () { return adminAccessState({ skipMfa: true }).ok; },
+  };
 })();

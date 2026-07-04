@@ -1,8 +1,8 @@
 // CareerBoost Console — route module (Phase 1: Pulse + Insights + section maps).
 //
-// Registers the `console` route (reached at #/console). Rendered fullscreen
-// by bootstrap.js (added to FULLSCREEN_AUTHED_ROUTES). The legacy admin stays
-// untouched at #/admin until cutover (Phase 3).
+// Registers the `admin` route (reached at #/admin) — this Console IS the
+// admin console. The legacy admin was deleted at the 2026-07 cutover.
+// Rendered fullscreen by bootstrap.js (in FULLSCREEN_AUTHED_ROUTES).
 //
 // Architecture: renderConsole() returns the shell synchronously (sidebar +
 // topbar + an empty #cbc-body skeleton). afterRender → bindConsole() wires the
@@ -826,6 +826,6 @@
   // drawer + toast without re-implementing them.
   window.CBConsole.ui = { openDrawer: openDrawerHtml, closeDrawer: closeDrawer, toast: toast, openAssistant: openAssistant };
 
-  window.CBV2.routes.console = renderConsole;
-  window.CBV2.afterRender.console = bindConsole;
+  window.CBV2.routes.admin = renderConsole;
+  window.CBV2.afterRender.admin = bindConsole;
 })();

@@ -126,14 +126,11 @@
     const canAdmin = window.CBAdmin && window.CBAdmin.access && typeof window.CBAdmin.access.canAccess === "function"
       ? window.CBAdmin.access.canAccess()
       : false;
+    // The Console IS the admin now (2026-07 cutover — legacy admin deleted).
     const adminLink = canAdmin
       ? '<a class="user-menu-item" role="menuitem" href="#/admin"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Admin console</a>'
       : "";
-    // Temporary link to the new Console (Phase 1) — same admin gate. Removed
-    // when the console replaces the legacy admin at cutover (Phase 3).
-    const consoleLink = canAdmin
-      ? '<a class="user-menu-item" role="menuitem" href="#/console"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Console <span class="chip chip-sm cyan" style="margin-left:auto;">beta</span></a>'
-      : "";
+    const consoleLink = "";
 
     return `
       <div class="user-chip" data-user-chip>
