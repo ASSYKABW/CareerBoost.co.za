@@ -1,0 +1,83 @@
+# Code-agent bridge (Phase D part 2) — runs a coding agent on `agent-fix`
+# issues and opens a PR against `develop` (NEVER main; respects the deploy rule).
+#
+# Triggered when the Console's "Fix in code" button files an issue (the issue
+# is created WITH the agent-fix label → fires `issues: opened`), when the label
+# is added later (`labeled`), or via manual/`workflow_dispatch` from
+# console-codefix (inputs.issue).
+#
+# REQUIRES (one-time setup):
+#   1. Repo secret ANTHROPIC_API_KEY (GitHub → Settings → Secrets and variables
+#      → Actions). This is SEPARATE from the Supabase secret — and it needs
+#      Anthropic credits to actually run.
+#   2. Settings → Actions → General → Workflow permissions:
+#      "Read and write" + "Allow GitHub Actions to create and approve pull
+#      requests" (so the agent can open the PR).
+name: Agent Fix
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number to fix"
+        required: true
+        type: string
+
+# Don't run twice if creating an issue with a label fires both opened+labeled.
+concurrency:
+  group: agent-fix-${{ github.event.issue.number || github.event.inputs.issue }}
+  cancel-in-progress: true
+
+jobs:
+  agent-fix:
+    # Only the agent-fix label (or a manual dispatch) triggers the agent.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.issue.labels.*.name, 'agent-fix')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push the fix branch
+      pull-requests: write   # open the PR
+      issues: write          # comment back on the issue
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Run the code-fix agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          base_branch: develop
+          branch_prefix: agent-fix/
+          claude_args: |
+            --max-turns 40
+            --model claude-sonnet-4-5
+            --allowedTools Edit,Read,Write,Bash,Glob,Grep
+          prompt: |
+            You are the CareerBoost code-fix agent. GitHub issue
+            #${{ github.event.issue.number || github.event.inputs.issue }} in
+            this repository is labelled `agent-fix` and describes a production
+            incident filed from the admin Console.
+
+            The repo: a vanilla-JS single-page app under `v2/` (bundled by
+            `v2/build.mjs` into bundle.min.js/css — do NOT hand-edit the
+            bundles) plus Supabase edge functions (Deno/TypeScript) under
+            `backend/supabase/functions/`.
+
+            Do this:
+            1. Read the issue: run `gh issue view ${{ github.event.issue.number || github.event.inputs.issue }}`.
+            2. Investigate the described problem in the codebase.
+            3. Make a MINIMAL, targeted fix on a new branch based on `develop`.
+            4. Open a pull request that targets `develop` (NEVER `main`). Put
+               "Fixes #${{ github.event.issue.number || github.event.inputs.issue }}"
+               in the PR body and briefly explain what you changed and why.
+            5. If you CANNOT safely fix it, comment on the issue with your
+               findings and what's blocking — do NOT open a speculative PR.
+
+            Rules: keep the change small and reviewable. Do NOT run deploys, do
+            NOT touch secrets or CI credentials, and never push to `main`.
