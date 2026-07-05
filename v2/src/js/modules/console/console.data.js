@@ -657,5 +657,17 @@
       if (isMock()) return { ok: true, _mock: true, provider: provider, hasOverride: false };
       return callMut("console-config", { action: "clear-key", provider: provider });
     },
+
+    // Code-agent bridge (Phase D part 2): file a GitHub issue for an incident.
+    // Never edits prod — a coding agent picks up the `agent-fix` issue and
+    // opens a PR against develop.
+    verifyCodeFix: async function () {
+      if (isMock()) return { ok: true, _mock: true, login: "ASSYKABW", repo: "ASSYKABW/CareerBoost.co.za", canWrite: true, labelExists: false };
+      return call("console-codefix", { action: "verify" });
+    },
+    fileCodeFix: async function (incident) {
+      if (isMock()) return { ok: true, _mock: true, issueUrl: "https://github.com/ASSYKABW/CareerBoost.co.za/issues/0", issueNumber: 0 };
+      return callMut("console-codefix", { action: "file-issue", incident: incident || {} });
+    },
   };
 })();
