@@ -36,13 +36,55 @@
     var rows = (incidents && incidents.length)
       ? incidents.map(function (i) {
           var crit = i.severity === "critical";
+          var cf = '<button class="cbc-btn cbc-sm" data-codefix="1"' +
+            ' data-cf-title="' + esc(i.title || "") + '"' +
+            ' data-cf-section="' + esc(i.section || "") + '"' +
+            ' data-cf-severity="' + esc(i.severity || "") + '"' +
+            ' data-cf-when="' + esc(i.when || "") + '"' +
+            ' data-cf-id="' + esc(i.id || "") + '"' +
+            ' data-cf-body="' + esc(i.detail || i.body || "") + '"' +
+            ' title="File a GitHub issue (labelled agent-fix) so a coding agent can open a PR against develop"><i class="fa-solid fa-code-branch"></i> Fix in code</button>';
           return '<div class="cbc-att-it"><div class="cbc-att-ic ' + (crit ? "red" : "amber") + '"><i class="fa-solid fa-triangle-exclamation"></i></div>' +
             '<div class="cbc-tx">' + esc(i.title) + '<small>' + esc(i.section) + ' · ' + esc(i.when) + '</small></div>' +
-            '<div class="cbc-rt"><span class="cbc-chip ' + (crit ? "red" : "amber") + '">' + esc(i.severity) + '</span></div></div>';
+            '<div class="cbc-rt"><span class="cbc-chip ' + (crit ? "red" : "amber") + '">' + esc(i.severity) + '</span>' + cf + '</div></div>';
         }).join("")
       : '<div style="color:var(--c-muted);font-size:12.5px;padding:8px 0"><i class="fa-solid fa-circle-check" style="color:var(--c-ok)"></i> No open incidents — systems healthy.</div>';
-    return '<div class="cbc-card cbc-panel cbc-att"><div class="cbc-ph"><div><div class="cbc-eb">Needs you</div><h2>Open incidents</h2></div>' +
+    return '<div class="cbc-card cbc-panel cbc-att" id="cbc-inc"><div class="cbc-ph"><div><div class="cbc-eb">Needs you</div><h2>Open incidents</h2></div>' +
       '<button class="cbc-btn cbc-sm cbc-amber" data-ins-fix="1" data-ins-title="Open incidents and current AI failures — triage, diagnose root causes, and propose fixes"><i class="fa-solid fa-screwdriver-wrench"></i> Diagnose &amp; fix</button></div>' + rows + '</div>';
+  }
+
+  // "Fix in code" → file a GitHub issue (labelled agent-fix) for the incident.
+  function bindCodeFix(bodyEl) {
+    var host = bodyEl.querySelector("#cbc-inc"); if (!host) return;
+    var toast = (window.CBConsole.ui && window.CBConsole.ui.toast) || function (m) { console.log(m); };
+    host.addEventListener("click", async function (e) {
+      var t = e.target.closest ? e.target.closest("[data-codefix]") : null;
+      if (!t) return;
+      var incident = {
+        title: t.getAttribute("data-cf-title") || "",
+        section: t.getAttribute("data-cf-section") || "",
+        severity: t.getAttribute("data-cf-severity") || "",
+        when: t.getAttribute("data-cf-when") || "",
+        id: t.getAttribute("data-cf-id") || "",
+        body: t.getAttribute("data-cf-body") || "",
+      };
+      if (!incident.title) { toast("No incident title to file."); return; }
+      t.disabled = true;
+      var orig = t.innerHTML;
+      t.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Filing…';
+      try {
+        var r = await D().fileCodeFix(incident);
+        if (r && r.issueUrl) {
+          t.outerHTML = '<a class="cbc-btn cbc-sm" href="' + esc(r.issueUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Issue #' + esc(r.issueNumber) + '</a>';
+          toast("Filed GitHub issue #" + r.issueNumber + " (labelled agent-fix)");
+        } else {
+          t.disabled = false; t.innerHTML = orig; toast("Filed, but no issue URL came back.");
+        }
+      } catch (err) {
+        t.disabled = false; t.innerHTML = orig;
+        toast((err && err.message) ? err.message : "Could not file the issue.");
+      }
+    });
   }
 
   function failuresPanel(failures) {
@@ -253,6 +295,7 @@
     });
     bindModelControl(bodyEl, mc);
     bindProviderKeys(bodyEl);
+    bindCodeFix(bodyEl);
   }
 
   window.CBConsole.sections.ai = { load: load };
