@@ -1,5 +1,7 @@
 # Code-agent bridge (Phase D part 2) — runs a coding agent on `agent-fix`
-# issues and opens a PR against `develop` (NEVER main; respects the deploy rule).
+# issues and opens a PR against `main` that you preview on Vercel + Deploy from
+# the Console's Ship section. The agent NEVER merges — nothing reaches prod
+# without your click in the Console.
 #
 # Triggered when the Console's "Fix in code" button files an issue (the issue
 # is created WITH the agent-fix label → fires `issues: opened`), when the label
@@ -42,17 +44,17 @@ jobs:
       pull-requests: write   # open the PR
       issues: write          # comment back on the issue
     steps:
-      - name: Checkout develop
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: main
           fetch-depth: 0
 
       - name: Run the code-fix agent
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          base_branch: develop
+          base_branch: main
           branch_prefix: agent-fix/
           claude_args: |
             --max-turns 40
@@ -72,12 +74,21 @@ jobs:
             Do this:
             1. Read the issue: run `gh issue view ${{ github.event.issue.number || github.event.inputs.issue }}`.
             2. Investigate the described problem in the codebase.
-            3. Make a MINIMAL, targeted fix on a new branch based on `develop`.
-            4. Open a pull request that targets `develop` (NEVER `main`). Put
+            3. Make a MINIMAL, targeted fix on a new branch based on `main`.
+            4. If you changed anything under `v2/src`, REBUILD the bundle so the
+               Vercel preview AND production reflect it:
+               `cd v2 && npm install && node build.mjs`, then commit the
+               regenerated `v2/src/js/bundle.min.js` and
+               `v2/src/styles/bundle.min.css`. The site serves the prebuilt
+               bundle — source-only edits will NOT show up otherwise.
+            5. Open a pull request that targets `main`. Put
                "Fixes #${{ github.event.issue.number || github.event.inputs.issue }}"
-               in the PR body and briefly explain what you changed and why.
-            5. If you CANNOT safely fix it, comment on the issue with your
+               in the PR body and briefly explain what you changed and why. A
+               human previews it on Vercel and clicks Deploy in the Console — do
+               NOT merge it yourself.
+            6. If you CANNOT safely fix it, comment on the issue with your
                findings and what's blocking — do NOT open a speculative PR.
 
             Rules: keep the change small and reviewable. Do NOT run deploys, do
-            NOT touch secrets or CI credentials, and never push to `main`.
+            NOT touch secrets or CI credentials, and NEVER merge or push directly
+            to `main` — only open the PR for review.

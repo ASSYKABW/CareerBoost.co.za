@@ -669,5 +669,28 @@
       if (isMock()) return { ok: true, _mock: true, issueUrl: "https://github.com/ASSYKABW/CareerBoost.co.za/issues/0", issueNumber: 0 };
       return callMut("console-codefix", { action: "file-issue", incident: incident || {} });
     },
+
+    // Ship section: review agent PRs on their Vercel preview, then Deploy
+    // (merge to main → live). One fix at a time; the operator is the gate.
+    loadShip: async function () {
+      if (isMock()) {
+        return {
+          ok: true, _mock: true, prodBranch: "main", repo: "ASSYKABW/CareerBoost.co.za",
+          prs: [
+            { number: 42, title: "Fix: promo banner overlaps the hero on mobile", url: "https://github.com/ASSYKABW/CareerBoost.co.za/pull/42", branch: "agent-fix/issue-41", issue: 41, changedFiles: 2, additions: 18, deletions: 4, mergeable: true, mergeableState: "clean", previewUrl: "https://careerboost-git-agent-fix-issue-41.vercel.app" },
+            { number: 44, title: "Fix: CV download 500s when the profile has no phone number", url: "https://github.com/ASSYKABW/CareerBoost.co.za/pull/44", branch: "agent-fix/issue-43", issue: 43, changedFiles: 1, additions: 6, deletions: 2, mergeable: null, mergeableState: "unstable", previewUrl: null },
+          ],
+        };
+      }
+      return call("console-ship", { action: "list" });
+    },
+    deployShip: async function (number) {
+      if (isMock()) return { ok: true, _mock: true, merged: true };
+      return callMut("console-ship", { action: "deploy", number: number });
+    },
+    rejectShip: async function (number, reason) {
+      if (isMock()) return { ok: true, _mock: true, closed: true };
+      return callMut("console-ship", { action: "reject", number: number, reason: reason || "" });
+    },
   };
 })();
