@@ -312,13 +312,19 @@
       resume.skills.groups.some(function (g) { return g.items && g.items.length; });
     if (!hasSkills) missing.push("skills");
 
-    // Quantified bullet detection
+    // Quantified bullet detection — use the shared honest "measurable impact"
+    // detector when available (ignores bare years, versions, "24/7"). Falls
+    // back to the naive digit check only if the quality module isn't loaded.
+    const q = (window.CBV2.resume && window.CBV2.resume.quality) || null;
+    const hasMetric = (q && typeof q.hasImpactMetric === "function")
+      ? q.hasImpactMetric
+      : function (t) { return /\d/.test(String(t == null ? "" : t)); };
     let totalBullets = 0;
     let quantifiedBullets = 0;
     (resume.experience || []).forEach(function (e) {
       (e.bullets || []).forEach(function (b) {
         totalBullets += 1;
-        if (/\d/.test(b.text)) quantifiedBullets += 1;
+        if (hasMetric(b.text)) quantifiedBullets += 1;
       });
     });
 

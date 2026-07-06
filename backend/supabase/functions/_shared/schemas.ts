@@ -105,6 +105,14 @@ export const schemas: Record<Skill, Validator> = {
     isObj(d) &&
     isNum(d.score) &&
     isObj(d.subscores) &&
+    // Each known subscore, when present, must be numeric — prevents a string /
+    // null score from rendering as NaN in the sidebar. The prompt asks for all
+    // five (impact, clarity, ats, presentation, voice); we don't hard-require
+    // presence so a model that drops one still returns a usable critique.
+    ["impact", "clarity", "ats", "presentation", "voice"].every(
+      (k) => !(k in (d.subscores as Record<string, unknown>)) ||
+        isNum((d.subscores as Record<string, unknown>)[k]),
+    ) &&
     isArr(d.strengths) &&
     isArr(d.issues),
   "jd-analyze": (d) =>

@@ -197,6 +197,16 @@ async function callGemini(i: LLMCallInput): Promise<LLMCallOutput> {
 // ---------------------------------------------------------------------------
 // Anthropic (with prompt caching + tool use)
 // ---------------------------------------------------------------------------
+// Opus 4.7+, Sonnet 5, and the Fable/Mythos 5 family removed the sampling
+// parameters (temperature/top_p/top_k) and budget_tokens — sending temperature
+// returns a 400. Older Claude models (Haiku 4.5, Sonnet 4.5, Opus 4.6 and
+// earlier) still accept it. Match the tiers that reject sampling params so we
+// can safely route flagship skills (e.g. resume-critique) to current models.
+function anthropicRejectsSampling(model: string): boolean {
+  const m = (model || "").toLowerCase();
+  return /claude-(opus-4-[789]|sonnet-5|fable-5|mythos-5)/.test(m);
+}
+
 async function callAnthropic(i: LLMCallInput): Promise<LLMCallOutput> {
   const apiKey = await getProviderKey("anthropic");
   if (!apiKey) throw new Error("No Anthropic key configured (env ANTHROPIC_API_KEY or Console)");
@@ -226,10 +236,13 @@ async function callAnthropic(i: LLMCallInput): Promise<LLMCallOutput> {
   const body: Record<string, unknown> = {
     model,
     max_tokens: i.maxTokens ?? 1200,
-    temperature: i.temperature ?? 0.4,
     system: systemBlocks,
     messages: [{ role: "user", content: i.user }],
   };
+  // Only send temperature to models that still accept it (see note above).
+  if (!anthropicRejectsSampling(model)) {
+    body.temperature = i.temperature ?? 0.4;
+  }
 
   if (i.outputSchema && i.toolName) {
     // Tool-use mode: model is forced to call the tool, which guarantees
@@ -357,7 +370,9 @@ export async function* streamAnthropic(i: LLMCallInput): AsyncGenerator<StreamEv
     body: JSON.stringify({
       model,
       max_tokens: i.maxTokens ?? 1600,
-      temperature: i.temperature ?? 0.4,
+      // Only send temperature to models that still accept it (Opus 4.7+,
+      // Sonnet 5, and Fable/Mythos 5 reject it with a 400).
+      ...(anthropicRejectsSampling(model) ? {} : { temperature: i.temperature ?? 0.4 }),
       system: systemBlocks,
       messages: [{ role: "user", content: i.user }],
       stream: true,

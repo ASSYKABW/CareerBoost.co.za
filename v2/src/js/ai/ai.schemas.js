@@ -129,14 +129,25 @@
       );
     },
     "resume-critique": function (data) {
-      return Boolean(
-        data &&
-          typeof data === "object" &&
-          typeof data.score === "number" &&
-          data.subscores &&
-          typeof data.subscores === "object" &&
-          Array.isArray(data.strengths) &&
-          Array.isArray(data.issues)
+      if (
+        !data ||
+        typeof data !== "object" ||
+        typeof data.score !== "number" ||
+        !data.subscores ||
+        typeof data.subscores !== "object" ||
+        !Array.isArray(data.strengths) ||
+        !Array.isArray(data.issues)
+      ) {
+        return false;
+      }
+      // Each known subscore, when present, must be a finite number so a string /
+      // null value can't render as NaN in the sidebar. Kept in sync with the
+      // backend validator in backend/supabase/functions/_shared/schemas.ts.
+      return ["impact", "clarity", "ats", "presentation", "voice"].every(
+        function (k) {
+          return !(k in data.subscores) ||
+            (typeof data.subscores[k] === "number" && isFinite(data.subscores[k]));
+        }
       );
     },
     "jd-analyze": function (data) {

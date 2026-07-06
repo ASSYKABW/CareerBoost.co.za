@@ -706,7 +706,22 @@ export const prompts: Record<Skill, PromptSpec> = {
       "specific evidence from the resume context. For bullet replacements, " +
       "provide multiple options. Prioritize narrative impact by default: " +
       "clear action, ownership, and qualitative outcome. Only use numbers when " +
-      "those numbers already exist in the source bullet." + JSON_ONLY +
+      "those numbers already exist in the source bullet. " +
+      "When a TARGET JOB DESCRIPTION is provided, evaluate the resume specifically " +
+      "against it: reward coverage of its required skills and responsibilities, and " +
+      "treat unmet hard requirements (years of experience, degree, certifications, " +
+      "work authorization) as critical or major issues. " +
+      "SCORING RUBRIC — calibrate each 0-100 subscore to these anchors so scores stay " +
+      "consistent run to run. impact: 90+ = most bullets show a measurable or clearly " +
+      "scoped outcome, 60 = mixed outcomes and tasks, 30 = mostly responsibilities with " +
+      "no results. clarity: 90+ = every bullet is one tight active-voice idea, 60 = some " +
+      "wordy/passive lines, 30 = dense or vague throughout. ats: 90+ = standard section " +
+      "headings, single-column-friendly, and (with a JD) 80%+ of required keywords present, " +
+      "60 = several keyword gaps or nonstandard structure, 30 = major gaps. presentation: " +
+      "90+ = length and section density fit the seniority, 60 = some padding or thin " +
+      "sections, 30 = clearly unbalanced. voice: 90+ = confident, specific, filler-free, " +
+      "60 = occasional cliché, 30 = generic throughout. The overall `score` is a holistic " +
+      "weighted read, not a raw average." + JSON_ONLY +
       " Schema: {" +
       ' "score": number (0-100 overall resume quality),' +
       ' "subscores": {' +
@@ -767,9 +782,36 @@ export const prompts: Record<Skill, PromptSpec> = {
       const role = pick(input, ["targetRole", "role", "job"]);
       const industry = pick(input, ["industry", "sector", "domain"]);
       const resume = pick(input, ["resume", "resumeJson", "structured"]);
+      const jd = pick(input, ["jobDescription", "jd", "description"]);
+      // Structured jd-analyze output, when the client chains it in. Makes the
+      // critique role-specific instead of JD-blind.
+      const jdAnalyzed = (input && typeof input === "object"
+        ? (input as Record<string, unknown>).jdAnalyzed
+        : undefined) as Record<string, unknown> | undefined;
+      let jdBlock = "";
+      if (jd || (jdAnalyzed && typeof jdAnalyzed === "object")) {
+        let structured = "";
+        if (jdAnalyzed && typeof jdAnalyzed === "object") {
+          const reqSkills = Array.isArray(jdAnalyzed.requiredSkills) ? jdAnalyzed.requiredSkills.slice(0, 15).join(", ") : "";
+          const keywords = Array.isArray(jdAnalyzed.keywords) ? jdAnalyzed.keywords.slice(0, 18).join(", ") : "";
+          const resp = Array.isArray(jdAnalyzed.responsibilities) ? jdAnalyzed.responsibilities.slice(0, 6).join(" · ") : "";
+          structured =
+            (reqSkills ? "\n- Required skills: " + reqSkills : "") +
+            (keywords ? "\n- ATS keywords: " + keywords : "") +
+            (resp ? "\n- Key responsibilities: " + resp : "");
+        }
+        jdBlock =
+          "\n\nTARGET JOB DESCRIPTION — score the resume AGAINST this posting: reward " +
+          "coverage of its required skills and responsibilities, flag unmet hard " +
+          "requirements as critical/major issues, and bias the `ats` subscore toward how " +
+          "well the resume covers these keywords." +
+          (jd ? "\n\nJD TEXT:\n" + jd.slice(0, 6000) : "") +
+          (structured ? "\n\nSTRUCTURED JD ANALYSIS:" + structured : "");
+      }
       return (
         "TARGET ROLE: " + (role || "Not specified — evaluate as a general-purpose resume") +
         (industry ? "\nINDUSTRY FOCUS: " + industry : "") +
+        jdBlock +
         "\n\nSTRUCTURED RESUME (JSON — includes stable bullet IDs to reference in `target.id`):\n" +
         (resume || "(no resume provided)") +
         appliedBulletsBlock(input) +

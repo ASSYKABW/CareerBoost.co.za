@@ -48,7 +48,11 @@ export const SKILL_ROUTING: Record<Skill, SkillRoute> = {
   // ----- Top tier — long-form creative + cited reasoning -------------------
   "resume-tailor":            { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true },
   "tailor-plan":              { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true },
-  "resume-critique":          { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true },
+  // Flagship "recruiter-grade" scoring — the highest-value analysis in the app.
+  // Routed to Opus 4.8 (most capable) for a deeper, better-calibrated critique.
+  // NOTE: Opus 4.7+/Sonnet 5 reject `temperature`; llm.ts omits it for these
+  // models (see anthropicRejectsSampling), so this route is safe.
+  "resume-critique":          { provider: "anthropic", model: "claude-opus-4-8",      tier: "top", longForm: true },
   "interview-session-debrief":{ provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true },
   "interview-intel-pack":     { provider: "anthropic", model: "claude-sonnet-4-5",    tier: "top", longForm: true },
 
