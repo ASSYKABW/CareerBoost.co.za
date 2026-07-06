@@ -26,6 +26,7 @@
     { sec: "money", icon: "fa-sack-dollar", label: "Money" },
     { sec: "ai", icon: "fa-microchip", label: "AI &amp; Health", badge: "1" },
     { sec: "growth", icon: "fa-arrow-trend-up", label: "Growth &amp; Marketing", badge: "5" },
+    { sec: "ship", icon: "fa-rocket", label: "Ship" },
   ];
   var SECTIONS = {
     pulse: { title: "Pulse", sub: "Everything you'd check first thing — live." },
@@ -33,6 +34,7 @@
     money: { title: "Money", sub: "MRR, subscriptions, churn, and promo performance." },
     ai: { title: "AI &amp; Health", sub: "What AI costs, where it fails, and whether the system is up." },
     growth: { title: "Growth &amp; Marketing", sub: "Where users come from, and every lever to get more." },
+    ship: { title: "Ship", sub: "Review each agent fix on a live preview, then deploy it — one click, straight to production." },
   };
   var STUBS = {
     users: { icon: "fa-users", items: [["fa-magnifying-glass", "Instant search", "by email, name, or id"], ["fa-timeline", "Activity timeline", "every signup→action→payment event"], ["fa-sliders", "Adjust quota", "per-skill, with audit trail"], ["fa-gift", "Grant promo / discount", "one-off or campaign"], ["fa-user-shield", "Promote to admin", "role + MFA enforced"], ["fa-ban", "Suspend / restore", "soft-delete, 30-day window"]] },
