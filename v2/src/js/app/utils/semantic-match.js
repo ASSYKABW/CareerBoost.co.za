@@ -513,10 +513,76 @@
     return out.slice(0, max);
   }
 
+  // ---------------------------------------------------------------------------
+  // Resume → matching corpus. Single source of truth for "what text of the
+  // resume do we match a JD against". Lives here (not in the resume route) so
+  // it's DOM-free and unit-testable.
+  //
+  // IMPORTANT: `resume.skills` is the structured object { groups: [{ label,
+  // items: [] }] } — NOT an array. Earlier callers did `(r.skills || [])
+  // .forEach(...)` which threw on the real shape, silently dropping every skill
+  // from keyword matching. We tolerate three historical shapes here so old
+  // stored resumes keep matching: the structured object, a flat string array,
+  // and a flat array of { name } objects.
+  // ---------------------------------------------------------------------------
+  function pushSkillText(out, skills) {
+    if (!skills) return;
+    if (Array.isArray(skills)) {
+      skills.forEach(function (s) {
+        if (typeof s === "string") { if (s.trim()) out.push(s); }
+        else if (s && typeof s === "object" && s.name) out.push(String(s.name));
+      });
+      return;
+    }
+    if (Array.isArray(skills.groups)) {
+      skills.groups.forEach(function (g) {
+        (g && g.items ? g.items : []).forEach(function (item) {
+          if (item == null) return;
+          const t = typeof item === "string" ? item : String(item);
+          if (t.trim()) out.push(t);
+        });
+      });
+    }
+  }
+
+  function buildResumeCorpus(resume) {
+    if (!resume || typeof resume !== "object") return "";
+    const r = resume;
+    const out = [];
+    if (r.summary) out.push(String(r.summary));
+    pushSkillText(out, r.skills);
+    (r.experience || []).forEach(function (e) {
+      if (!e) return;
+      if (e.role) out.push(String(e.role));
+      if (e.company) out.push(String(e.company));
+      (e.bullets || []).forEach(function (b) {
+        if (typeof b === "string") out.push(b);
+        else if (b && b.text) out.push(String(b.text));
+      });
+    });
+    (r.projects || []).forEach(function (p) {
+      if (!p) return;
+      if (p.name) out.push(String(p.name));
+      if (p.description) out.push(String(p.description));
+      (p.bullets || []).forEach(function (b) {
+        if (typeof b === "string") out.push(b);
+        else if (b && b.text) out.push(String(b.text));
+      });
+    });
+    (r.certifications || []).forEach(function (c) {
+      if (c && c.name) out.push(String(c.name));
+    });
+    (r.languages || []).forEach(function (l) {
+      if (l && l.name) out.push(String(l.name));
+    });
+    return out.join("\n");
+  }
+
   window.CBV2.semanticMatch = {
     tokenize: tokenize,
     expandSynonyms: expandSynonyms,
     semanticHas: semanticHas,
+    buildResumeCorpus: buildResumeCorpus,
     buildBm25: buildBm25,
     detectRegion: detectRegion,
     scoreLocationMatch: scoreLocationMatch,

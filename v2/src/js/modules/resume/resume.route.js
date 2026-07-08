@@ -1367,7 +1367,9 @@ Built analytics dashboard used by 3 teams"></textarea>
       (e.bullets || []).forEach(function (b) {
         const t = String((b && b.text) || "");
         totalBullets += 1;
-        if (/\d/.test(t)) quantified += 1;
+        if (quality && typeof quality.hasImpactMetric === "function"
+          ? quality.hasImpactMetric(t)
+          : /\d/.test(t)) quantified += 1;
         if (t.length > 220) longBullets += 1;
       });
     });
@@ -1413,6 +1415,45 @@ Built analytics dashboard used by 3 teams"></textarea>
         score -= gapPenalty;
         breakdown.keywordCoverage -= Math.min(14, gapPenalty);
       }
+    }
+
+    // Target-title alignment — ATS weight the job title heavily. If the JD
+    // names a role and the resume's headline + recent titles don't reflect it,
+    // title-matching won't fire even when the skills line up.
+    const jdRole = jdAnalyzed && jdAnalyzed.role ? String(jdAnalyzed.role).trim() : "";
+    if (jdRole) {
+      const titleCorpus = [h.title || "", (exps[0] && exps[0].role) || "", (exps[1] && exps[1].role) || ""].join(" ");
+      if (titleCorpus.trim()) {
+        const smt = window.CBV2 && window.CBV2.semanticMatch;
+        const stop = ["senior", "junior", "lead", "staff", "principal", "mid", "the", "and", "of", "ii", "iii"];
+        const roleTokens = (smt && typeof smt.tokenize === "function" ? smt.tokenize(jdRole) : jdRole.toLowerCase().split(/\s+/))
+          .filter(function (w) { return w && w.length > 2 && stop.indexOf(w) < 0; });
+        const titleLow = titleCorpus.toLowerCase();
+        const titleHit = !roleTokens.length || roleTokens.some(function (w) { return titleLow.indexOf(w) >= 0; });
+        if (!titleHit) {
+          issues.push("Headline doesn't reflect the target title “" + jdRole + "” — mirror it in your title/summary so ATS title-matching fires.");
+          score -= 6;
+          breakdown.keywordCoverage -= 6;
+        }
+      }
+    }
+
+    // Layout parseability — the EXPORTED file is what a real ATS ingests, so a
+    // clean structured score means little if the chosen template is a
+    // two-column/photo design. Two-column (sidebar) layouts interleave the
+    // sidebar and main column in the extracted text stream; embedded photos
+    // aren't parsed at all and trigger auto-rejects in some markets.
+    const tplMod = (window.CBV2.resume && window.CBV2.resume.templates) || null;
+    const tpl = tplMod && typeof tplMod.get === "function" ? tplMod.get(view.exportTemplate) : null;
+    if (tpl && tpl.layout && tpl.layout !== "single") {
+      issues.push("Two-column template (" + (tpl.name || tpl.id) + ") — many ATS read the sidebar out of order. Use a single-column template for online applications.");
+      score -= 10;
+      breakdown.parseability -= 8;
+    }
+    if (tpl && tpl.supportsPhoto && h.photo) {
+      issues.push("Photo included — most ATS can't read it and some employers auto-reject photo resumes. Export a photo-free version for online applications.");
+      score -= 4;
+      breakdown.parseability -= 3;
     }
 
     score = Math.max(0, Math.min(100, Math.round(score)));
@@ -3064,13 +3105,34 @@ Built analytics dashboard used by 3 teams"></textarea>
   // build a clean corpus, then uses semanticHas() (handles synonyms +
   // singular/plural + multi-word terms).
   function buildResumeCorpus(r) {
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
+    if (sm && typeof sm.buildResumeCorpus === "function") return sm.buildResumeCorpus(r);
+    // Fallback for environments without the shared helper (e.g. the test runner
+    // before semantic-match.js loads). Mirrors the canonical impl.
     if (!r || typeof r !== "object") return "";
     const out = [];
     if (r.summary) out.push(r.summary);
-    (r.skills || []).forEach(function (s) {
-      if (typeof s === "string") out.push(s);
-      else if (s && typeof s === "object" && s.name) out.push(s.name);
-    });
+    // Skills live under skills.groups[].items in the structured resume. Tolerate
+    // a couple of historical shapes so old stored resumes still match: a flat
+    // array of strings, or a flat array of { name } objects. NOTE: the previous
+    // code did `(r.skills || []).forEach(...)` which threw on the real object
+    // shape ({ groups: [...] }) — that silently dropped every skill from JD
+    // keyword matching AND crashed getResumeHealth once a JD was analyzed.
+    const skills = r.skills;
+    if (Array.isArray(skills)) {
+      skills.forEach(function (s) {
+        if (typeof s === "string") out.push(s);
+        else if (s && typeof s === "object" && s.name) out.push(s.name);
+      });
+    } else if (skills && Array.isArray(skills.groups)) {
+      skills.groups.forEach(function (g) {
+        (g && g.items ? g.items : []).forEach(function (item) {
+          if (item == null) return;
+          const t = typeof item === "string" ? item : String(item);
+          if (t.trim()) out.push(t);
+        });
+      });
+    }
     (r.experience || []).forEach(function (e) {
       if (!e) return;
       if (e.role) out.push(e.role);
@@ -4834,9 +4896,18 @@ Built analytics dashboard used by 3 teams"></textarea>
       const ai = window.CBAI || {};
       if (typeof ai.runSkill !== "function") throw new Error("AI orchestrator not available.");
       const compact = compactResumeForAi(r, true);
+      // JD-aware critique: when the user has pasted / analyzed a job description,
+      // send it so the critique scores against the real posting (missing hard
+      // requirements, keyword coverage) instead of evaluating in a vacuum.
+      const jdText = (view.jdText || "").trim();
+      const jdAnalyzedForAi = view.jdAnalyzed ? compactJdAnalyzedForAi(view.jdAnalyzed) : null;
+      const critiqueRole = view.critiqueTargetRole ||
+        (view.jdAnalyzed && view.jdAnalyzed.role) || "";
       const result = await ai.runSkill("resume-critique", {
-        targetRole: view.critiqueTargetRole || "",
+        targetRole: critiqueRole,
         resume: clipText(JSON.stringify(compact), AI_LIMITS.resumeJsonChars),
+        jobDescription: jdText ? clipText(jdText, AI_LIMITS.jdPlanChars) : "",
+        jdAnalyzed: jdAnalyzedForAi,
         // R1: send the bullet IDs whose rewrites the user already accepted
         // so the model doesn't re-flag them on a second run.
         appliedBulletIds: Object.keys(view.appliedAiBulletIds || {})
@@ -5369,8 +5440,26 @@ Built analytics dashboard used by 3 teams"></textarea>
       issues.push("Letter page may be tight for this content; A4 is safer.");
     }
 
+    // ATS layout safety — the exported PDF is what a real ATS parses, so a clean
+    // structured resume means little if the chosen template is two-column or
+    // carries a photo. Warn (don't hard-block: styled versions are legitimate
+    // for human eyes / networking) and steer toward the .docx / .txt export.
+    const tMod = templatesMod();
+    const tpl = tMod && typeof tMod.get === "function" ? tMod.get(view.exportTemplate) : null;
+    const hasPhoto = !!(r.header && r.header.photo);
+    const twoColumn = !!(tpl && tpl.layout && tpl.layout !== "single");
+    const photoShown = !!(tpl && tpl.supportsPhoto && hasPhoto);
+    if (twoColumn) {
+      issues.push("“" + ((tpl && (tpl.name || tpl.id)) || "This template") + "” is two-column — many ATS read the sidebar out of order. For online applications pick an ATS-safe (single-column) template, or send the Word/plain-text version.");
+    }
+    if (photoShown) {
+      issues.push("Your resume includes a photo — most ATS can't read it and some employers auto-reject photo resumes. Export a photo-free, single-column version for online applications.");
+    }
+    const atsSafe = !twoColumn && !photoShown;
+
     return {
       ok: blockers.length === 0,
+      atsSafe: atsSafe,
       issues: issues,
       blockers: blockers,
       suggested: {
@@ -5408,18 +5497,27 @@ Built analytics dashboard used by 3 teams"></textarea>
     if (!t) return "";
     const opts = currentExportOpts();
     const preflight = computeExportPreflight(r, opts);
-    const tpls = t.list();
+    // ATS mode: lead with single-column, ATS-safe templates and badge every card
+    // so users can tell at a glance which designs parse cleanly in an ATS vs
+    // which are styled for human eyes / networking only.
+    const tpls = t.list().slice().sort(function (a, b) {
+      return (a.layout === "single" ? 0 : 1) - (b.layout === "single" ? 0 : 1);
+    });
     const fileBase = exportMod() ? exportMod().baseFilename(r, view.exportTemplate) : "resume";
 
     const cards = tpls.map(function (tpl) {
       const isActive = tpl.id === view.exportTemplate;
+      const isAtsSafe = tpl.layout === "single";
+      const badge = isAtsSafe
+        ? '<span class="chip green tpl-badge" title="Single-column with standard headings — parses cleanly in applicant tracking systems"><i class="fa-solid fa-shield-halved"></i> ATS-safe</span>'
+        : '<span class="chip subtle tpl-badge" title="Two-column or photo layout — great for human eyes and networking, but many ATS parse it poorly. Prefer an ATS-safe template (or the .docx / .txt export) for online applications."><i class="fa-solid fa-palette"></i> Styled</span>';
       return `
         <button type="button" class="tpl-card ${isActive ? "is-active" : ""}" data-tpl="${st(tpl.id)}">
           <div class="tpl-card-thumb tpl-thumb-${st(tpl.id)}" aria-hidden="true">
             ${renderTemplateThumb(tpl.id, view.exportAccent)}
           </div>
           <div class="tpl-card-body">
-            <h4>${st(tpl.name)}</h4>
+            <div class="tpl-card-head"><h4>${st(tpl.name)}</h4>${badge}</div>
             <p class="tpl-tagline">${st(tpl.tagline)}</p>
             <p class="tpl-description muted">${st(tpl.description)}</p>
           </div>
@@ -5439,6 +5537,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         <label>Preflight QA</label>
         <div class="export-preflight-head">
           <span class="chip ${preflight.ok ? "green" : "warning"}">${preflight.ok ? "Pass" : "Needs attention"}</span>
+          <span class="chip ${preflight.atsSafe ? "green" : "warning"}" title="Whether the chosen template and options will parse cleanly in an applicant tracking system"><i class="fa-solid fa-microchip"></i> ${preflight.atsSafe ? "ATS-safe" : "ATS risk"}</span>
           <button type="button" class="btn-ghost btn-sm" id="export-autofix">
             <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fix layout
           </button>
@@ -5449,6 +5548,7 @@ Built analytics dashboard used by 3 teams"></textarea>
         ${preflight.issues.length
           ? '<ul class="export-preflight-list">' + preflight.issues.map(function (x) { return "<li>" + st(x) + "</li>"; }).join("") + "</ul>"
           : '<p class="muted">No major layout risks detected.</p>'}
+        <p class="muted export-ats-tip"><i class="fa-solid fa-circle-info"></i> For online (ATS) applications, an ATS-safe template exports a true-text PDF; the <strong>.docx</strong> and <strong>.txt</strong> options parse most reliably. Keep a Styled version for people and networking.</p>
       </div>
     `;
 

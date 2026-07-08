@@ -18,6 +18,7 @@ export interface PricePoint {
 
 const PRICES: Record<string, PricePoint> = {
   // Anthropic
+  "claude-opus-4-8":             { inputPerM: 5.00, outputPerM: 25.00, cachedInputPerM: 0.50, cacheCreationPerM: 6.25 },
   "claude-sonnet-4-5":           { inputPerM: 3.00, outputPerM: 15.00, cachedInputPerM: 0.30, cacheCreationPerM: 3.75 },
   "claude-haiku-4-5":            { inputPerM: 1.00, outputPerM:  5.00, cachedInputPerM: 0.10, cacheCreationPerM: 1.25 },
   "claude-3-5-haiku-latest":     { inputPerM: 0.80, outputPerM:  4.00, cachedInputPerM: 0.08, cacheCreationPerM: 1.00 },
