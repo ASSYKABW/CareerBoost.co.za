@@ -737,6 +737,30 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
+// Like fetchJson but supports custom method/headers (auth tokens, POST bodies)
+// for providers that need them (Jooble POST, Reed/USAJobs/Findwork auth). Same
+// timeout + JSON handling so every provider behaves consistently.
+async function fetchJsonWith(url: string, init: RequestInit): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        accept: "application/json",
+        "user-agent": "CareerBoost job discovery",
+        ...(init.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((json as { error?: string })?.error || `HTTP ${res.status}`);
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function hashId(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -985,6 +1009,238 @@ async function runAdzuna(body: Body): Promise<CanonicalJobOut[]> {
   return fresh;
 }
 
+// ---------------------------------------------------------------------------
+// Additional Tier-A sources. The Muse + RemoteOK are keyless (always on).
+// Jooble / USAJobs / Reed / Findwork are key-gated: they return [] silently
+// when their secret isn't configured, so they add coverage the moment an
+// operator sets the key (no redeploy of the client). LinkedIn/Indeed remain
+// Tier B (handoff) / Tier C (import) — no legal open search API exists.
+// ---------------------------------------------------------------------------
+
+// The Muse — public API (optional THE_MUSE_API_KEY raises the rate limit).
+async function runTheMuse(body: Body): Promise<CanonicalJobOut[]> {
+  const url = new URL("https://www.themuse.com/api/public/jobs");
+  url.searchParams.set("page", "1");
+  const loc = safeString(body.filters?.location || body.nlq?.location || "");
+  if (loc) url.searchParams.set("location", loc);
+  const apiKey = safeString(Deno.env.get("THE_MUSE_API_KEY"));
+  if (apiKey) url.searchParams.set("api_key", apiKey);
+  const data = await fetchJson(url.toString()) as { results?: Record<string, unknown>[] };
+  const rows = Array.isArray(data.results) ? data.results : [];
+  return Promise.all(rows.slice(0, MAX_PER_SOURCE).map(async (item) => {
+    const company = item.company && typeof item.company === "object"
+      ? safeString((item.company as Record<string, unknown>).name) : "";
+    const locations = Array.isArray(item.locations)
+      ? (item.locations as Record<string, unknown>[]).map((l) => safeString(l?.name)).filter(Boolean) : [];
+    const loc2 = locations.join("; ");
+    const landing = item.refs && typeof item.refs === "object"
+      ? safeString((item.refs as Record<string, unknown>).landing_page) : "";
+    const levels = Array.isArray(item.levels)
+      ? (item.levels as Record<string, unknown>[]).map((l) => safeString(l?.name)) : [];
+    const categories = Array.isArray(item.categories)
+      ? (item.categories as Record<string, unknown>[]).map((c) => safeString(c?.name)) : [];
+    const out: CanonicalJobOut = {
+      id: await stableId("themuse", landing, safeString(item.id || item.name)),
+      title: safeString(item.name),
+      company,
+      location: loc2 || "Not specified",
+      url: landing,
+      remote: /remote|flexible/i.test(loc2),
+      postedAt: toDateIso(item.publication_date),
+      tags: uniqueStrings([...categories, ...levels, safeString(item.type)], 8).map((x) => x.toLowerCase()),
+      descriptionText: clipDescription(item.contents),
+      salary: "",
+      logo: "",
+      source: "The Muse",
+      sourceId: "themuse",
+      sourceType: "api",
+      employmentType: safeString(item.type || "").toLowerCase(),
+    };
+    return out;
+  }));
+}
+
+// RemoteOK — public JSON. Item [0] is a legal/attribution notice (skip it).
+// Their ToS requires linking back to the RemoteOK job URL, which we do.
+async function runRemoteOk(_body: Body): Promise<CanonicalJobOut[]> {
+  const raw = await fetchJson("https://remoteok.com/api");
+  const rows = Array.isArray(raw) ? raw as Record<string, unknown>[] : [];
+  const jobs = rows.filter((r) => r && typeof r === "object" && r.position);
+  return Promise.all(jobs.slice(0, MAX_PER_SOURCE).map(async (item) => {
+    const url = safeString(item.url || item.apply_url);
+    const out: CanonicalJobOut = {
+      id: await stableId("remoteok", url, safeString(item.id || item.slug || item.position)),
+      title: safeString(item.position),
+      company: safeString(item.company),
+      location: safeString(item.location) || "Remote",
+      url,
+      remote: true,
+      postedAt: toDateIso(item.date),
+      tags: uniqueStrings(Array.isArray(item.tags) ? item.tags : [], 8).map((x) => x.toLowerCase()),
+      descriptionText: clipDescription(item.description),
+      salary: formatSalary(item.salary_min, item.salary_max, "USD"),
+      logo: safeString(item.company_logo || item.logo),
+      source: "RemoteOK",
+      sourceId: "remoteok",
+      sourceType: "api",
+      employmentType: "remote",
+    };
+    return out;
+  }));
+}
+
+// Jooble — big aggregator (strong local coverage). POST with JSON body.
+async function runJooble(body: Body): Promise<CanonicalJobOut[]> {
+  const key = safeString(Deno.env.get("JOOBLE_API_KEY"));
+  if (!key) return [];
+  const keywords = safeString(body.query || queryTerms(body).join(" ")).slice(0, 120);
+  const location = safeString(body.filters?.location || body.nlq?.location || "");
+  const data = await fetchJsonWith(`https://jooble.org/api/${encodeURIComponent(key)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ keywords, location }),
+  }) as { jobs?: Record<string, unknown>[] };
+  const rows = Array.isArray(data.jobs) ? data.jobs : [];
+  return Promise.all(rows.slice(0, MAX_PER_SOURCE).map(async (item) => {
+    const url = safeString(item.link);
+    const loc = safeString(item.location);
+    const out: CanonicalJobOut = {
+      id: await stableId("jooble", url, safeString(item.id || item.title)),
+      title: safeString(item.title),
+      company: safeString(item.company),
+      location: loc || "Not specified",
+      url,
+      remote: /remote|anywhere|work from home/i.test(loc + " " + safeString(item.title)),
+      postedAt: toDateIso(item.updated),
+      tags: uniqueStrings([safeString(item.type), safeString(item.source)], 6).map((x) => x.toLowerCase()),
+      descriptionText: clipDescription(item.snippet),
+      salary: safeString(item.salary),
+      logo: "",
+      source: "Jooble",
+      sourceId: "jooble",
+      sourceType: "api",
+      employmentType: safeString(item.type || "").toLowerCase(),
+    };
+    return out;
+  }));
+}
+
+// USAJobs — official US government API. Needs an API key + the registered email
+// as the User-Agent (their auth model).
+async function runUsaJobs(body: Body): Promise<CanonicalJobOut[]> {
+  const key = safeString(Deno.env.get("USAJOBS_API_KEY"));
+  const email = safeString(Deno.env.get("USAJOBS_EMAIL"));
+  if (!key || !email) return [];
+  const url = new URL("https://data.usajobs.gov/api/search");
+  const q = safeString(body.query || queryTerms(body).join(" ")).slice(0, 120);
+  if (q) url.searchParams.set("Keyword", q);
+  const loc = safeString(body.filters?.location || body.nlq?.location || "");
+  if (loc) url.searchParams.set("LocationName", loc);
+  url.searchParams.set("ResultsPerPage", String(MAX_PER_SOURCE));
+  const data = await fetchJsonWith(url.toString(), {
+    headers: { "Host": "data.usajobs.gov", "User-Agent": email, "Authorization-Key": key },
+  }) as { SearchResult?: { SearchResultItems?: Record<string, unknown>[] } };
+  const rows = Array.isArray(data?.SearchResult?.SearchResultItems) ? data.SearchResult!.SearchResultItems! : [];
+  return Promise.all(rows.slice(0, MAX_PER_SOURCE).map(async (row) => {
+    const d = (row.MatchedObjectDescriptor || {}) as Record<string, unknown>;
+    const url2 = safeString(d.PositionURI);
+    const remun = Array.isArray(d.PositionRemuneration) ? d.PositionRemuneration[0] as Record<string, unknown> : null;
+    const details = ((d.UserArea as Record<string, unknown>)?.Details || {}) as Record<string, unknown>;
+    const out: CanonicalJobOut = {
+      id: await stableId("usajobs", url2, safeString(d.PositionID || d.PositionTitle)),
+      title: safeString(d.PositionTitle),
+      company: safeString(d.OrganizationName),
+      location: safeString(d.PositionLocationDisplay) || "United States",
+      url: url2,
+      remote: /remote|telework/i.test(safeString(details.TeleworkEligible) + " " + safeString(d.PositionTitle)),
+      postedAt: toDateIso(d.PublicationStartDate),
+      tags: [],
+      descriptionText: clipDescription(details.JobSummary || d.QualificationSummary),
+      salary: remun ? formatSalary(remun.MinimumRange, remun.MaximumRange, remun.CurrencyCode) : "",
+      logo: "",
+      source: "USAJobs",
+      sourceId: "usajobs",
+      sourceType: "api",
+      employmentType: "government",
+    };
+    return out;
+  }));
+}
+
+// Reed (UK) — Basic auth with the API key as the username, blank password.
+async function runReed(body: Body): Promise<CanonicalJobOut[]> {
+  const key = safeString(Deno.env.get("REED_API_KEY"));
+  if (!key) return [];
+  const url = new URL("https://www.reed.co.uk/api/1.0/search");
+  const q = safeString(body.query || queryTerms(body).join(" ")).slice(0, 120);
+  if (q) url.searchParams.set("keywords", q);
+  const loc = safeString(body.filters?.location || body.nlq?.location || "");
+  if (loc) url.searchParams.set("locationName", loc);
+  url.searchParams.set("resultsToTake", String(MAX_PER_SOURCE));
+  const data = await fetchJsonWith(url.toString(), {
+    headers: { Authorization: "Basic " + btoa(key + ":") },
+  }) as { results?: Record<string, unknown>[] };
+  const rows = Array.isArray(data.results) ? data.results : [];
+  return Promise.all(rows.slice(0, MAX_PER_SOURCE).map(async (item) => {
+    const jobUrl = safeString(item.jobUrl) || `https://www.reed.co.uk/jobs/${safeString(item.jobId)}`;
+    const loc2 = safeString(item.locationName);
+    const out: CanonicalJobOut = {
+      id: await stableId("reed", jobUrl, safeString(item.jobId || item.jobTitle)),
+      title: safeString(item.jobTitle),
+      company: safeString(item.employerName),
+      location: loc2 || "United Kingdom",
+      url: jobUrl,
+      remote: /remote|work from home/i.test(loc2 + " " + safeString(item.jobTitle)),
+      postedAt: toDateIso(item.date),
+      tags: [],
+      descriptionText: clipDescription(item.jobDescription),
+      salary: formatSalary(item.minimumSalary, item.maximumSalary, item.currency || "GBP"),
+      logo: "",
+      source: "Reed",
+      sourceId: "reed",
+      sourceType: "api",
+      employmentType: "",
+    };
+    return out;
+  }));
+}
+
+// Findwork.dev — tech-focused. Token auth header.
+async function runFindwork(body: Body): Promise<CanonicalJobOut[]> {
+  const key = safeString(Deno.env.get("FINDWORK_API_KEY"));
+  if (!key) return [];
+  const url = new URL("https://findwork.dev/api/jobs/");
+  const q = safeString(body.query || queryTerms(body).join(" ")).slice(0, 120);
+  if (q) url.searchParams.set("search", q);
+  const loc = safeString(body.filters?.location || body.nlq?.location || "");
+  if (loc) url.searchParams.set("location", loc);
+  const data = await fetchJsonWith(url.toString(), {
+    headers: { Authorization: "Token " + key },
+  }) as { results?: Record<string, unknown>[] };
+  const rows = Array.isArray(data.results) ? data.results : [];
+  return Promise.all(rows.slice(0, MAX_PER_SOURCE).map(async (item) => {
+    const url2 = safeString(item.url);
+    const out: CanonicalJobOut = {
+      id: await stableId("findwork", url2, safeString(item.id || item.role)),
+      title: safeString(item.role),
+      company: safeString(item.company_name),
+      location: safeString(item.location) || (item.remote ? "Remote" : "Not specified"),
+      url: url2,
+      remote: !!item.remote,
+      postedAt: toDateIso(item.date_posted),
+      tags: uniqueStrings(Array.isArray(item.keywords) ? item.keywords : [], 8).map((x) => x.toLowerCase()),
+      descriptionText: clipDescription(item.text),
+      salary: "",
+      logo: "",
+      source: "Findwork",
+      sourceId: "findwork",
+      sourceType: "api",
+      employmentType: safeString(item.employment_type || "").toLowerCase(),
+    };
+    return out;
+  }));
+}
+
 async function runSource(
   name: string,
   runner: () => Promise<CanonicalJobOut[]>,
@@ -1049,6 +1305,14 @@ Deno.serve(withCors(async (req) => {
     runSource("Arbeitnow", () => runArbeitnow(body), body),
     runSource("Jobicy", () => runJobicy(body), body),
     runSource("Adzuna", () => runAdzuna(body), body),
+    // Added Tier-A feeds. Keyless: The Muse, RemoteOK. Key-gated (skip until the
+    // secret is set): Jooble, USAJobs, Reed, Findwork.
+    runSource("The Muse", () => runTheMuse(body), body),
+    runSource("RemoteOK", () => runRemoteOk(body), body),
+    runSource("Jooble", () => runJooble(body), body),
+    runSource("USAJobs", () => runUsaJobs(body), body),
+    runSource("Reed", () => runReed(body), body),
+    runSource("Findwork", () => runFindwork(body), body),
   ]);
 
   // Fix #2: resolve redirector URLs across the merged list before dedupe

@@ -1,6 +1,20 @@
 (function () {
   window.CBJobs = window.CBJobs || {};
 
+  // Synonym-aware "does this text mention this term?" — routes title/skill
+  // matching through the shared semantic matcher so "SWE" ≈ "Software Engineer",
+  // "React" ≈ "ReactJS", "k8s" ≈ "Kubernetes", plus singular/plural. Falls back
+  // to case-insensitive substring when the helper isn't loaded (e.g. tests).
+  function textHas(haystack, needle) {
+    const n = String(needle || "").trim();
+    if (!n) return true;
+    const sm = window.CBV2 && window.CBV2.semanticMatch;
+    if (sm && typeof sm.semanticHas === "function") {
+      try { return sm.semanticHas(String(haystack || ""), n); } catch (e) { /* fall through */ }
+    }
+    return String(haystack || "").toLowerCase().indexOf(n.toLowerCase()) >= 0;
+  }
+
   const SENIORITY_PATTERNS = {
     junior: /\b(junior|jr\.?|entry[-\s]?level|graduate|intern)\b/i,
     mid: /\b(mid|mid[-\s]?level|intermediate)\b/i,
@@ -69,7 +83,7 @@
     if (!intent.targetTitles.length) return true;
     const title = String((job && job.title) || "").toLowerCase();
     return intent.targetTitles.some(function (t) {
-      return title.indexOf(t) >= 0;
+      return textHas(title, t);
     });
   }
 
@@ -77,7 +91,7 @@
     if (!intent.targetTitles.length) return "";
     const title = String((job && job.title) || "").toLowerCase();
     const hit = intent.targetTitles.find(function (t) {
-      return title.indexOf(t) >= 0;
+      return textHas(title, t);
     });
     return hit || "";
   }
@@ -87,14 +101,14 @@
     const text = toSearchText(job);
     // Phase 1 strictness: all required skills must appear in title/tags/description.
     return intent.mustHaveSkills.every(function (s) {
-      return text.indexOf(s) >= 0;
+      return textHas(text, s);
     });
   }
 
   function matchedSkills(job, intent) {
     const text = toSearchText(job);
     return (intent.mustHaveSkills || []).filter(function (s) {
-      return text.indexOf(s) >= 0;
+      return textHas(text, s);
     });
   }
 

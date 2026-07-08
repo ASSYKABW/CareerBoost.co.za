@@ -12,7 +12,10 @@
   // The UI doesn't block on this — onProgress updates each card as its score
   // arrives. The final repaint + re-sort happens when the last score lands.
   const CONCURRENCY = 8;
-  const SCORE_TOP_N = 30;
+  // Cover the first results page (~20). Scoring fewer is now safe: the route
+  // blends AI score with the composite rank, so unscored jobs past this cap
+  // still rank fairly by location/relevance/recency instead of sinking.
+  const SCORE_TOP_N = 20;
 
   function getResumeText() {
     const store = window.CBV2 && window.CBV2.store;

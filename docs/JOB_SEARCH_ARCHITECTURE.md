@@ -30,9 +30,29 @@ Current backend sources:
 - Remotive public remote jobs API
 - Arbeitnow public job board API
 - Jobicy public remote jobs API
-- Adzuna API when `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` are configured
+- **The Muse** public API — keyless (optional `THE_MUSE_API_KEY` raises the rate limit)
+- **RemoteOK** public JSON API — keyless (ToS requires linking back to the RemoteOK job URL, which we do)
+- Adzuna API when `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` are configured
+- **Jooble** aggregator when `JOOBLE_API_KEY` is configured (strong local/on-site coverage)
+- **USAJobs** (US government) when `USAJOBS_API_KEY` + `USAJOBS_EMAIL` are configured
+- **Reed** (UK) when `REED_API_KEY` is configured
+- **Findwork.dev** (tech) when `FINDWORK_API_KEY` is configured
 
-LinkedIn and Indeed are not treated as unrestricted in-app feeds. They are supported through Tier B handoff and Tier C import unless official partner/API access is obtained.
+Key-gated sources return `[]` silently until their secret is set (`supabase secrets set <NAME>=...`), so adding a key activates the feed with no code change. The keyless feeds (The Muse, RemoteOK) are always on. Every source flows through the same `runSource` → `applyFilters` (quality gates + query/location narrowing) → dedupe → composite rank pipeline.
+
+**API-key secrets (set via `supabase secrets set`):**
+
+| Secret(s) | Feed | Get a key |
+|---|---|---|
+| `THE_MUSE_API_KEY` (optional) | The Muse | themuse.com/developers/api/v2 |
+| `JOOBLE_API_KEY` | Jooble | jooble.org/api/about |
+| `USAJOBS_API_KEY` + `USAJOBS_EMAIL` | USAJobs | developer.usajobs.gov |
+| `REED_API_KEY` | Reed | reed.co.uk/developers |
+| `FINDWORK_API_KEY` | Findwork | findwork.dev/developers |
+
+**LinkedIn / Indeed / Glassdoor have no legal open job-search API** (LinkedIn is Talent-Solutions partner-only; Indeed retired its Publisher API ~2020; Glassdoor is partner-only). They stay **Tier B handoff** + **Tier C import**. For true LinkedIn/Indeed-style rows, a commercial Google-for-Jobs reseller (e.g. JSearch/SerpApi on RapidAPI) is the only pragmatic path — under *their* data license, not ours — and is not wired in by default.
+
+Company-specific ATS boards (Greenhouse `boards.greenhouse.io/{company}`, Lever `api.lever.co/v0/postings/{company}`) are a documented, high-quality Tier-A option for pulling a target employer's jobs directly — a good fast-follow for company-targeted search.
 
 ## Phase 2 (shipped)
 
