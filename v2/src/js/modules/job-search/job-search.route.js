@@ -1433,6 +1433,25 @@
   //   - The user has a non-empty resume in store
   //   - The backend AI orchestrator is active
   // On any failure we silently continue with the regex-only ranking.
+
+  // Blend the composite rankScore (which carries location proximity, recency,
+  // and source trust) with the resume-fit signals so AI/embeddings ADJUST the
+  // ranking instead of REPLACING it. Previously the post-AI re-sorts ordered
+  // purely by aiScore (then +cosine), which discarded the 30% location weight
+  // — a perfect local match could sink below a remote job with a marginally
+  // higher fit — and sank the ~50 jobs that never got an AI score. Unscored
+  // jobs fall back to their composite so they compete fairly.
+  function blendedJobRank(job) {
+    if (!job) return 0;
+    const composite = typeof job.rankScore === "number" ? job.rankScore : 50;
+    const ai = job.aiScore && typeof job.aiScore.score === "number" ? job.aiScore.score : null;
+    const sim = typeof job.embeddingSimilarity === "number" ? job.embeddingSimilarity : 0;
+    const fit = ai != null ? ai : composite; // no AI score yet → lean on composite
+    // location/recency/source (composite) 50% + resume-fit (ai) 50% + a small
+    // semantic-similarity nudge for tie-breaking.
+    return composite * 0.5 + fit * 0.5 + sim * 8;
+  }
+
   let aiRerankInFlight = false;
   function triggerAiRerankAfterSearch() {
     if (aiRerankInFlight) return;
@@ -1459,7 +1478,7 @@
     }
 
     window.CBJobs.scoreJobs(jobs, {
-      topN: 30,
+      topN: 20,
       onProgress: function (result) {
         if (!result || !result.jobId || result.error) return;
         if (lastSearchView !== session) return; // user re-searched in the meantime
@@ -1481,14 +1500,10 @@
       aiRerankInFlight = false;
       clearAiScoringProgress(summary);
       if (lastSearchView !== session) return;
-      // After all scores arrive, re-sort: AI score (when present) > regex score.
+      // After all scores arrive, re-sort by the BLENDED rank so resume-fit
+      // sharpens the order without erasing location/recency (see blendedJobRank).
       const scored = (session.jobs || []).slice().sort(function (a, b) {
-        const aiA = a.aiScore && typeof a.aiScore.score === "number" ? a.aiScore.score : null;
-        const aiB = b.aiScore && typeof b.aiScore.score === "number" ? b.aiScore.score : null;
-        if (aiA != null && aiB != null) return aiB - aiA;
-        if (aiA != null) return -1;
-        if (aiB != null) return 1;
-        return 0;
+        return blendedJobRank(b) - blendedJobRank(a);
       });
       session.jobs = scored;
       repaintJobSearchResults();
@@ -1586,18 +1601,11 @@
           }
         });
 
-        // Compose a composite score = AI score (0-100) + cosine boost (0-15).
-        // The cosine value is ~0..1 in practice; multiplying by 15 gives a
-        // gentle nudge that lets embedding signal break ties in AI scoring
-        // without overwhelming it.
+        // Re-sort with the embedding similarity now folded into the blended
+        // rank (composite + fit + semantic nudge) — same comparator as the AI
+        // pass, so location/recency are never discarded.
         const reordered = (session.jobs || []).slice().sort(function (a, b) {
-          const ai = function (j) { return j && j.aiScore && typeof j.aiScore.score === "number" ? j.aiScore.score : null; };
-          const sim = function (j) { return typeof j.embeddingSimilarity === "number" ? j.embeddingSimilarity : 0; };
-          const ca = (ai(a) != null ? ai(a) : 0) + sim(a) * 15;
-          const cb = (ai(b) != null ? ai(b) : 0) + sim(b) * 15;
-          if (cb !== ca) return cb - ca;
-          // Tie-break: cosine alone, then unchanged.
-          return sim(b) - sim(a);
+          return blendedJobRank(b) - blendedJobRank(a);
         });
         session.jobs = reordered;
         repaintJobSearchResults();
