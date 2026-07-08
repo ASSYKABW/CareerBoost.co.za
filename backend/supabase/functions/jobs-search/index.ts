@@ -148,7 +148,13 @@ const QUERY_NOISE = new Set([
   "apply", "career", "careers", "hiring", "job", "jobs", "role", "roles", "position", "positions",
   "work", "remote", "hybrid", "onsite", "on-site", "full", "time", "fulltime", "full-time",
   "part", "contract", "permanent", "temporary", "internship", "entry", "junior", "senior",
-  "lead", "principal", "staff", "mid", "engineer", "engineering", "developer", "manager",
+  "lead", "principal", "staff", "mid",
+  // NOTE: role/function words (engineer, engineering, developer, manager) are
+  // intentionally NOT noise — they carry the query's core intent. Stripping
+  // "engineer" from "Software Engineer" left just "software", so matchesQuery +
+  // relevance ranked far too broadly (a marketing role mentioning "software"
+  // could survive a "software engineer" search). Seniority/employment words
+  // stay above because dedicated filters (experience level, job type) cover them.
 ]);
 
 const REGION_TERMS: Record<string, string[]> = {
