@@ -191,7 +191,10 @@
     "apply", "career", "careers", "hiring", "job", "jobs", "role", "roles", "position", "positions",
     "work", "remote", "hybrid", "onsite", "on-site", "full", "time", "fulltime", "full-time",
     "part", "contract", "permanent", "temporary", "internship", "entry", "junior", "senior",
-    "lead", "principal", "staff", "mid", "engineer", "engineering", "developer", "manager"
+    // Role/function words (engineer, engineering, developer, manager) are
+    // intentionally NOT noise — they carry the query's core intent. Kept in
+    // sync with the backend QUERY_NOISE in jobs-search/index.ts.
+    "lead", "principal", "staff", "mid"
   ]);
 
   const LOCATION_NOISE = new Set([
