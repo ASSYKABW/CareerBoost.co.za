@@ -175,7 +175,11 @@ function jobMatchesQuery(job: CanonicalJobOut, queryTokens: string[]): boolean {
   // the title kept the job, so a "fire engineer" search flooded with these
   // tracked tech companies' generic "engineer" roles (GitLab/Twilio backend
   // engineers), and substring matching let "fire" hit "firewall".
-  return queryTokens.every((t) => termMatches(text, t));
+  if (!queryTokens.every((t) => termMatches(text, t))) return false;
+  // Title anchor: at least one token must appear in the TITLE — description-only
+  // matches are not the role the user searched for.
+  const title = job.title.toLowerCase();
+  return queryTokens.some((t) => termMatches(title, t));
 }
 
 // ----- Greenhouse ----------------------------------------------------------

@@ -633,7 +633,12 @@ function matchesQuery(job: CanonicalJobOut, terms: string[]): boolean {
   // Require EVERY query term to appear as a whole word. Previously ANY single
   // term hitting the title passed, so "fire engineer" matched every generic
   // "backend engineer" role; and substring matching let "fire" hit "firewall".
-  return terms.every((term) => termMatches(text, term));
+  if (!terms.every((term) => termMatches(text, term))) return false;
+  // Title anchor: at least one query term must appear in the TITLE. A job is
+  // what its title says — a sales-manager role whose description merely
+  // mentions "fire" and "engineer" is not what the user searched for.
+  const title = safeString(job.title).toLowerCase();
+  return terms.some((term) => termMatches(title, term));
 }
 
 // -----------------------------------------------------------------------
@@ -959,7 +964,7 @@ async function runAdzunaUncached(body: Body): Promise<CanonicalJobOut[]> {
     const url = new URL(`https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(country)}/search/1`);
     url.searchParams.set("app_id", appId);
     url.searchParams.set("app_key", appKey);
-    url.searchParams.set("results_per_page", "35");
+    url.searchParams.set("results_per_page", "50"); // Adzuna's per-page max — maximize raw supply per call
     if (q) url.searchParams.set("what", q.slice(0, 120));
     if (filters.remoteOnly) url.searchParams.set("where", "remote");
     else if (filters.location) url.searchParams.set("where", safeString(filters.location).slice(0, 100));
@@ -1034,15 +1039,27 @@ async function runAdzuna(body: Body): Promise<CanonicalJobOut[]> {
 // ---------------------------------------------------------------------------
 
 // The Muse — public API (optional THE_MUSE_API_KEY raises the rate limit).
+// Fetches 2 pages (20 rows each) in parallel — one page starves the strict
+// relevance filter downstream.
 async function runTheMuse(body: Body): Promise<CanonicalJobOut[]> {
-  const url = new URL("https://www.themuse.com/api/public/jobs");
-  url.searchParams.set("page", "1");
   const loc = safeString(body.filters?.location || body.nlq?.location || "");
-  if (loc) url.searchParams.set("location", loc);
   const apiKey = safeString(Deno.env.get("THE_MUSE_API_KEY"));
-  if (apiKey) url.searchParams.set("api_key", apiKey);
-  const data = await fetchJson(url.toString()) as { results?: Record<string, unknown>[] };
-  const rows = Array.isArray(data.results) ? data.results : [];
+  const pageUrls = ["1", "2"].map((page) => {
+    const url = new URL("https://www.themuse.com/api/public/jobs");
+    url.searchParams.set("page", page);
+    if (loc) url.searchParams.set("location", loc);
+    if (apiKey) url.searchParams.set("api_key", apiKey);
+    return url.toString();
+  });
+  const pages = await Promise.all(pageUrls.map(async (u) => {
+    try {
+      const data = await fetchJson(u) as { results?: Record<string, unknown>[] };
+      return Array.isArray(data.results) ? data.results : [];
+    } catch {
+      return []; // one page failing shouldn't kill the source
+    }
+  }));
+  const rows = pages.flat();
   return Promise.all(rows.slice(0, MAX_PER_SOURCE).map(async (item) => {
     const company = item.company && typeof item.company === "object"
       ? safeString((item.company as Record<string, unknown>).name) : "";

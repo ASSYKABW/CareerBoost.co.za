@@ -1181,7 +1181,13 @@
     const store = window.CBV2.store;
     const bookmarked = store && typeof store.isJobBookmarked === "function" && job.id ? store.isJobBookmarked(job.id) : false;
     const inPipeline = isDuplicateInPipeline(job);
-    const score = job.roleIntent && typeof job.roleIntent.score === "number" ? job.roleIntent.score : null;
+    // Only show the targeting chip when the user actually set role targeting.
+    // Without constraints every job scores the same neutral 65, so cards showed
+    // a meaningless "65 · Aligned" on completely unrelated roles — eroding trust.
+    const targetingActive = hasRichRoleProfile(lastSearchView && lastSearchView.roleProfile);
+    const score = targetingActive && job.roleIntent && typeof job.roleIntent.score === "number"
+      ? job.roleIntent.score
+      : null;
     const chip = fitChipLabel(score);
     const posted = formatPostedLine(job.postedAt);
     const sourceLabel = effectiveSourceLabel(job);
