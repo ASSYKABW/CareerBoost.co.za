@@ -12,6 +12,7 @@
 // Request body matches the client contract (query, filters, nlq, provider).
 import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser } from "../_shared/auth.ts";
+import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 
 interface Filters {
   remoteOnly?: boolean;
@@ -647,7 +648,45 @@ function buildRapidApiLinkedInRequest(
   };
 }
 
+// 15-min cache on the paid RapidAPI (JSearch) lane — same pattern as Adzuna in
+// jobs-search. The free tier is ~200 requests/month, so repeat searches within
+// the window must not burn quota. Key covers every input that changes the
+// upstream call (query, location, remote, recency, and the configured
+// host/url so a config change busts the cache). Empty results aren't cached.
+const RAPIDAPI_CACHE_TTL_SECONDS = 15 * 60;
+
 async function fetchRapidApiLinkedIn(
+  body: Body,
+): Promise<{ jobs: CanonicalJobOut[]; source: { name: string; count: number; ok: boolean; error?: string } }> {
+  const cfg = getRapidApiLinkedInConfig();
+  if (!cfg) return fetchRapidApiLinkedInUncached(body); // returns the "not configured" source
+
+  const filters = body.filters || {};
+  const cacheParts = {
+    lane: "rapidapi-linkedin",
+    q: str(body.query).toLowerCase().trim(),
+    loc: str(filters.location || body.nlq?.location || "").toLowerCase().trim(),
+    remote: !!(filters.remoteOnly || body.nlq?.remote),
+    pwd: Number(filters.postedWithinDays || body.nlq?.postedWithinDays || 0) || 0,
+    host: cfg.host,
+    url: cfg.url,
+  };
+  const cacheKey = await buildKvKey(cacheParts);
+  const cached = await readKvCache<CanonicalJobOut[]>("rapidapi", cacheKey);
+  if (cached.payload && cached.payload.length) {
+    const rows = cached.payload;
+    const sourceName = rows.some((j) => j.source !== "LinkedIn") ? "Web job feed" : "LinkedIn";
+    return { jobs: rows, source: { name: sourceName, count: rows.length, ok: true } };
+  }
+
+  const fresh = await fetchRapidApiLinkedInUncached(body);
+  if (fresh.source.ok && fresh.jobs.length > 0) {
+    writeKvCache("rapidapi", cacheKey, fresh.jobs, RAPIDAPI_CACHE_TTL_SECONDS).catch(() => {});
+  }
+  return fresh;
+}
+
+async function fetchRapidApiLinkedInUncached(
   body: Body,
 ): Promise<{ jobs: CanonicalJobOut[]; source: { name: string; count: number; ok: boolean; error?: string } }> {
   const cfg = getRapidApiLinkedInConfig();
@@ -821,7 +860,17 @@ function mapCseItemToJob(item: CseItem): CanonicalJobOut | null {
   const locMatch = snippet.match(
     /\b([A-Z][a-z]+(?:[\s,]+[A-Z][a-z]+)*,\s*[A-Z]{2})\b/,
   );
-  const location = locMatch ? locMatch[1] : "";
+  let location = locMatch ? locMatch[1] : "";
+  if (!location) {
+    // LinkedIn result titles usually read "Company hiring Role in City, Region
+    // - LinkedIn". Rows with a blank location were being discarded by location
+    // filters downstream, so try the title before giving up. The "Test" guard
+    // avoids the classic false positive "Engineer in Test (Java)".
+    const t = rawTitle.match(/\bin\s+([A-Z][A-Za-z.'’-]*(?:[\s,]+[A-Z][A-Za-z.'’-]*){0,3})\s*(?:[|–—-]|$)/);
+    if (t && t[1] && !/^test\b/i.test(t[1]) && t[1].length <= 48) {
+      location = t[1].replace(/\s+/g, " ").replace(/[,\s]+$/, "").trim();
+    }
+  }
   const employmentType = inferEmploymentType(rawTitle, snippet);
 
   return {
