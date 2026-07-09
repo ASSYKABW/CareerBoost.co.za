@@ -676,8 +676,13 @@ async function fetchRapidApiLinkedIn(
       return { jobs: [], source: { name: "LinkedIn", count: 0, ok: false, error: msg } };
     }
 
-    const rootJobs = parseJsonPath(json, cfg.jobPath);
-    const rows = pickArray(rootJobs);
+    // Resolve the jobs array resiliently: the configured path first, then the
+    // shapes used by the common RapidAPI job providers (JSearch = "data").
+    let rows: Record<string, unknown>[] = [];
+    for (const path of [cfg.jobPath, "data", "jobs", "results", "data.jobs"]) {
+      rows = pickArray(parseJsonPath(json, path));
+      if (rows.length) break;
+    }
     const out: CanonicalJobOut[] = [];
     for (let i = 0; i < rows.length; i++) {
       const item = rows[i];
@@ -718,9 +723,25 @@ async function fetchRapidApiLinkedIn(
     }
 
     const sourceName = out.some((j) => j.source !== "LinkedIn") ? "Web job feed" : "LinkedIn";
+    // When the feed answers 200 but we surface nothing, say WHY — otherwise
+    // operators see an opaque "returned no jobs" and can't tell a quota/shape
+    // problem from genuine zero coverage.
+    let emptyDiag = "";
+    if (out.length === 0) {
+      const status = str(parseJsonPath(json, "status")) || str(parseJsonPath(json, "message"));
+      const keys = Object.keys(json || {}).slice(0, 6).join(",");
+      emptyDiag = `upstream 200, parsed ${rows.length} rows` +
+        (status ? `, status="${status.slice(0, 60)}"` : "") +
+        (keys ? `, keys=[${keys}]` : "");
+    }
     return {
       jobs: out,
-      source: { name: sourceName, count: out.length, ok: true },
+      source: {
+        name: sourceName,
+        count: out.length,
+        ok: true,
+        ...(emptyDiag ? { error: emptyDiag } : {}),
+      },
     };
   } catch (e) {
     const msg = (e as Error).name === "AbortError"
