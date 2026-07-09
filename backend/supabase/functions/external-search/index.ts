@@ -566,6 +566,22 @@ function getRapidApiLinkedInConfig(): RapidApiConfig | null {
   return { key, host, url, method, jobPath };
 }
 
+// Map a typed location to JSearch's 2-letter market code. Defaults to "us"
+// only when nothing matches (JSearch requires a country).
+function jsearchCountryFromLocation(loc: string): string {
+  const text = String(loc || "").toLowerCase();
+  if (/south africa|\bza\b|cape town|johannesburg|durban|pretoria|centurion|gauteng|stellenbosch/.test(text)) return "za";
+  if (/united kingdom|\buk\b|london|manchester|edinburgh|bristol|leeds|england|scotland/.test(text)) return "gb";
+  if (/canada|toronto|vancouver|montreal/.test(text)) return "ca";
+  if (/australia|sydney|melbourne|brisbane|perth/.test(text)) return "au";
+  if (/germany|berlin|munich|hamburg|frankfurt/.test(text)) return "de";
+  if (/netherlands|amsterdam|rotterdam|utrecht/.test(text)) return "nl";
+  if (/france|paris|lyon|marseille/.test(text)) return "fr";
+  if (/singapore/.test(text)) return "sg";
+  if (/india|bangalore|bengaluru|mumbai|delhi|hyderabad|pune/.test(text)) return "in";
+  return "us";
+}
+
 function buildRapidApiLinkedInRequest(
   body: Body,
 ): { url: string; init: RequestInit } {
@@ -593,11 +609,20 @@ function buildRapidApiLinkedInRequest(
     const q = String(payload.query || "").trim();
     const loc = String(payload.location || "").trim();
     const u = new URL(cfg.url);
+    // Operators often paste the API base URL as the secret; JSearch's search
+    // endpoint lives at /search. A bare "/" path returns RapidAPI's
+    // "Endpoint '/' does not exist" — repair it instead of failing.
+    if (!u.pathname || u.pathname === "/") u.pathname = "/search";
     u.searchParams.set("query", loc && q ? `${q} jobs in ${loc}` : (q || "software engineer jobs"));
     u.searchParams.set("page", "1");
     u.searchParams.set("num_pages", "1");
-    u.searchParams.set("country", "us");
-    u.searchParams.set("date_posted", "all");
+    // Derive the market from the typed location — this was hardcoded "us",
+    // which silently geo-filtered away South African (and all non-US) results.
+    u.searchParams.set("country", jsearchCountryFromLocation(loc));
+    u.searchParams.set(
+      "date_posted",
+      payload.postedWithinDays > 0 && payload.postedWithinDays <= 7 ? "week" : "all",
+    );
     return {
       url: u.toString(),
       init: { method: "GET", headers },
@@ -877,6 +902,12 @@ function jobMatchesRequestedFilters(job: CanonicalJobOut, body: Body): boolean {
     // hitting the title passed, so "fire engineer" matched any generic
     // "engineer" role, and substring matching let "fire" hit "firewall".
     if (!terms.every((t) => termMatches(text, t))) return false;
+    // Title anchor: at least one query term must appear in the TITLE. A job is
+    // what its title says — terms buried only in the description (e.g. a pump
+    // sales role whose body mentions "fire" and "engineer") are not the role
+    // the user searched for.
+    const titleText = flattenText([job.title]);
+    if (!terms.some((t) => termMatches(titleText, t))) return false;
   }
 
   const region = String(filters.searchRegion || "global").toLowerCase();
@@ -1164,7 +1195,10 @@ Deno.serve(withCors(async (req) => {
   }
 
   const runLinkedIn = !requested || requested === PROVIDER_LINKEDIN || requested === PROVIDER_ALL;
-  const runIndeed = requested === PROVIDER_INDEED || requested === PROVIDER_ALL;
+  // Default runs BOTH lanes. Previously Indeed only ran when the client sent
+  // provider:"indeed"|"all" — the app never set it, so users with Google CSE
+  // configured never saw a single Indeed row.
+  const runIndeed = !requested || requested === PROVIDER_INDEED || requested === PROVIDER_ALL;
 
   const sources: { name: string; count: number; ok: boolean; error?: string }[] = [];
   let jobs: CanonicalJobOut[] = [];
