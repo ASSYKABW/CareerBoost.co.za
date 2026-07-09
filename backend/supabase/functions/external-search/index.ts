@@ -208,6 +208,13 @@ function includesAnyTerm(text: string, terms: string[]): boolean {
   return terms.some((t) => text.includes(t.toLowerCase()));
 }
 
+// Whole-word (stem-tolerant) match so "fire" doesn't hit "firewall" while
+// "engineer" still matches "engineering". Symbol terms fall back to substring.
+function termMatches(text: string, term: string): boolean {
+  if (!/^[a-z0-9]+$/.test(term)) return text.includes(term);
+  return new RegExp("\\b" + term + "\\w{0,3}\\b").test(text);
+}
+
 function locationTokens(raw: string): string[] {
   return String(raw || "")
     .toLowerCase()
@@ -866,10 +873,10 @@ function jobMatchesRequestedFilters(job: CanonicalJobOut, body: Body): boolean {
 
   const terms = queryTerms(body);
   if (terms.length) {
-    const strong = flattenText([job.title, job.company]);
-    const hits = terms.reduce((acc, t) => acc + (text.includes(t) ? 1 : 0), 0);
-    const strongHit = terms.some((t) => strong.includes(t));
-    if (!strongHit && hits < Math.min(2, terms.length)) return false;
+    // Require EVERY query term as a whole word — previously any single term
+    // hitting the title passed, so "fire engineer" matched any generic
+    // "engineer" role, and substring matching let "fire" hit "firewall".
+    if (!terms.every((t) => termMatches(text, t))) return false;
   }
 
   const region = String(filters.searchRegion || "global").toLowerCase();

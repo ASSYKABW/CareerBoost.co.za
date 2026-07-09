@@ -92,7 +92,25 @@ const MAX_JOBS_PER_COMPANY = 15;    // cap per-company results to keep response 
 function safe(v: unknown): string { return v == null ? "" : String(v); }
 
 function clipText(s: unknown, max = 1200): string {
-  const raw = safe(s).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const raw = safe(s)
+    // Greenhouse's `content` is HTML-ENTITY-encoded (&lt;div class=...&gt;), so
+    // decode angle brackets FIRST — otherwise the tags survive as literal text
+    // and the browser renders "<div class="content-intro">" in the card. Decode
+    // brackets → strip the now-real tags → decode the remaining entities.
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<li[^>]*>/gi, " • ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#39;/gi, "'")
+    .replace(/&rsquo;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (_, n) => { try { return String.fromCharCode(Number(n)); } catch { return ""; } })
+    .replace(/\s+/g, " ")
+    .trim();
   return raw.length > max ? raw.slice(0, max) + "…" : raw;
 }
 
@@ -143,14 +161,21 @@ function tokenize(s: string): string[] {
   return safe(s).toLowerCase().replace(/[^a-z0-9+#.\-\s]+/g, " ").split(/\s+/).filter((t) => t.length > 1);
 }
 
+// Whole-word (stem-tolerant) match so "fire" doesn't hit "firewall" while
+// "engineer" still matches "engineering". Symbol terms fall back to substring.
+function termMatches(text: string, term: string): boolean {
+  if (!/^[a-z0-9]+$/.test(term)) return text.includes(term);
+  return new RegExp("\\b" + term + "\\w{0,3}\\b").test(text);
+}
+
 function jobMatchesQuery(job: CanonicalJobOut, queryTokens: string[]): boolean {
   if (!queryTokens.length) return true;
-  const title = job.title.toLowerCase();
-  const company = job.company.toLowerCase();
-  // Title is the strongest signal. If ANY query token appears in title
-  // or company, keep it. The cross-system ranker will downrank loose
-  // matches.
-  return queryTokens.some((t) => title.includes(t) || company.includes(t));
+  const text = (job.title + " " + job.company + " " + job.descriptionText).toLowerCase();
+  // Require EVERY query token as a whole word. Previously ANY single token in
+  // the title kept the job, so a "fire engineer" search flooded with these
+  // tracked tech companies' generic "engineer" roles (GitLab/Twilio backend
+  // engineers), and substring matching let "fire" hit "firewall".
+  return queryTokens.every((t) => termMatches(text, t));
 }
 
 // ----- Greenhouse ----------------------------------------------------------

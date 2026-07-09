@@ -618,12 +618,22 @@ function matchesRegion(job: CanonicalJobOut, filters: Filters): boolean {
   return terms.some((term) => text.includes(term));
 }
 
+// Whole-word (stem-tolerant) term match. Substring matching wrongly let "fire"
+// match "firewall"; requiring a word boundary + up to 3 trailing chars keeps
+// "engineer"→"engineering" and "fire"→"fires" while rejecting "firewall". Symbol
+// terms (c++, c#, .net) fall back to substring since \b doesn't apply to them.
+function termMatches(text: string, term: string): boolean {
+  if (!/^[a-z0-9]+$/.test(term)) return text.includes(term);
+  return new RegExp("\\b" + term + "\\w{0,3}\\b").test(text);
+}
+
 function matchesQuery(job: CanonicalJobOut, terms: string[]): boolean {
   if (!terms.length) return true;
   const text = searchText(job);
-  const strong = safeString(job.title + " " + job.company).toLowerCase();
-  return terms.some((term) => strong.includes(term)) ||
-    terms.filter((term) => text.includes(term)).length >= Math.min(2, terms.length);
+  // Require EVERY query term to appear as a whole word. Previously ANY single
+  // term hitting the title passed, so "fire engineer" matched every generic
+  // "backend engineer" role; and substring matching let "fire" hit "firewall".
+  return terms.every((term) => termMatches(text, term));
 }
 
 // -----------------------------------------------------------------------
