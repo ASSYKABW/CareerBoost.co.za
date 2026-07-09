@@ -373,6 +373,15 @@
     const hits = tokens.reduce(function (sum, token) {
       return sum + (locText.indexOf(token) >= 0 ? 1 : 0);
     }, 0);
+    // Unknown-location leniency: Google-sourced (x-ray) rows often carry NO
+    // structured location and only a ~160-char snippet — you can't fail a
+    // location test with no data. In balanced/broad keep the row and let
+    // locationProximityScore rank it low; strict mode still demands evidence.
+    // This was silently deleting every LinkedIn row the backend fetched.
+    if (hits === 0 && strictness !== "strict") {
+      const jobLoc = String(job.location || "").trim().toLowerCase();
+      if (!jobLoc || jobLoc === "not specified") return true;
+    }
     if (strictness === "strict") {
       return hits >= Math.min(tokens.length, 2);
     }
@@ -398,7 +407,12 @@
       (job.tags || []).join(" "),
       String(job.descriptionText || "").slice(0, 700)
     ].join(" "));
-    return terms.some(function (term) { return containsTerm(text, term); });
+    if (terms.some(function (term) { return containsTerm(text, term); })) return true;
+    // Unknown-location leniency (same reasoning as matchesLocationConstraint):
+    // x-ray rows with no structured location can't prove a region — keep them
+    // and let ranking demote, instead of silently deleting them.
+    const jobLoc = String(job.location || "").trim().toLowerCase();
+    return !jobLoc || jobLoc === "not specified";
   }
 
   function relevanceGateTokens(params) {

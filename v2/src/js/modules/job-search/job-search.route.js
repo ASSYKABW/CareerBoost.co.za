@@ -1354,9 +1354,12 @@
     // tier headers ("Strong matches" / "More to explore") reflect what the
     // user can actually see. A user who hasn't clicked "Load more" yet
     // shouldn't see an empty "More to explore" header.
-    const visibleCount = Math.max(
-      RESULTS_PAGE_SIZE,
-      Math.min(Number(lastSearchView.visibleCount) || RESULTS_PAGE_SIZE, jobs.length)
+    // Clamp to the actual result count LAST — the old Math.max-outside order
+    // forced visibleCount to ≥ RESULTS_PAGE_SIZE, so 10 results rendered as
+    // "Showing 20 of 10".
+    const visibleCount = Math.min(
+      Math.max(RESULTS_PAGE_SIZE, Number(lastSearchView.visibleCount) || RESULTS_PAGE_SIZE),
+      jobs.length
     );
     const visible = jobs.slice(0, visibleCount);
     const remaining = jobs.length - visibleCount;
