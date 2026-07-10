@@ -1225,6 +1225,7 @@
           ${renderHero(apps, metrics, derived)}
           ${renderProfileNudge(effectiveRoleProfile)}
           ${renderCandidateIntelligencePanel()}
+          ${window.CBV2.jobScout ? window.CBV2.jobScout.renderPanel() : ""}
           ${renderColdStart()}
         </section>
       `;

@@ -1,0 +1,41 @@
+# Job Scout Agent — Phase 2 scheduler.
+#
+# Ticks every 30 minutes and asks the job-scout function to run all DUE agents:
+# hourly cadence (paid plans) gets caught every tick, daily cadence once a day.
+# The function enforces the paid gate at run time and caps each tick at 10
+# agents / 3 concurrent, so one invocation stays well inside edge limits.
+#
+# REQUIRED GITHUB SECRETS (repo Settings → Secrets and variables → Actions):
+#   SUPABASE_FUNCTIONS_URL = https://kddffkhwpbngiupfmcse.functions.supabase.co
+#   JOB_SCOUT_CRON_SECRET  = must equal the Supabase function secret of the
+#                            same name (already set server-side).
+#
+# NOTE: like copilot-cron.yml, a missing secret makes the run exit 0 with a
+# notice — the check stays green but NOTHING RAN. Check the logs when in doubt.
+name: Job Scout cron
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run due job-scout agents
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.JOB_SCOUT_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / JOB_SCOUT_CRON_SECRET not set — skipping (see workflow header)."
+            exit 0
+          fi
+          echo "→ job-scout cron tick"
+          curl -fsS -X POST "$FN_URL/job-scout" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"action":"cron"}'
+          echo ""

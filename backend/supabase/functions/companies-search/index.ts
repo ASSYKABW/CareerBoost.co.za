@@ -304,7 +304,13 @@ Deno.serve(withCors(async (req) => {
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
   try {
-    await getAuthedUser(req);
+    // Internal callers (the job-scout cron runner) authenticate with the
+    // shared cron secret instead of a user JWT.
+    const internalSecret = (Deno.env.get("JOB_SCOUT_CRON_SECRET") || Deno.env.get("CRON_SECRET") || "").trim();
+    const providedSecret = (req.headers.get("X-Cron-Secret") || "").trim();
+    if (!internalSecret || providedSecret !== internalSecret) {
+      await getAuthedUser(req);
+    }
   } catch (err) {
     return errorResponse((err as Error).message || "Sign in required", 401);
   }
