@@ -1237,6 +1237,7 @@
         ${renderKpiStrip(apps, metrics)}
         <section class="dashboard-layout">
           ${renderCandidateIntelligencePanel()}
+          ${window.CBV2.jobScout ? window.CBV2.jobScout.renderPanel() : ""}
           ${renderNextBestActions(apps, events, derived)}
           ${renderUpcomingWeek(events)}
           ${renderPipelineSnapshot(metrics)}
@@ -1375,6 +1376,11 @@
     const refresh = document.getElementById("refresh-digest");
     if (refresh) {
       refresh.addEventListener("click", function () { scanDigest(true); });
+    }
+
+    // Job Scout Agent panel: bind actions + one guarded state load.
+    if (window.CBV2.jobScout && typeof window.CBV2.jobScout.bind === "function") {
+      window.CBV2.jobScout.bind();
     }
 
     const dismissNudge = document.querySelector("[data-dismiss-nudge]");
