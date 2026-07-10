@@ -80,6 +80,7 @@ const SCRIPTS = [
   "./src/js/services/jobs/job.search.js",
   "./src/js/services/jobs/job.matcher.js",
   "./src/js/services/jobs/job.workflow.js",
+  "./src/js/services/agent/job.scout.js",
   "./src/js/services/candidate/candidate.intelligence.js",
   "./src/js/services/candidate/role.context.js",
   "./src/js/services/candidate/application.command-center.js",
