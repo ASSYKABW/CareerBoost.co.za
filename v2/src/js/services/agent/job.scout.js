@@ -83,6 +83,12 @@
       state.findings = Array.isArray(out.findings) ? out.findings : [];
       state.stats = out.stats || { newCount: 0 };
       state.error = "";
+      // Cron scans (Phase 2) deliver findings while the user is away, without a
+      // browser to fit-score them — score any unscored NEW findings on arrival.
+      const unscored = state.findings.filter(function (f) {
+        return f.status === "new" && (f.fitScore === null || f.fitScore === undefined);
+      });
+      if (unscored.length) scoreNewFindings(unscored.slice(0, 12));
     } catch (e) {
       state.error = (e && e.message) || "Could not load your Job Agent.";
     } finally {
@@ -217,7 +223,8 @@
         excludes: (state.agent.excludeKeywords || []).join(", "),
         location: state.agent.location || "",
         strictness: state.agent.locationStrictness || "balanced",
-        workMode: state.agent.workMode || "any"
+        workMode: state.agent.workMode || "any",
+        cadence: state.agent.cadence || "daily"
       };
     }
     const store = window.CBV2.store;
@@ -230,7 +237,8 @@
       excludes: (Array.isArray(rp.excludeKeywords) ? rp.excludeKeywords : []).join(", "),
       location: (js.filters && js.filters.location) || js.location || "",
       strictness: "balanced",
-      workMode: "any"
+      workMode: "any",
+      cadence: "daily" // automation on by default — that's the point of an agent
     };
   }
 
@@ -280,6 +288,15 @@
                 '<option value="onsite"' + (p.workMode === "onsite" ? " selected" : "") + ">On-site</option>" +
               "</select>") +
           "</div>" +
+          '<div style="flex:1;min-width:160px;">' +
+            fieldRow("Auto-scan",
+              '<select id="js-agent-cadence" ' + inputStyle + ">" +
+                '<option value="daily"' + (p.cadence === "daily" ? " selected" : "") + ">Daily (automatic)</option>" +
+                '<option value="hourly"' + (p.cadence === "hourly" ? " selected" : "") + ">Hourly — Pro</option>" +
+                '<option value="manual"' + (p.cadence === "manual" ? " selected" : "") + ">Manual only</option>" +
+              "</select>",
+              "Your agent runs in the background — new finds are waiting when you return.") +
+          "</div>" +
         "</div>" +
         '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">' +
           '<button type="button" class="btn-ghost" id="js-agent-cancel">Cancel</button>' +
@@ -323,6 +340,7 @@
     const locEl = document.getElementById("js-agent-location");
     const strictEl = document.getElementById("js-agent-strictness");
     const modeEl = document.getElementById("js-agent-workmode");
+    const cadenceEl = document.getElementById("js-agent-cadence");
     const payload = {
       agent: {
         name: (nameEl && nameEl.value) || "My Job Agent",
@@ -332,6 +350,7 @@
         location: (locEl && locEl.value) || "",
         locationStrictness: (strictEl && strictEl.value) || "balanced",
         workMode: (modeEl && modeEl.value) || "any",
+        cadence: (cadenceEl && cadenceEl.value) || "daily",
         active: true
       }
     };
@@ -342,6 +361,9 @@
       state.agent = out.agent;
       state.error = "";
       closeWizard();
+      if (out.cadenceClamped) {
+        toast("info", "Hourly auto-scan is a Pro feature — your agent is set to daily.");
+      }
       toast("success", isNew ? "Agent created — running its first scan…" : "Agent updated.");
       repaintDashboard();
       if (isNew) runScan();
@@ -420,9 +442,14 @@
 
     const a = state.agent;
     const stats = a.lastRunStats || null;
-    const lastLine = a.lastRunAt
+    const autoLabel = a.cadence === "hourly"
+      ? "Auto-scan: hourly"
+      : a.cadence === "daily"
+        ? "Auto-scan: daily"
+        : "Manual scans only";
+    const lastLine = (a.lastRunAt
       ? "Last scan " + timeAgo(a.lastRunAt) + (stats ? " · " + esc(String(stats.fetched || 0)) + " fetched · " + esc(String(stats.newCount || 0)) + " new" : "")
-      : "Never run yet";
+      : "Never run yet") + " · " + autoLabel;
     const targeting = [
       (a.targetTitles || []).slice(0, 3).join(", "),
       a.location || "",

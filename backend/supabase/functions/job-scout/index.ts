@@ -129,24 +129,38 @@ function daysSince(iso: string | null): number {
   return Math.floor((Date.now() - t) / 86_400_000);
 }
 
+// How a scan authenticates against the search functions: a user-triggered scan
+// forwards the caller's own JWT; a cron scan (no user session) presents the
+// shared cron secret, which the search functions accept as an internal caller.
+interface ScanAuth {
+  jwt?: string;
+  cronSecret?: string;
+}
+
+function cronSecretFromEnv(): string {
+  return (Deno.env.get("JOB_SCOUT_CRON_SECRET") || Deno.env.get("CRON_SECRET") || "").trim();
+}
+
 async function callSearchFn(
   name: string,
   payload: unknown,
-  authHeader: string,
+  auth: ScanAuth,
 ): Promise<{ ok: boolean; jobs: Record<string, unknown>[]; error?: string }> {
   const base = Deno.env.get("SUPABASE_URL") || "";
   const anon = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FN_TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: anon,
+    };
+    if (auth.jwt) headers.Authorization = auth.jwt;
+    if (auth.cronSecret) headers["X-Cron-Secret"] = auth.cronSecret;
     const res = await fetch(`${base}/functions/v1/${name}`, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authHeader,
-        apikey: anon,
-      },
+      headers,
       body: JSON.stringify(payload),
     });
     const json = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -213,6 +227,13 @@ async function handleSave(userId: string, body: Record<string, unknown>) {
   if (!targetTitles.length) {
     return errorResponse("Add at least one target job title.", 400);
   }
+  // Cadence: hourly auto-scans are a paid perk — free plans clamp to daily.
+  // Enforced again at cron run time, so a lapsed subscription downgrades
+  // automatically without any webhook wiring.
+  const requestedCadence = oneOf(input.cadence, ["manual", "daily", "hourly"], "manual");
+  let cadence = requestedCadence;
+  if (cadence === "hourly" && !(await isPaidUser(userId))) cadence = "daily";
+
   const row = {
     user_id: userId,
     name: str(input.name, 60) || "My Job Agent",
@@ -224,6 +245,7 @@ async function handleSave(userId: string, body: Record<string, unknown>) {
     location_strictness: oneOf(input.locationStrictness, ["strict", "balanced", "broad"], "balanced"),
     work_mode: oneOf(input.workMode, ["any", "remote", "onsite"], "any"),
     active: input.active !== false,
+    cadence,
     updated_at: new Date().toISOString(),
   };
   const admin = getServiceClient();
@@ -233,14 +255,46 @@ async function handleSave(userId: string, body: Record<string, unknown>) {
     .select("*")
     .single();
   if (error) return errorResponse("agent save failed: " + error.message, 500);
-  return jsonResponse({ ok: true, agent: toClientAgent(data as AgentRow) });
+  return jsonResponse({
+    ok: true,
+    agent: toClientAgent(data as AgentRow),
+    cadenceClamped: requestedCadence !== cadence,
+  });
+}
+
+// Paid check: any active non-free subscription. Free users are clamped to the
+// daily cadence; hourly auto-scans are a paid perk (agreed tiering).
+async function isPaidUser(userId: string): Promise<boolean> {
+  try {
+    const admin = getServiceClient();
+    const { data } = await admin
+      .from("subscriptions")
+      .select("plan_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const row = data as { plan_id?: string; status?: string } | null;
+    return !!row && row.status === "active" && !!row.plan_id && row.plan_id !== "free";
+  } catch {
+    return false; // fail closed: treat as free
+  }
 }
 
 async function handleScan(userId: string, authHeader: string) {
   const agent = await loadAgent(userId);
   if (!agent) return errorResponse("Set up your Job Agent first.", 400);
   if (!agent.active) return errorResponse("This agent is paused — activate it to scan.", 400);
+  const out = await runScanCore(agent, { jwt: authHeader });
+  return jsonResponse({ ok: true, newCount: out.newCount, findings: out.findings, stats: out.stats });
+}
 
+// The scan pipeline shared by user-triggered scans (JWT auth) and cron scans
+// (internal secret). Throws on hard failures; returns delivery stats.
+async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
+  newCount: number;
+  findings: unknown[];
+  stats: Record<string, unknown>;
+}> {
+  const userId = agent.user_id;
   // Recency window: since the last run (+1 day slack), clamped to [1, 30];
   // first scan looks back 14 days.
   const sinceDays = agent.last_run_at
@@ -265,9 +319,9 @@ async function handleScan(userId: string, authHeader: string) {
   };
 
   const [core, external, companies] = await Promise.all([
-    callSearchFn("jobs-search", payload, authHeader),
-    callSearchFn("external-search", payload, authHeader),
-    callSearchFn("companies-search", payload, authHeader),
+    callSearchFn("jobs-search", payload, auth),
+    callSearchFn("external-search", payload, auth),
+    callSearchFn("companies-search", payload, auth),
   ]);
   const laneStats = {
     core: { ok: core.ok, count: core.jobs.length, error: core.error },
@@ -299,7 +353,7 @@ async function handleScan(userId: string, authHeader: string) {
       .select("fingerprint")
       .eq("agent_id", agent.id)
       .in("fingerprint", chunk);
-    if (error) return errorResponse("seen lookup failed: " + error.message, 500);
+    if (error) throw new Error("seen lookup failed: " + error.message);
     (data || []).forEach((r: { fingerprint: string }) => seen.add(r.fingerprint));
   }
 
@@ -323,7 +377,7 @@ async function handleScan(userId: string, authHeader: string) {
       .from("job_scout_findings")
       .upsert(findingRows, { onConflict: "agent_id,fingerprint", ignoreDuplicates: true })
       .select("id, fingerprint, job, fit_score, status, found_at");
-    if (error) return errorResponse("findings insert failed: " + error.message, 500);
+    if (error) throw new Error("findings insert failed: " + error.message);
     delivered = (data || []).map((f: Record<string, unknown>) => ({
       id: f.id,
       fingerprint: f.fingerprint,
@@ -345,6 +399,7 @@ async function handleScan(userId: string, authHeader: string) {
     newCount: delivered.length,
     sinceDays,
     lanes: laneStats,
+    trigger: auth.cronSecret ? "cron" : "manual",
     ranAt: new Date().toISOString(),
   };
   await admin
@@ -352,7 +407,88 @@ async function handleScan(userId: string, authHeader: string) {
     .update({ last_run_at: new Date().toISOString(), last_run_stats: stats })
     .eq("id", agent.id);
 
-  return jsonResponse({ ok: true, newCount: delivered.length, findings: delivered, stats });
+  return { newCount: delivered.length, findings: delivered, stats };
+}
+
+// ---------------------------------------------------------------------------
+// Cron (Phase 2): secret-authenticated batch runner. Picks due agents by
+// cadence + last_run_at (oldest first), enforces the paid gate for hourly at
+// RUN time (plan changes apply instantly, no webhook wiring needed), and runs
+// scans with bounded concurrency. Caps keep one tick well inside the edge
+// runtime's wall clock: ≤10 agents × ~8s ÷ 3 workers ≈ 30s.
+// ---------------------------------------------------------------------------
+
+const CRON_PICK_LIMIT = 40;
+const CRON_RUN_CAP = 10;
+const CRON_CONCURRENCY = 3;
+// Slack below the nominal interval so a 30-min tick reliably catches hourly
+// agents every hour and daily agents once a day.
+const CADENCE_INTERVAL_MS: Record<string, number> = {
+  hourly: 55 * 60 * 1000,
+  daily: 23 * 60 * 60 * 1000,
+};
+
+async function handleCron() {
+  if ((Deno.env.get("JOB_SCOUT_DISABLED") || "").trim() === "1") {
+    return jsonResponse({ ok: true, skipped: "JOB_SCOUT_DISABLED=1" });
+  }
+  const secret = cronSecretFromEnv();
+  if (!secret) return errorResponse("Cron secret not configured on the server.", 503);
+
+  const admin = getServiceClient();
+  const { data, error } = await admin
+    .from("job_scout_agents")
+    .select("*")
+    .eq("active", true)
+    .in("cadence", ["hourly", "daily"])
+    .order("last_run_at", { ascending: true, nullsFirst: true })
+    .limit(CRON_PICK_LIMIT);
+  if (error) return errorResponse("cron pick failed: " + error.message, 500);
+
+  const now = Date.now();
+  const candidates = ((data || []) as AgentRow[]).filter((a) => {
+    const interval = CADENCE_INTERVAL_MS[a.cadence];
+    if (!interval) return false;
+    if (!a.last_run_at) return true;
+    return now - Date.parse(a.last_run_at) >= interval;
+  });
+
+  const due: AgentRow[] = [];
+  for (const a of candidates) {
+    if (due.length >= CRON_RUN_CAP) break;
+    if (a.cadence === "hourly" && !(await isPaidUser(a.user_id))) {
+      // Free users run at most daily even if the row says hourly.
+      const dailyDue = !a.last_run_at ||
+        now - Date.parse(a.last_run_at) >= CADENCE_INTERVAL_MS.daily;
+      if (!dailyDue) continue;
+    }
+    due.push(a);
+  }
+
+  const results: Record<string, unknown>[] = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < due.length) {
+      const agent = due[cursor];
+      cursor += 1;
+      try {
+        const out = await runScanCore(agent, { cronSecret: secret });
+        results.push({ agentId: agent.id, newCount: out.newCount });
+      } catch (e) {
+        results.push({ agentId: agent.id, error: String((e as Error).message || e).slice(0, 200) });
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(CRON_CONCURRENCY, due.length) }, () => worker()),
+  );
+
+  return jsonResponse({
+    ok: true,
+    considered: candidates.length,
+    ran: results.length,
+    results,
+  });
 }
 
 async function handleUpdateFinding(userId: string, body: Record<string, unknown>) {
@@ -398,21 +534,32 @@ Deno.serve(withCors(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
-  let user;
-  try {
-    user = await getAuthedUser(req);
-  } catch (err) {
-    return errorResponse(String((err as Error).message), 401);
-  }
-
   let body: Record<string, unknown>;
   try {
     body = await req.json() as Record<string, unknown>;
   } catch {
     return errorResponse("Invalid JSON body", 400);
   }
-
   const action = str(body.action, 30);
+
+  // Cron authenticates with the shared secret (scheduler has no user session).
+  if (action === "cron") {
+    const secret = cronSecretFromEnv();
+    const provided = (req.headers.get("X-Cron-Secret") || "").trim();
+    if (!secret || provided !== secret) return errorResponse("Unauthorized", 401);
+    try {
+      return await handleCron();
+    } catch (err) {
+      return errorResponse(String((err as Error).message || "job-scout cron failed"), 500);
+    }
+  }
+
+  let user;
+  try {
+    user = await getAuthedUser(req);
+  } catch (err) {
+    return errorResponse(String((err as Error).message), 401);
+  }
   try {
     if (action === "get") return await handleGet(user.id);
     if (action === "save") return await handleSave(user.id, body);
