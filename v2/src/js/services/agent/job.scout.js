@@ -437,29 +437,33 @@
       );
     }
 
-    // Not configured yet → an inviting empty state that sells the feature.
+    // Not configured yet → an inviting, compact two-column empty state.
     if (!state.agent) {
       const step = function (num, icon, title, body) {
         return (
           '<div class="js-step">' +
-            '<span class="js-step-num">' + num + "</span>" +
             '<span class="js-step-ico"><i class="fa-solid ' + icon + '"></i></span>' +
-            "<h4>" + esc(title) + "</h4><p>" + esc(body) + "</p>" +
+            '<div class="js-step-body">' +
+              "<h4>" + esc(title) + ' <span class="js-step-num">' + num + "</span></h4>" +
+              "<p>" + esc(body) + "</p>" +
+            "</div>" +
           "</div>"
         );
       };
       return shell(
         (state.error ? '<div class="js-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(state.error) + "</div>" : "") +
         '<div class="js-empty">' +
-          '<span class="js-badge"><i class="fa-solid fa-satellite-dish"></i></span>' +
-          '<h3 class="js-empty-title">Put your job hunt on autopilot</h3>' +
-          '<p class="js-empty-sub">Configure a personal agent once. It runs your full search pipeline across every board and only ever surfaces roles it has <strong>never shown you before</strong> — scored against your resume.</p>' +
-          '<div class="js-steps">' +
-            step("01", "fa-sliders", "Configure once", "Titles, location, skills and what to exclude — pre-filled from your profile.") +
-            step("02", "fa-satellite-dish", "It scans for you", "Every board + LinkedIn/Indeed, on a schedule, while you get on with life.") +
-            step("03", "fa-inbox", "New roles land here", "Only fresh, matched postings — review, save, or apply with AI.") +
+          '<div class="js-empty-lead">' +
+            '<span class="js-badge"><i class="fa-solid fa-satellite-dish"></i></span>' +
+            '<h3 class="js-empty-title">Put your job hunt on autopilot</h3>' +
+            '<p class="js-empty-sub">Set up a personal agent once — it runs your full search pipeline across every board and only ever surfaces roles it has <strong>never shown you before</strong>, scored against your resume.</p>' +
+            '<button type="button" class="btn-primary" id="job-scout-setup"><i class="fa-solid fa-wand-magic-sparkles"></i> Set up your Job Agent</button>' +
           "</div>" +
-          '<button type="button" class="btn-primary" id="job-scout-setup"><i class="fa-solid fa-wand-magic-sparkles"></i> Set up your Job Agent</button>' +
+          '<div class="js-steps">' +
+            step("01", "fa-sliders", "Configure once", "Titles, location & skills — pre-filled from your profile.") +
+            step("02", "fa-satellite-dish", "It scans for you", "Every board + LinkedIn/Indeed, on a schedule.") +
+            step("03", "fa-inbox", "New roles land here", "Fresh, matched postings — review, save or apply.") +
+          "</div>" +
         "</div>"
       );
     }

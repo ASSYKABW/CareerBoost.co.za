@@ -67,55 +67,70 @@
   justify-content: flex-end;
 }
 
-/* ---- empty state (no agent yet) ------------------------------------------ */
-.js-empty { text-align: center; padding: var(--space-10) var(--space-8) var(--space-4); }
+/* ---- empty state (no agent yet) — compact two-column band ----------------- */
+.js-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-16) var(--space-24, 24px);
+  padding: var(--space-6) var(--space-4);
+}
+.js-empty-lead { flex: 1 1 300px; min-width: 240px; }
 .js-empty .js-badge {
-  width: 52px; height: 52px; font-size: 22px; border-radius: 16px;
-  margin: 0 auto var(--space-12);
+  width: 44px; height: 44px; font-size: 18px; border-radius: 13px;
+  margin: 0 0 var(--space-12);
 }
 .js-empty-title {
-  margin: 0 0 6px;
-  font-size: var(--font-size-20);
-  font-weight: 650;
+  margin: 0 0 var(--space-6);
+  font-size: var(--font-size-24);
+  font-weight: 680;
   font-family: var(--font-family-display);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 .js-empty-sub {
-  margin: 0 auto var(--space-16);
-  max-width: 46ch;
+  margin: 0 0 var(--space-16);
+  max-width: 42ch;
   color: var(--color-text-muted);
   font-size: var(--font-size-14);
-  line-height: 1.5;
+  line-height: 1.55;
 }
+.js-empty-lead .btn-primary { width: fit-content; }
+
 .js-steps {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-10);
-  max-width: 620px;
-  margin: 0 auto var(--space-18);
+  flex: 1 1 340px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
 }
 .js-step {
-  position: relative;
-  padding: var(--space-14) var(--space-12);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-14);
   border-radius: var(--radius-12);
   border: 1px solid var(--color-border);
   background: rgba(255, 255, 255, 0.02);
-  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
+.js-step:hover { border-color: rgba(34, 227, 255, 0.22); background: rgba(34, 227, 255, 0.03); }
 .js-step-ico {
+  flex: none;
   display: inline-grid; place-items: center;
-  width: 30px; height: 30px; border-radius: 9px; margin-bottom: 8px;
+  width: 34px; height: 34px; border-radius: 10px;
   color: var(--color-primary);
   background: rgba(34, 227, 255, 0.1);
   border: 1px solid rgba(34, 227, 255, 0.22);
-  font-size: 13px;
+  font-size: 14px;
 }
-.js-step h4 { margin: 0 0 3px; font-size: var(--font-size-13); font-weight: 620; }
-.js-step p  { margin: 0; font-size: var(--font-size-12); color: var(--color-text-muted); line-height: 1.45; }
-.js-step-num {
-  position: absolute; top: 10px; right: 12px;
-  font-family: var(--font-family-mono); font-size: 11px; color: var(--color-text-dim);
+.js-step-body { min-width: 0; }
+.js-step h4 {
+  margin: 0 0 2px;
+  font-size: var(--font-size-14); font-weight: 640;
+  display: flex; align-items: baseline; gap: var(--space-8);
 }
+.js-step-num { font-family: var(--font-family-mono); font-size: 11px; font-weight: 500; color: var(--color-text-dim); }
+.js-step p  { margin: 0; font-size: var(--font-size-12); color: var(--color-text-muted); line-height: 1.4; }
 
 /* ---- targeting + stats (configured agent) -------------------------------- */
 .js-targeting {
@@ -305,5 +320,6 @@ select.js-input { padding-right: 2.3rem; }
 /* ---- responsive ---------------------------------------------------------- */
 @media (max-width: 900px) {
   .js-findings { grid-template-columns: 1fr; }
-  .js-steps { grid-template-columns: 1fr; }
+  .js-empty { gap: var(--space-14); }
+  .js-empty-lead, .js-steps { flex-basis: 100%; }
 }
