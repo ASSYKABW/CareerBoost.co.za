@@ -188,66 +188,117 @@ async function callSearchFn(
   }
 }
 
-async function loadAgent(userId: string): Promise<AgentRow | null> {
+// Multi-agent (Phase 4b): free plans get 1 agent, paid up to 5.
+const MAX_AGENTS_FREE = 1;
+const MAX_AGENTS_PAID = 5;
+
+async function loadAgents(userId: string): Promise<AgentRow[]> {
   const admin = getServiceClient();
   const { data, error } = await admin
     .from("job_scout_agents")
     .select("*")
     .eq("user_id", userId)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
   if (error) throw new Error("agent load failed: " + error.message);
-  return (data as AgentRow) || null;
+  return (data || []) as AgentRow[];
 }
 
-async function loadFindings(userId: string) {
+async function loadAgentById(agentId: string, userId: string): Promise<AgentRow | null> {
+  const admin = getServiceClient();
+  const { data, error } = await admin
+    .from("job_scout_agents")
+    .select("*")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (error) throw new Error("agent load failed: " + error.message);
+  const row = (data as AgentRow) || null;
+  return row && row.user_id === userId ? row : null;
+}
+
+// All non-dismissed findings for the user, grouped by agent_id.
+async function loadFindingsByAgent(userId: string): Promise<Record<string, unknown[]>> {
   const admin = getServiceClient();
   const { data, error } = await admin
     .from("job_scout_findings")
-    .select("id, fingerprint, job, fit_score, fit_summary, fit_reasons, status, found_at")
+    .select("id, agent_id, fingerprint, job, fit_score, fit_summary, fit_reasons, status, found_at")
     .eq("user_id", userId)
     .neq("status", "dismissed")
     .order("found_at", { ascending: false })
-    .limit(FINDINGS_LIMIT);
+    .limit(FINDINGS_LIMIT * MAX_AGENTS_PAID);
   if (error) throw new Error("findings load failed: " + error.message);
-  return (data || []).map((f: Record<string, unknown>) => ({
-    id: f.id,
-    fingerprint: f.fingerprint,
-    job: f.job,
-    fitScore: f.fit_score,
-    fitSummary: f.fit_summary,
-    fitReasons: f.fit_reasons,
-    status: f.status,
-    foundAt: f.found_at,
-  }));
+  const byAgent: Record<string, unknown[]> = {};
+  for (const f of (data || []) as Record<string, unknown>[]) {
+    const aid = String(f.agent_id);
+    (byAgent[aid] ||= []).push({
+      id: f.id,
+      fingerprint: f.fingerprint,
+      job: f.job,
+      fitScore: f.fit_score,
+      fitSummary: f.fit_summary,
+      fitReasons: f.fit_reasons,
+      status: f.status,
+      foundAt: f.found_at,
+    });
+  }
+  return byAgent;
 }
 
 async function handleGet(userId: string) {
-  const agent = await loadAgent(userId);
-  const findings = agent ? await loadFindings(userId) : [];
-  const newCount = findings.filter((f) => f.status === "new").length;
+  const agents = await loadAgents(userId);
+  const byAgent = agents.length ? await loadFindingsByAgent(userId) : {};
+  let totalNew = 0;
+  const out = agents.map((a) => {
+    const findings = (byAgent[a.id] || []).slice(0, FINDINGS_LIMIT);
+    const newCount = findings.filter((f) => (f as { status?: string }).status === "new").length;
+    totalNew += newCount;
+    return Object.assign(toClientAgent(a), { findings, newCount });
+  });
   return jsonResponse({
     ok: true,
-    agent: agent ? toClientAgent(agent) : null,
-    findings,
-    stats: { newCount },
+    agents: out,
+    limit: (await isPaidUser(userId)) ? MAX_AGENTS_PAID : MAX_AGENTS_FREE,
+    stats: { totalNew, agentCount: out.length },
   });
 }
 
 async function handleSave(userId: string, body: Record<string, unknown>) {
   const input = (body.agent && typeof body.agent === "object" ? body.agent : {}) as Record<string, unknown>;
+  const agentId = str(input.id, 60);
   const targetTitles = strArr(input.targetTitles, 5);
   if (!targetTitles.length) {
     return errorResponse("Add at least one target job title.", 400);
   }
+
+  const admin = getServiceClient();
+  const paid = await isPaidUser(userId);
+
+  // Creating a NEW agent → enforce the per-plan cap.
+  if (!agentId) {
+    const { count } = await admin
+      .from("job_scout_agents")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+    const cap = paid ? MAX_AGENTS_PAID : MAX_AGENTS_FREE;
+    if ((count || 0) >= cap) {
+      return errorResponse(
+        paid
+          ? `You've reached the maximum of ${cap} agents.`
+          : "Free plans include 1 Job Agent. Upgrade to run up to " + MAX_AGENTS_PAID + ".",
+        403,
+      );
+    }
+  } else {
+    // Updating → must own it.
+    const existing = await loadAgentById(agentId, userId);
+    if (!existing) return errorResponse("Agent not found.", 404);
+  }
+
   // Cadence: hourly auto-scans are a paid perk — free plans clamp to daily.
-  // Enforced again at cron run time, so a lapsed subscription downgrades
-  // automatically without any webhook wiring.
   const requestedCadence = oneOf(input.cadence, ["manual", "daily", "hourly"], "manual");
   let cadence = requestedCadence;
-  if (cadence === "hourly" && !(await isPaidUser(userId))) cadence = "daily";
+  if (cadence === "hourly" && !paid) cadence = "daily";
 
-  const row = {
-    user_id: userId,
+  const fields = {
     name: str(input.name, 60) || "My Job Agent",
     target_titles: targetTitles,
     must_have_skills: strArr(input.mustHaveSkills, 10),
@@ -260,29 +311,54 @@ async function handleSave(userId: string, body: Record<string, unknown>) {
     cadence,
     updated_at: new Date().toISOString(),
   };
-  const admin = getServiceClient();
-  const { data, error } = await admin
-    .from("job_scout_agents")
-    .upsert(row, { onConflict: "user_id" })
-    .select("*")
-    .single();
-  if (error) return errorResponse("agent save failed: " + error.message, 500);
 
-  // Notify prefs live in columns from migration 0050. Persist them in a
-  // SEPARATE best-effort update so `save` still works if 0050 hasn't been
-  // applied yet (PostgREST returns the unknown-column error in the result, not
-  // as a throw — we simply ignore it). Phase 3 fully activates once 0050 lands.
+  let saved: AgentRow;
+  if (agentId) {
+    const { data, error } = await admin
+      .from("job_scout_agents")
+      .update(fields)
+      .eq("id", agentId)
+      .eq("user_id", userId)
+      .select("*")
+      .single();
+    if (error) return errorResponse("agent save failed: " + error.message, 500);
+    saved = data as AgentRow;
+  } else {
+    const { data, error } = await admin
+      .from("job_scout_agents")
+      .insert(Object.assign({ user_id: userId }, fields))
+      .select("*")
+      .single();
+    if (error) return errorResponse("agent save failed: " + error.message, 500);
+    saved = data as AgentRow;
+  }
+
+  // Notify prefs live in columns from migration 0050 — persist separately so
+  // save still works if 0050 hasn't been applied (unknown-column error is
+  // returned in the result, not thrown; we ignore it).
   const notifyPush = input.notifyPush !== false;
   const notifyEmail = input.notifyEmail !== false;
   await admin
     .from("job_scout_agents")
     .update({ notify_push: notifyPush, notify_email: notifyEmail })
-    .eq("id", (data as AgentRow).id);
+    .eq("id", saved.id);
 
-  const client = toClientAgent(data as AgentRow);
+  const client = toClientAgent(saved);
   client.notifyPush = notifyPush;
   client.notifyEmail = notifyEmail;
   return jsonResponse({ ok: true, agent: client, cadenceClamped: requestedCadence !== cadence });
+}
+
+async function handleDelete(userId: string, body: Record<string, unknown>) {
+  const agentId = str(body.agentId, 60);
+  if (!agentId) return errorResponse("agentId is required.", 400);
+  const existing = await loadAgentById(agentId, userId);
+  if (!existing) return errorResponse("Agent not found.", 404);
+  const admin = getServiceClient();
+  // seen + findings cascade via FK ON DELETE CASCADE (migration 0049).
+  const { error } = await admin.from("job_scout_agents").delete().eq("id", agentId).eq("user_id", userId);
+  if (error) return errorResponse("agent delete failed: " + error.message, 500);
+  return jsonResponse({ ok: true });
 }
 
 // Paid check: any active non-free subscription. Free users are clamped to the
@@ -302,12 +378,14 @@ async function isPaidUser(userId: string): Promise<boolean> {
   }
 }
 
-async function handleScan(userId: string, authHeader: string) {
-  const agent = await loadAgent(userId);
+async function handleScan(userId: string, authHeader: string, body: Record<string, unknown>) {
+  const agentId = str(body.agentId, 60);
+  // No agentId → scan the user's first agent (back-compat for single-agent UI).
+  const agent = agentId ? await loadAgentById(agentId, userId) : (await loadAgents(userId))[0] || null;
   if (!agent) return errorResponse("Set up your Job Agent first.", 400);
   if (!agent.active) return errorResponse("This agent is paused — activate it to scan.", 400);
   const out = await runScanCore(agent, { jwt: authHeader });
-  return jsonResponse({ ok: true, newCount: out.newCount, findings: out.findings, stats: out.stats });
+  return jsonResponse({ ok: true, agentId: agent.id, newCount: out.newCount, findings: out.findings, stats: out.stats });
 }
 
 // Bounded-concurrency map — keeps the Deep Scan fan-out from opening N
@@ -779,6 +857,123 @@ async function handleCron() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Weekly report (Phase 4b): secret-authed. Emails each user a recap of every
+// role their agents surfaced in the past 7 days. Gated on the user having at
+// least one agent with email alerts on; respects email_suppressions + unsub.
+// ---------------------------------------------------------------------------
+const WEEKLY_MAX_USERS = 300;
+const WEEKLY_JOBS_PER_EMAIL = 8;
+
+async function handleWeeklyReport(dryRun: boolean) {
+  if ((Deno.env.get("JOB_SCOUT_DISABLED") || "").trim() === "1") {
+    return jsonResponse({ ok: true, skipped: "JOB_SCOUT_DISABLED=1" });
+  }
+  if (!resendConfigured()) {
+    return jsonResponse({ ok: true, skipped: "Resend not configured", users: 0, sent: 0 });
+  }
+  const admin = getServiceClient();
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data: rows, error } = await admin
+    .from("job_scout_findings")
+    .select("user_id, job, found_at")
+    .gte("found_at", since)
+    .order("found_at", { ascending: false })
+    .limit(6000);
+  if (error) return errorResponse("weekly findings query failed: " + error.message, 500);
+
+  // Aggregate per user (keep the newest N jobs + total count).
+  const byUser = new Map<string, { jobs: ScoutJob[]; count: number }>();
+  for (const r of (rows || []) as Record<string, unknown>[]) {
+    const uid = String(r.user_id);
+    const agg = byUser.get(uid) || { jobs: [], count: 0 };
+    agg.count += 1;
+    if (agg.jobs.length < WEEKLY_JOBS_PER_EMAIL) agg.jobs.push(compactJob((r.job || {}) as Record<string, unknown>));
+    byUser.set(uid, agg);
+  }
+
+  let sent = 0;
+  let eligible = 0;
+  const users = Array.from(byUser.keys()).slice(0, WEEKLY_MAX_USERS);
+  for (const userId of users) {
+    // Only users who left email alerts on for at least one agent.
+    const { data: ag } = await admin
+      .from("job_scout_agents")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("notify_email", true)
+      .limit(1);
+    if (!ag || !ag.length) continue;
+
+    const { data: prof } = await admin
+      .from("profiles")
+      .select("email, email_unsub_token")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const email = (prof as { email?: string } | null)?.email || "";
+    if (!email) continue;
+
+    const { data: supp } = await admin
+      .from("email_suppressions")
+      .select("email")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+    if (supp) continue;
+
+    eligible += 1;
+    if (dryRun) continue;
+
+    let token = (prof as { email_unsub_token?: string } | null)?.email_unsub_token || "";
+    if (!token) {
+      token = crypto.randomUUID().replace(/-/g, "");
+      await admin.from("profiles").update({ email_unsub_token: token }).eq("user_id", userId);
+    }
+    const unsubUrl = `${FN_BASE()}/email-unsubscribe?u=${encodeURIComponent(userId)}&k=${encodeURIComponent(token)}`;
+    const agg = byUser.get(userId)!;
+    try {
+      const res = await sendEmail({
+        to: email,
+        subject: `Your week in jobs — ${agg.count} new ${agg.count === 1 ? "role" : "roles"}`,
+        html: buildWeeklyHtml(agg.jobs, agg.count, unsubUrl),
+        headers: { "List-Unsubscribe": `<${unsubUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+        tags: [{ name: "type", value: "job-scout-weekly" }],
+      });
+      if (res.ok) sent += 1;
+    } catch (e) {
+      console.error("[job-scout] weekly send failed:", String((e as Error).message || e));
+    }
+  }
+
+  return jsonResponse({ ok: true, dryRun, usersWithFinds: byUser.size, eligible, sent });
+}
+
+function buildWeeklyHtml(jobs: ScoutJob[], total: number, unsubUrl: string): string {
+  const rows = jobs.map((j) => {
+    const meta = [j.company, j.location].filter(Boolean).map(escHtml).join(" · ");
+    return (
+      '<tr><td style="padding:12px 0;border-bottom:1px solid #1c2136;">' +
+        '<a href="' + escHtml(j.url || SITE) + '" style="color:#e9ecf8;font-weight:600;font-size:15px;text-decoration:none;">' + escHtml(j.title || "New role") + "</a>" +
+        (meta ? '<div style="color:#8d94ab;font-size:13px;margin-top:3px;">' + meta + "</div>" : "") +
+      "</td></tr>"
+    );
+  }).join("");
+  const dash = SITE + "/#/dashboard";
+  const extra = total > jobs.length ? `<p style="color:#8d94ab;font-size:13px;margin:10px 0 0;">…and ${total - jobs.length} more in your inbox.</p>` : "";
+  return (
+    '<div style="background:#0a0d1a;padding:28px 0;font-family:Inter,Arial,sans-serif;">' +
+      '<div style="max-width:520px;margin:0 auto;background:#0f1424;border:1px solid #1c2136;border-radius:16px;padding:26px;">' +
+        '<div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#22e3ff;font-weight:700;">CareerBoost · Weekly agent report</div>' +
+        '<h1 style="color:#e9ecf8;font-size:21px;margin:8px 0 4px;">Your agents found ' + total + " new " + (total === 1 ? "role" : "roles") + " this week</h1>" +
+        '<p style="color:#8d94ab;font-size:14px;margin:0 0 16px;">Here are the freshest matches — every one is a job you hadn’t seen before.</p>' +
+        '<table style="width:100%;border-collapse:collapse;">' + rows + "</table>" +
+        extra +
+        '<a href="' + escHtml(dash) + '" style="display:inline-block;margin-top:20px;background:linear-gradient(135deg,#22e3ff,#b06bff);color:#0a0d18;font-weight:700;font-size:14px;text-decoration:none;padding:11px 20px;border-radius:10px;">Review in CareerBoost →</a>' +
+        '<p style="color:#5a6179;font-size:12px;margin:22px 0 0;">Weekly recap from your Job Agents. Turn off email in each agent’s settings, or <a href="' + escHtml(unsubUrl) + '" style="color:#5566aa;">unsubscribe</a>.</p>' +
+      "</div>" +
+    "</div>"
+  );
+}
+
 async function handleUpdateFinding(userId: string, body: Record<string, unknown>) {
   const findingId = str(body.findingId, 60);
   if (!findingId) return errorResponse("findingId is required.", 400);
@@ -830,15 +1025,18 @@ Deno.serve(withCors(async (req) => {
   }
   const action = str(body.action, 30);
 
-  // Cron authenticates with the shared secret (scheduler has no user session).
-  if (action === "cron") {
+  // Cron + weekly-report authenticate with the shared secret (schedulers have
+  // no user session).
+  if (action === "cron" || action === "weekly-report") {
     const secret = cronSecretFromEnv();
     const provided = (req.headers.get("X-Cron-Secret") || "").trim();
     if (!secret || provided !== secret) return errorResponse("Unauthorized", 401);
     try {
-      return await handleCron();
+      return action === "cron"
+        ? await handleCron()
+        : await handleWeeklyReport(body.dryRun === true);
     } catch (err) {
-      return errorResponse(String((err as Error).message || "job-scout cron failed"), 500);
+      return errorResponse(String((err as Error).message || "job-scout " + action + " failed"), 500);
     }
   }
 
@@ -851,9 +1049,10 @@ Deno.serve(withCors(async (req) => {
   try {
     if (action === "get") return await handleGet(user.id);
     if (action === "save") return await handleSave(user.id, body);
-    if (action === "scan") return await handleScan(user.id, req.headers.get("Authorization") || "");
+    if (action === "scan") return await handleScan(user.id, req.headers.get("Authorization") || "", body);
+    if (action === "delete") return await handleDelete(user.id, body);
     if (action === "update-finding") return await handleUpdateFinding(user.id, body);
-    return errorResponse(`Unknown action "${action}". Use get | save | scan | update-finding.`, 400);
+    return errorResponse(`Unknown action "${action}". Use get | save | scan | delete | update-finding.`, 400);
   } catch (err) {
     return errorResponse(String((err as Error).message || "job-scout failed"), 500);
   }

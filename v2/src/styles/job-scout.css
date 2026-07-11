@@ -4,7 +4,23 @@
  * The panel spans the full dashboard grid so its inbox has room to breathe.
  * ======================================================================== */
 
-.dashboard-layout > .job-scout-card { grid-column: 1 / -1; }
+.dashboard-layout > .job-scout-card,
+.dashboard-layout > .job-scout-stack { grid-column: 1 / -1; }
+
+/* Multi-agent stack: a header + one card per agent. */
+.job-scout-stack { display: flex; flex-direction: column; gap: var(--space-14); }
+.js-stack-head {
+  display: flex; align-items: center; gap: var(--space-12);
+  padding: var(--space-4) var(--space-2) var(--space-2);
+}
+.js-stack-head .js-head-titles { min-width: 0; }
+.js-stack-head h3 {
+  margin: 0; font-size: var(--font-size-18); font-weight: 650;
+  font-family: var(--font-family-display); letter-spacing: -0.01em;
+}
+.js-stack-head .js-head-sub { margin: 2px 0 0; font-size: var(--font-size-12); color: var(--color-text-dim); }
+.js-stack-head .js-head-actions { margin-left: auto; }
+.job-scout-stack > .js-error { margin: 0; }
 
 .job-scout-card {
   /* Sits on the base .card gradient; add a faint cyan→violet wash so the
