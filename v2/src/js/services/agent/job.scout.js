@@ -110,7 +110,7 @@
   function fitChip(score) {
     if (typeof score !== "number") return "";
     const cls = score >= 72 ? "green" : score >= 50 ? "cyan" : "violet";
-    return '<span class="chip ' + cls + '" title="AI match vs your resume">' + esc(String(score)) + " · Fit</span>";
+    return '<span class="chip ' + cls + '" title="AI match vs your resume"><i class="fa-solid fa-wand-magic-sparkles"></i> ' + esc(String(score)) + "</span>";
   }
 
   // ---------------------------------------------------------------------------
@@ -244,10 +244,10 @@
 
   function fieldRow(label, inner, hint) {
     return (
-      '<label style="display:block;margin-bottom:12px;">' +
-        '<span class="muted" style="display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px;">' + esc(label) + "</span>" +
+      '<label class="js-field">' +
+        '<span class="js-field-label">' + esc(label) + "</span>" +
         inner +
-        (hint ? '<span class="muted" style="display:block;font-size:12px;margin-top:3px;">' + esc(hint) + "</span>" : "") +
+        (hint ? '<span class="js-field-hint">' + esc(hint) + "</span>" : "") +
       "</label>"
     );
   }
@@ -257,50 +257,45 @@
     const p = wizardPrefill();
     const overlay = document.createElement("div");
     overlay.id = "job-scout-wizard";
-    overlay.setAttribute("style", "position:fixed;inset:0;z-index:1200;background:rgba(4,6,14,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;");
-    const inputStyle = 'style="width:100%;box-sizing:border-box;"';
+    overlay.className = "js-modal-overlay";
+    const inputCls = 'class="js-input"';
     overlay.innerHTML =
-      '<div class="card" role="dialog" aria-modal="true" aria-label="Job Agent setup" style="max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:22px;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
-          "<h3><i class=\"fa-solid fa-satellite-dish\"></i> " + (state.agent ? "Edit your Job Agent" : "Set up your Job Agent") + "</h3>" +
-          '<button type="button" class="icon-btn" id="js-agent-cancel-x" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="js-modal" role="dialog" aria-modal="true" aria-label="Job Agent setup">' +
+        '<div class="js-modal-head">' +
+          '<span class="js-badge"><i class="fa-solid fa-satellite-dish"></i></span>' +
+          "<h3>" + (state.agent ? "Edit your Job Agent" : "Set up your Job Agent") + "</h3>" +
+          '<button type="button" class="js-modal-close" id="js-agent-cancel-x" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>' +
         "</div>" +
-        '<p class="muted" style="margin-top:0;">It runs your whole search pipeline and only brings back jobs it has never shown you before.</p>' +
-        fieldRow("Agent name", '<input id="js-agent-name" type="text" maxlength="60" value="' + esc(p.name) + '" ' + inputStyle + " />") +
-        fieldRow("Target job titles (comma-separated)", '<input id="js-agent-titles" type="text" placeholder="e.g. Fire Engineer, Fire Protection Engineer" value="' + esc(p.titles) + '" ' + inputStyle + " />", "Required — the first title drives the search query.") +
-        fieldRow("Must-have skills (optional)", '<input id="js-agent-skills" type="text" placeholder="e.g. AutoCAD, sprinkler design" value="' + esc(p.skills) + '" ' + inputStyle + " />") +
-        fieldRow("Exclude keywords (optional)", '<input id="js-agent-excludes" type="text" placeholder="e.g. sales, internship" value="' + esc(p.excludes) + '" ' + inputStyle + " />", "Jobs mentioning these are never delivered.") +
-        fieldRow("Location", '<input id="js-agent-location" type="text" placeholder="e.g. Cape Town" value="' + esc(p.location) + '" ' + inputStyle + " />") +
-        '<div style="display:flex;gap:12px;flex-wrap:wrap;">' +
-          '<div style="flex:1;min-width:160px;">' +
-            fieldRow("Location match",
-              '<select id="js-agent-strictness" ' + inputStyle + ">" +
-                '<option value="strict"' + (p.strictness === "strict" ? " selected" : "") + ">Strict — this place only</option>" +
-                '<option value="balanced"' + (p.strictness === "balanced" ? " selected" : "") + ">Balanced — includes remote</option>" +
-                '<option value="broad"' + (p.strictness === "broad" ? " selected" : "") + ">Broad</option>" +
-              "</select>") +
-          "</div>" +
-          '<div style="flex:1;min-width:160px;">' +
-            fieldRow("Work mode",
-              '<select id="js-agent-workmode" ' + inputStyle + ">" +
-                '<option value="any"' + (p.workMode === "any" ? " selected" : "") + ">Any</option>" +
-                '<option value="remote"' + (p.workMode === "remote" ? " selected" : "") + ">Remote only</option>" +
-                '<option value="onsite"' + (p.workMode === "onsite" ? " selected" : "") + ">On-site</option>" +
-              "</select>") +
-          "</div>" +
-          '<div style="flex:1;min-width:160px;">' +
-            fieldRow("Auto-scan",
-              '<select id="js-agent-cadence" ' + inputStyle + ">" +
-                '<option value="daily"' + (p.cadence === "daily" ? " selected" : "") + ">Daily (automatic)</option>" +
-                '<option value="hourly"' + (p.cadence === "hourly" ? " selected" : "") + ">Hourly — Pro</option>" +
-                '<option value="manual"' + (p.cadence === "manual" ? " selected" : "") + ">Manual only</option>" +
-              "</select>",
-              "Your agent runs in the background — new finds are waiting when you return.") +
-          "</div>" +
+        '<p class="js-modal-intro">It runs your whole search pipeline and only brings back jobs it has never shown you before.</p>' +
+        fieldRow("Agent name", '<input id="js-agent-name" type="text" maxlength="60" value="' + esc(p.name) + '" ' + inputCls + " />") +
+        fieldRow("Target job titles (comma-separated)", '<input id="js-agent-titles" type="text" placeholder="e.g. Fire Engineer, Fire Protection Engineer" value="' + esc(p.titles) + '" ' + inputCls + " />", "Required — the first title drives the search query.") +
+        fieldRow("Must-have skills (optional)", '<input id="js-agent-skills" type="text" placeholder="e.g. AutoCAD, sprinkler design" value="' + esc(p.skills) + '" ' + inputCls + " />") +
+        fieldRow("Exclude keywords (optional)", '<input id="js-agent-excludes" type="text" placeholder="e.g. sales, internship" value="' + esc(p.excludes) + '" ' + inputCls + " />", "Jobs mentioning these are never delivered.") +
+        fieldRow("Location", '<input id="js-agent-location" type="text" placeholder="e.g. Cape Town" value="' + esc(p.location) + '" ' + inputCls + " />") +
+        '<div class="js-field-row">' +
+          fieldRow("Location match",
+            '<select id="js-agent-strictness" ' + inputCls + ">" +
+              '<option value="strict"' + (p.strictness === "strict" ? " selected" : "") + ">Strict — this place only</option>" +
+              '<option value="balanced"' + (p.strictness === "balanced" ? " selected" : "") + ">Balanced — includes remote</option>" +
+              '<option value="broad"' + (p.strictness === "broad" ? " selected" : "") + ">Broad</option>" +
+            "</select>") +
+          fieldRow("Work mode",
+            '<select id="js-agent-workmode" ' + inputCls + ">" +
+              '<option value="any"' + (p.workMode === "any" ? " selected" : "") + ">Any</option>" +
+              '<option value="remote"' + (p.workMode === "remote" ? " selected" : "") + ">Remote only</option>" +
+              '<option value="onsite"' + (p.workMode === "onsite" ? " selected" : "") + ">On-site</option>" +
+            "</select>") +
+          fieldRow("Auto-scan",
+            '<select id="js-agent-cadence" ' + inputCls + ">" +
+              '<option value="daily"' + (p.cadence === "daily" ? " selected" : "") + ">Daily (automatic)</option>" +
+              '<option value="hourly"' + (p.cadence === "hourly" ? " selected" : "") + ">Hourly — Pro</option>" +
+              '<option value="manual"' + (p.cadence === "manual" ? " selected" : "") + ">Manual only</option>" +
+            "</select>") +
         "</div>" +
-        '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">' +
+        '<p class="js-field-hint" style="margin:-4px 0 14px;"><i class="fa-solid fa-bolt"></i> Your agent runs in the background — new finds are waiting when you return.</p>' +
+        '<div class="js-modal-foot">' +
           '<button type="button" class="btn-ghost" id="js-agent-cancel">Cancel</button>' +
-          '<button type="button" class="btn-primary" id="js-agent-submit">' + (state.agent ? "Save changes" : "Create agent & scan") + "</button>" +
+          '<button type="button" class="btn-primary" id="js-agent-submit"><i class="fa-solid fa-wand-magic-sparkles"></i> ' + (state.agent ? "Save changes" : "Create agent & scan") + "</button>" +
         "</div>" +
       "</div>";
     document.body.appendChild(overlay);
@@ -380,107 +375,152 @@
 
   function renderFindingRow(f) {
     const job = f.job || {};
-    const meta = [job.company, job.location].filter(Boolean).map(esc).join(" · ");
+    const metaBits = [];
+    if (job.company) metaBits.push('<span><i class="fa-solid fa-building" aria-hidden="true"></i> ' + esc(job.company) + "</span>");
+    if (job.location) metaBits.push('<span><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ' + esc(job.location) + "</span>");
+    if (job.postedAt) metaBits.push('<span><i class="fa-solid fa-clock" aria-hidden="true"></i> ' + esc(timeAgo(job.postedAt) || job.postedAt) + "</span>");
     const statusChip = f.status === "saved"
-      ? '<span class="chip subtle">Saved</span>'
+      ? '<span class="chip green"><i class="fa-solid fa-check"></i> Saved</span>'
       : f.status === "applied"
-        ? '<span class="chip subtle">Applied</span>'
+        ? '<span class="chip cyan">Applied</span>'
         : "";
     return (
-      '<li class="job-scout-row" style="display:flex;flex-direction:column;gap:4px;padding:10px 0;border-bottom:1px solid var(--color-border);">' +
-        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;">' +
-          '<a href="' + esc(job.url || "#") + '" target="_blank" rel="noopener noreferrer" style="font-weight:600;">' + esc(job.title || "Untitled role") + "</a>" +
-          '<span style="display:flex;gap:6px;flex-wrap:wrap;">' +
-            fitChip(f.fitScore) +
-            (job.remote ? '<span class="chip blue">Remote</span>' : "") +
-            (job.source ? '<span class="chip subtle">' + esc(job.source) + "</span>" : "") +
-            statusChip +
-          "</span>" +
+      '<div class="js-finding' + (f.status === "new" ? " is-new" : "") + '">' +
+        '<div class="js-finding-top">' +
+          '<a class="js-finding-title" href="' + esc(job.url || "#") + '" target="_blank" rel="noopener noreferrer">' + esc(job.title || "Untitled role") + "</a>" +
+          (fitChip(f.fitScore) || "") +
         "</div>" +
-        (meta ? '<span class="muted" style="font-size:13px;">' + meta + (job.postedAt ? " · " + esc(timeAgo(job.postedAt) || job.postedAt) : "") + "</span>" : "") +
-        '<div style="display:flex;gap:8px;margin-top:2px;flex-wrap:wrap;">' +
+        (metaBits.length ? '<div class="js-finding-meta">' + metaBits.join("") + "</div>" : "") +
+        '<div class="js-finding-chips">' +
+          (job.remote ? '<span class="chip blue"><i class="fa-solid fa-house-laptop"></i> Remote</span>' : "") +
+          (job.source ? '<span class="chip subtle">' + esc(job.source) + "</span>" : "") +
+          statusChip +
+        "</div>" +
+        '<div class="js-finding-actions">' +
           '<a class="btn-ghost btn-sm" href="' + esc(job.url || "#") + '" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>' +
           (f.status !== "saved"
             ? '<button type="button" class="btn-ghost btn-sm" data-scout-save="' + esc(f.id) + '"><i class="fa-solid fa-bookmark"></i> Save</button>'
             : "") +
           '<button type="button" class="btn-ghost btn-sm" data-scout-dismiss="' + esc(f.id) + '"><i class="fa-solid fa-xmark"></i> Dismiss</button>' +
         "</div>" +
-      "</li>"
+      "</div>"
+    );
+  }
+
+  function shell(inner) {
+    return '<article class="card panel-lg job-scout-card" id="job-scout-panel">' + inner + "</article>";
+  }
+
+  function simpleHead(title, chip) {
+    return (
+      '<div class="js-head">' +
+        '<span class="js-badge"><i class="fa-solid fa-satellite-dish"></i></span>' +
+        '<div class="js-head-titles"><h3>' + esc(title) + "</h3></div>" +
+        (chip ? '<div class="js-head-actions">' + chip + "</div>" : "") +
+      "</div>"
     );
   }
 
   function renderPanel() {
     // Local-only / signed-out: a quiet teaser, no API calls.
     if (!backendReady()) {
-      return (
-        '<article class="card panel-lg" id="job-scout-panel">' +
-          '<div class="resume-section-head"><h3><i class="fa-solid fa-satellite-dish"></i> Job Agent</h3><span class="chip subtle">Cloud</span></div>' +
-          '<p class="muted">Sign in and your personal agent scans every board for brand-new roles that match you — and delivers them here.</p>' +
-        "</article>"
+      return shell(
+        simpleHead("Job Agent", '<span class="chip subtle">Cloud</span>') +
+        '<p class="js-empty-sub" style="text-align:left;margin-left:0;">Sign in and your personal agent scans every board for brand-new roles that match you — then delivers them right here.</p>'
       );
     }
 
     if (!state.loadedOnce || (state.loading && !state.agent && !state.findings.length)) {
-      return (
-        '<article class="card panel-lg" id="job-scout-panel">' +
-          '<div class="resume-section-head"><h3><i class="fa-solid fa-satellite-dish"></i> Job Agent</h3></div>' +
-          '<p class="muted"><i class="fa-solid fa-circle-notch fa-spin"></i> Checking your agent…</p>' +
-        "</article>"
+      return shell(
+        simpleHead("Job Agent") +
+        '<p class="js-empty-sub" style="text-align:left;margin-left:0;"><i class="fa-solid fa-circle-notch fa-spin"></i> Checking your agent…</p>'
       );
     }
 
+    // Not configured yet → an inviting empty state that sells the feature.
     if (!state.agent) {
-      return (
-        '<article class="card panel-lg" id="job-scout-panel">' +
-          '<div class="resume-section-head"><h3><i class="fa-solid fa-satellite-dish"></i> Job Agent</h3><span class="chip cyan">New</span></div>' +
-          '<p class="muted">Configure a personal agent once — it runs your full search pipeline and only ever shows you jobs it has never delivered before.</p>' +
-          (state.error ? '<p class="ai-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(state.error) + "</p>" : "") +
+      const step = function (num, icon, title, body) {
+        return (
+          '<div class="js-step">' +
+            '<span class="js-step-num">' + num + "</span>" +
+            '<span class="js-step-ico"><i class="fa-solid ' + icon + '"></i></span>' +
+            "<h4>" + esc(title) + "</h4><p>" + esc(body) + "</p>" +
+          "</div>"
+        );
+      };
+      return shell(
+        (state.error ? '<div class="js-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(state.error) + "</div>" : "") +
+        '<div class="js-empty">' +
+          '<span class="js-badge"><i class="fa-solid fa-satellite-dish"></i></span>' +
+          '<h3 class="js-empty-title">Put your job hunt on autopilot</h3>' +
+          '<p class="js-empty-sub">Configure a personal agent once. It runs your full search pipeline across every board and only ever surfaces roles it has <strong>never shown you before</strong> — scored against your resume.</p>' +
+          '<div class="js-steps">' +
+            step("01", "fa-sliders", "Configure once", "Titles, location, skills and what to exclude — pre-filled from your profile.") +
+            step("02", "fa-satellite-dish", "It scans for you", "Every board + LinkedIn/Indeed, on a schedule, while you get on with life.") +
+            step("03", "fa-inbox", "New roles land here", "Only fresh, matched postings — review, save, or apply with AI.") +
+          "</div>" +
           '<button type="button" class="btn-primary" id="job-scout-setup"><i class="fa-solid fa-wand-magic-sparkles"></i> Set up your Job Agent</button>' +
-        "</article>"
+        "</div>"
       );
     }
 
+    // Configured agent.
     const a = state.agent;
     const stats = a.lastRunStats || null;
-    const autoLabel = a.cadence === "hourly"
-      ? "Auto-scan: hourly"
-      : a.cadence === "daily"
-        ? "Auto-scan: daily"
-        : "Manual scans only";
-    const lastLine = (a.lastRunAt
-      ? "Last scan " + timeAgo(a.lastRunAt) + (stats ? " · " + esc(String(stats.fetched || 0)) + " fetched · " + esc(String(stats.newCount || 0)) + " new" : "")
-      : "Never run yet") + " · " + autoLabel;
-    const targeting = [
-      (a.targetTitles || []).slice(0, 3).join(", "),
-      a.location || "",
-      a.workMode === "remote" ? "remote" : (a.workMode === "onsite" ? "on-site" : "")
-    ].filter(Boolean).join(" · ");
+    const autoLabel = a.cadence === "hourly" ? "Auto-scan · hourly"
+      : a.cadence === "daily" ? "Auto-scan · daily"
+      : "Manual scans only";
+
+    const targetingChips = []
+      .concat((a.targetTitles || []).slice(0, 3).map(function (t) {
+        return '<span class="chip cyan"><i class="fa-solid fa-crosshairs"></i> ' + esc(t) + "</span>";
+      }))
+      .concat(a.location ? ['<span class="chip subtle"><i class="fa-solid fa-location-dot"></i> ' + esc(a.location) + "</span>"] : [])
+      .concat(a.workMode === "remote" ? ['<span class="chip blue"><i class="fa-solid fa-house-laptop"></i> Remote</span>']
+        : a.workMode === "onsite" ? ['<span class="chip subtle">On-site</span>'] : [])
+      .concat(['<span class="chip violet"><i class="fa-solid fa-clock-rotate-left"></i> ' + esc(autoLabel) + "</span>"])
+      .join("");
+
+    const statPill = function (num, label, accent) {
+      return '<div class="js-stat"><span class="js-stat-num' + (accent ? " is-accent" : "") + '">' + esc(String(num)) + '</span><span class="js-stat-label">' + esc(label) + "</span></div>";
+    };
+    const statsHtml =
+      '<div class="js-stats">' +
+        statPill(state.stats.newCount || 0, "New", true) +
+        statPill(state.findings.length, "In inbox") +
+        statPill(a.lastRunAt ? (timeAgo(a.lastRunAt) || "—") : "Never", "Last scan") +
+        (stats && typeof stats.fetched === "number" ? statPill(stats.fetched, "Last fetch") : "") +
+      "</div>";
+
     const visible = state.findings.slice(0, 8);
     const more = state.findings.length - visible.length;
 
-    return (
-      '<article class="card panel-lg" id="job-scout-panel">' +
-        '<div class="resume-section-head" style="flex-wrap:wrap;gap:8px;">' +
-          "<h3><i class=\"fa-solid fa-satellite-dish\"></i> " + esc(a.name) + "</h3>" +
-          '<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
-            (state.stats.newCount > 0 ? '<span class="chip green">' + esc(String(state.stats.newCount)) + " new</span>" : "") +
-            '<span class="chip ' + (a.active ? "cyan" : "subtle") + '">' + (a.active ? "Active" : "Paused") + "</span>" +
-            '<button type="button" class="btn-ghost btn-sm" id="job-scout-edit"><i class="fa-solid fa-sliders"></i> Edit</button>' +
-          "</span>" +
+    return shell(
+      '<div class="js-head">' +
+        '<span class="js-badge' + (state.scanBusy ? " is-scanning" : "") + '"><i class="fa-solid fa-satellite-dish"></i></span>' +
+        '<div class="js-head-titles"><h3>' + esc(a.name) + '</h3><p class="js-head-sub">' + esc(autoLabel) + "</p></div>" +
+        '<div class="js-head-actions">' +
+          (state.stats.newCount > 0 ? '<span class="chip green">' + esc(String(state.stats.newCount)) + " new</span>" : "") +
+          '<span class="chip ' + (a.active ? "cyan" : "subtle") + '"><span class="status-dot ' + (a.active ? "green" : "") + '" style="margin-right:2px;"></span>' + (a.active ? "Active" : "Paused") + "</span>" +
+          '<button type="button" class="btn-ghost btn-sm" id="job-scout-edit"><i class="fa-solid fa-sliders"></i> Edit</button>' +
         "</div>" +
-        '<p class="muted" style="margin:2px 0 4px;">' + esc(targeting || "No targeting set") + "</p>" +
-        '<p class="muted" style="margin:0 0 10px;font-size:13px;">' + lastLine + "</p>" +
-        (state.error ? '<p class="ai-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(state.error) + "</p>" : "") +
-        '<button type="button" class="btn-primary btn-sm" id="job-scout-scan"' + (state.scanBusy ? " disabled" : "") + ">" +
+      "</div>" +
+      '<div class="js-targeting">' + targetingChips + "</div>" +
+      statsHtml +
+      (state.error ? '<div class="js-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(state.error) + "</div>" : "") +
+      '<div class="js-scan-row">' +
+        '<button type="button" class="btn-primary js-scan-btn" id="job-scout-scan"' + (state.scanBusy ? " disabled" : "") + ">" +
           (state.scanBusy
-            ? '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning all boards…'
+            ? '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning every board…'
             : '<i class="fa-solid fa-radar"></i> Scan now') +
         "</button>" +
-        (visible.length
-          ? '<ul style="list-style:none;margin:12px 0 0;padding:0;">' + visible.map(renderFindingRow).join("") + "</ul>" +
-            (more > 0 ? '<p class="muted" style="font-size:12px;margin:8px 0 0;">+' + more + " more in your inbox</p>" : "")
-          : '<p class="muted" style="margin-top:12px;">No findings yet — run a scan and your agent will deliver brand-new postings here.</p>') +
-      "</article>"
+        (a.cadence !== "manual" ? '<span class="js-scan-hint"><i class="fa-solid fa-bolt"></i> also runs automatically</span>' : "") +
+      "</div>" +
+      (visible.length
+        ? '<div class="js-inbox-head"><h4>Latest finds</h4><span class="js-rule"></span></div>' +
+          '<div class="js-findings">' + visible.map(renderFindingRow).join("") + "</div>" +
+          (more > 0 ? '<p class="js-more">+ ' + more + " more waiting in your inbox</p>" : "")
+        : '<div class="js-empty-inbox"><i class="fa-solid fa-inbox"></i> No new roles yet — hit <strong>Scan now</strong> and fresh postings will appear here.</div>')
     );
   }
 

@@ -1,0 +1,309 @@
+/* ===========================================================================
+ * Job Scout Agent — dashboard panel, inbox & setup wizard.
+ * Built on the app's aurora/glass system (tokens.css + layout.css .card/.chip).
+ * The panel spans the full dashboard grid so its inbox has room to breathe.
+ * ======================================================================== */
+
+.dashboard-layout > .job-scout-card { grid-column: 1 / -1; }
+
+.job-scout-card {
+  /* Sits on the base .card gradient; add a faint cyan→violet wash so the
+   * agent reads as an "AI surface" like the rest of the intelligence UI. */
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(34, 227, 255, 0.06), transparent 42%),
+    radial-gradient(120% 140% at 100% 0%, rgba(176, 107, 255, 0.07), transparent 46%),
+    linear-gradient(180deg, rgba(20, 24, 42, 0.96), rgba(12, 15, 28, 0.96));
+  padding: var(--space-18, 18px) var(--space-20, 20px);
+}
+
+/* ---- shared icon badge (the "satellite" mark) ---------------------------- */
+.js-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #0a0d18;
+  font-size: 16px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 6px 18px rgba(34, 227, 255, 0.28);
+  flex: none;
+}
+.js-badge.is-scanning { animation: js-badge-pulse 1.6s var(--ease-out) infinite; }
+@keyframes js-badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset, 0 0 0 0 rgba(34, 227, 255, 0.45); }
+  50%      { box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset, 0 0 0 8px rgba(34, 227, 255, 0); }
+}
+
+/* ---- header row ---------------------------------------------------------- */
+.js-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-14);
+}
+.js-head-titles { min-width: 0; }
+.js-head-titles h3 {
+  margin: 0;
+  font-size: var(--font-size-18);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-family: var(--font-family-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.js-head-sub {
+  margin: 2px 0 0;
+  font-size: var(--font-size-12);
+  color: var(--color-text-dim);
+}
+.js-head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ---- empty state (no agent yet) ------------------------------------------ */
+.js-empty { text-align: center; padding: var(--space-10) var(--space-8) var(--space-4); }
+.js-empty .js-badge {
+  width: 52px; height: 52px; font-size: 22px; border-radius: 16px;
+  margin: 0 auto var(--space-12);
+}
+.js-empty-title {
+  margin: 0 0 6px;
+  font-size: var(--font-size-20);
+  font-weight: 650;
+  font-family: var(--font-family-display);
+  letter-spacing: -0.01em;
+}
+.js-empty-sub {
+  margin: 0 auto var(--space-16);
+  max-width: 46ch;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-14);
+  line-height: 1.5;
+}
+.js-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-10);
+  max-width: 620px;
+  margin: 0 auto var(--space-18);
+}
+.js-step {
+  position: relative;
+  padding: var(--space-14) var(--space-12);
+  border-radius: var(--radius-12);
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.02);
+  text-align: left;
+}
+.js-step-ico {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 9px; margin-bottom: 8px;
+  color: var(--color-primary);
+  background: rgba(34, 227, 255, 0.1);
+  border: 1px solid rgba(34, 227, 255, 0.22);
+  font-size: 13px;
+}
+.js-step h4 { margin: 0 0 3px; font-size: var(--font-size-13); font-weight: 620; }
+.js-step p  { margin: 0; font-size: var(--font-size-12); color: var(--color-text-muted); line-height: 1.45; }
+.js-step-num {
+  position: absolute; top: 10px; right: 12px;
+  font-family: var(--font-family-mono); font-size: 11px; color: var(--color-text-dim);
+}
+
+/* ---- targeting + stats (configured agent) -------------------------------- */
+.js-targeting {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 0 0 var(--space-12);
+}
+.js-targeting .chip i { opacity: 0.7; }
+
+.js-stats {
+  display: flex; flex-wrap: wrap; gap: var(--space-8);
+  margin-bottom: var(--space-14);
+}
+.js-stat {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-10);
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 72px;
+}
+.js-stat-num {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-18);
+  font-weight: 650;
+  line-height: 1.1;
+  color: var(--color-text);
+}
+.js-stat-num.is-accent { color: var(--color-primary); }
+.js-stat-label {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+.js-scan-row { display: flex; align-items: center; gap: var(--space-10); flex-wrap: wrap; }
+.js-scan-btn { position: relative; }
+.js-scan-hint { font-size: var(--font-size-12); color: var(--color-text-dim); }
+
+/* ---- findings inbox ------------------------------------------------------ */
+.js-inbox-head {
+  display: flex; align-items: center; gap: var(--space-8);
+  margin: var(--space-16) 0 var(--space-10);
+}
+.js-inbox-head h4 {
+  margin: 0; font-size: var(--font-size-13); font-weight: 620;
+  letter-spacing: 0.02em; color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+.js-inbox-head .js-rule { flex: 1; height: 1px; background: var(--color-border); }
+
+.js-findings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-10);
+}
+.js-finding {
+  position: relative;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--space-12) var(--space-14);
+  border-radius: var(--radius-12);
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.js-finding:hover {
+  border-color: rgba(34, 227, 255, 0.3);
+  background: rgba(34, 227, 255, 0.04);
+  transform: translateY(-1px);
+}
+.js-finding.is-new::before {
+  content: "";
+  position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
+}
+.js-finding-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-8); }
+.js-finding-title {
+  font-weight: 620; font-size: var(--font-size-14); line-height: 1.3;
+  color: var(--color-text);
+}
+.js-finding-title:hover { color: var(--color-primary); }
+.js-finding-meta {
+  font-size: var(--font-size-12); color: var(--color-text-muted);
+  display: flex; flex-wrap: wrap; gap: 4px 8px;
+}
+.js-finding-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.js-finding-actions {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 2px;
+  opacity: 0.62;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.js-finding:hover .js-finding-actions { opacity: 1; }
+.js-finding-actions .btn-ghost { padding: 4px 9px; font-size: var(--font-size-12); }
+
+.js-more { margin: var(--space-10) 0 0; font-size: var(--font-size-12); color: var(--color-text-dim); text-align: center; }
+.js-empty-inbox {
+  margin: var(--space-14) 0 var(--space-4);
+  padding: var(--space-16);
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-12);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-13);
+}
+
+.js-error {
+  margin: 0 0 var(--space-12);
+  padding: var(--space-10) var(--space-12);
+  border-radius: var(--radius-10);
+  border: 1px solid rgba(239, 72, 85, 0.28);
+  background: rgba(239, 72, 85, 0.08);
+  color: #ffb9c5;
+  font-size: var(--font-size-13);
+}
+
+/* ===========================================================================
+ * Wizard modal
+ * ======================================================================== */
+.js-modal-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(3, 6, 14, 0.66);
+  backdrop-filter: blur(5px);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-16);
+  animation: js-fade 180ms var(--ease-out);
+}
+@keyframes js-fade { from { opacity: 0; } to { opacity: 1; } }
+.js-modal {
+  width: 100%; max-width: 560px; max-height: 92vh; overflow: auto;
+  border-radius: var(--radius-16);
+  border: 1px solid var(--color-border-strong);
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(34, 227, 255, 0.07), transparent 44%),
+    radial-gradient(120% 90% at 100% 0%, rgba(176, 107, 255, 0.08), transparent 48%),
+    linear-gradient(180deg, rgba(18, 22, 40, 0.99), rgba(11, 14, 26, 0.99));
+  box-shadow: var(--shadow-overlay, 0 24px 60px rgba(0, 0, 0, 0.6));
+  padding: var(--space-20, 20px);
+  animation: js-rise 220ms var(--ease-spring);
+}
+@keyframes js-rise { from { transform: translateY(10px) scale(0.99); opacity: 0; } to { transform: none; opacity: 1; } }
+.js-modal-head { display: flex; align-items: center; gap: var(--space-12); margin-bottom: var(--space-6); }
+.js-modal-head h3 {
+  margin: 0; font-size: var(--font-size-18); font-weight: 650;
+  font-family: var(--font-family-display); letter-spacing: -0.01em;
+}
+.js-modal-close {
+  margin-left: auto; flex: none;
+  width: 34px; height: 34px; border-radius: 10px;
+  display: grid; place-items: center; cursor: pointer;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.js-modal-close:hover { color: var(--color-text); border-color: var(--color-border-strong); background: rgba(255, 255, 255, 0.06); }
+.js-modal-intro { margin: 0 0 var(--space-16); color: var(--color-text-muted); font-size: var(--font-size-14); line-height: 1.5; }
+
+.js-field { display: block; margin-bottom: var(--space-14); }
+.js-field-label {
+  display: block; margin-bottom: 5px;
+  font-size: var(--font-size-12); font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.js-input {
+  width: 100%; box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: var(--radius-10);
+  border: 1px solid var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text);
+  font-size: var(--font-size-14);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.js-input::placeholder { color: var(--color-text-dim); }
+.js-input:focus {
+  outline: none;
+  border-color: rgba(34, 227, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 227, 255, 0.14);
+}
+select.js-input { padding-right: 2.3rem; }
+.js-field-hint { display: block; margin-top: 4px; font-size: var(--font-size-12); color: var(--color-text-dim); }
+.js-field-row { display: flex; gap: var(--space-12); flex-wrap: wrap; }
+.js-field-row > .js-field { flex: 1; min-width: 150px; }
+.js-modal-foot { display: flex; justify-content: flex-end; gap: var(--space-10); margin-top: var(--space-6); }
+
+/* ---- responsive ---------------------------------------------------------- */
+@media (max-width: 900px) {
+  .js-findings { grid-template-columns: 1fr; }
+  .js-steps { grid-template-columns: 1fr; }
+}

@@ -156,6 +156,7 @@ const SHEETS = [
   "./src/styles/design-system.css",
   "./src/styles/phase5-cleanup.css",
   "./src/styles/console.css",
+  "./src/styles/job-scout.css",
 ];
 
 async function bundleJS() {
