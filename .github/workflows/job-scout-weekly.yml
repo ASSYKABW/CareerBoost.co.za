@@ -1,0 +1,36 @@
+# Job Scout Agent — weekly recap email.
+#
+# Every Monday 08:00 UTC, emails each user a summary of every role their agents
+# surfaced in the past 7 days (gated on email-alerts-on + not suppressed). The
+# job-scout function does the work; this just triggers it with the shared secret.
+#
+# Uses the SAME secrets as job-scout-cron.yml:
+#   SUPABASE_FUNCTIONS_URL, JOB_SCOUT_CRON_SECRET
+# Missing secret → exits 0 with a notice (green but no-op), same convention.
+name: Job Scout weekly report
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send weekly agent recap
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.JOB_SCOUT_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / JOB_SCOUT_CRON_SECRET not set — skipping."
+            exit 0
+          fi
+          echo "→ job-scout weekly report"
+          curl -fsS -X POST "$FN_URL/job-scout" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"action":"weekly-report"}'
+          echo ""
