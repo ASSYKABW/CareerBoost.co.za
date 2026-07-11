@@ -470,7 +470,7 @@
           "</div>" +
           '<div class="js-steps">' +
             step("01", "fa-sliders", "Configure once", "Titles, location & skills — pre-filled from your profile.") +
-            step("02", "fa-satellite-dish", "It scans for you", "Every board + LinkedIn/Indeed, on a schedule.") +
+            step("02", "fa-satellite-dish", "Deep Scan expands it", "AI finds every related job title, then searches every board for each.") +
             step("03", "fa-inbox", "New roles land here", "Fresh, matched postings — review, save or apply.") +
           "</div>" +
         "</div>"
@@ -505,6 +505,18 @@
         (stats && typeof stats.fetched === "number" ? statPill(stats.fetched, "Last fetch") : "") +
       "</div>";
 
+    // Deep Scan: the AI-expanded related titles the last scan also searched.
+    const titlesSearched = (stats && Array.isArray(stats.titlesSearched)) ? stats.titlesSearched : [];
+    const primaryLower = (a.targetTitles || []).map(function (t) { return String(t).toLowerCase(); });
+    const relatedTitles = titlesSearched.filter(function (t) { return primaryLower.indexOf(String(t).toLowerCase()) < 0; });
+    const deepScanHtml = (stats && stats.deepScan && relatedTitles.length)
+      ? '<div class="js-deepscan">' +
+          '<span class="chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> Deep Scan</span>' +
+          '<span class="js-deepscan-label">also searched ' + relatedTitles.length + " related role" + (relatedTitles.length === 1 ? "" : "s") + ":</span>" +
+          relatedTitles.slice(0, 6).map(function (t) { return '<span class="chip subtle">' + esc(t) + "</span>"; }).join("") +
+        "</div>"
+      : "";
+
     const visible = state.findings.slice(0, 8);
     const more = state.findings.length - visible.length;
 
@@ -519,6 +531,7 @@
         "</div>" +
       "</div>" +
       '<div class="js-targeting">' + targetingChips + "</div>" +
+      deepScanHtml +
       statsHtml +
       (state.error ? '<div class="js-error"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(state.error) + "</div>" : "") +
       '<div class="js-scan-row">' +

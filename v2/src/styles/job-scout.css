@@ -139,6 +139,16 @@
 }
 .js-targeting .chip i { opacity: 0.7; }
 
+.js-deepscan {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin: 0 0 var(--space-12);
+  padding: var(--space-8) var(--space-10);
+  border-radius: var(--radius-10);
+  border: 1px solid rgba(176, 107, 255, 0.22);
+  background: rgba(176, 107, 255, 0.06);
+}
+.js-deepscan-label { font-size: var(--font-size-12); color: var(--color-text-muted); margin-right: 2px; }
+
 .js-stats {
   display: flex; flex-wrap: wrap; gap: var(--space-8);
   margin-bottom: var(--space-14);
