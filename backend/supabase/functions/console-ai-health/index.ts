@@ -17,6 +17,7 @@
 import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { getProviderHealth } from "../_shared/provider-health.ts";
+import { getScoutHealth } from "../_shared/scout-health.ts";
 
 const DAY_MS = 86_400_000;
 const USD_PER_M_INPUT = 1.0;
@@ -156,6 +157,8 @@ Deno.serve(withCors(async (req) => {
   } catch (_e) { /* ignore */ }
 
   const ph = await getProviderHealth();
+  let scout: Awaited<ReturnType<typeof getScoutHealth>> | null = null;
+  try { scout = await getScoutHealth(); } catch (_e) { /* isolate */ }
   const aiHealth = {
     kpis: [
       { key: "spend", label: "AI spend 7d (est)", tone: "amber", fmt: "usd", value: Math.round(curSpend), delta: dSpend.delta, deltaDir: dSpend.dir === "down" ? "gd" : "down", spark: bucketByDay(cur, "created_at", 7) },
@@ -165,6 +168,7 @@ Deno.serve(withCors(async (req) => {
     ],
     bySkill, byModel, incidents, failures,
     providers: ph.providers, critical: ph.critical,
+    scout,
   };
   return jsonResponse({ ok: true, aiHealth });
 }));

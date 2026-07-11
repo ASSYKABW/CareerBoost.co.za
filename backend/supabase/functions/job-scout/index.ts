@@ -23,6 +23,7 @@ import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 import { resendConfigured, sendEmail } from "../_shared/resend.ts";
 import { callProvider, extractJson, type LLMProvider, providerHasKey } from "../_shared/llm.ts";
 import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
+import { getScoutHealth } from "../_shared/scout-health.ts";
 
 const FINDINGS_LIMIT = 50;
 // Deep Scan: how wide to fan the 10-board aggregator, and expansion cache TTL.
@@ -1069,6 +1070,103 @@ function buildWeeklyHtml(jobs: ScoutJob[], total: number, unsubUrl: string): str
   );
 }
 
+// ---------------------------------------------------------------------------
+// Health-notify (admin ops): secret-authed. Checks all 4 AI providers + the
+// Job Agent system and, if anything is critical, emails the admin. Runs daily.
+// Deduped by the daily cadence; no-op (with a note) if ADMIN_ALERT_EMAIL unset.
+// ---------------------------------------------------------------------------
+// Active probe: ping every configured AI provider with a 1-token call so we
+// catch dead keys / quota-429 EVEN when the ai-run fallback silently recovered
+// them (those never land in ai_usage as failures). ~4 tiny calls/day.
+const PROBE_PROVIDERS: Array<{ id: LLMProvider; model: string; label: string; topup: string }> = [
+  { id: "gemini", model: "gemini-2.0-flash", label: "Google Gemini", topup: "https://aistudio.google.com/app/apikey" },
+  { id: "openai", model: "gpt-4o-mini", label: "OpenAI", topup: "https://platform.openai.com/account/billing/overview" },
+  { id: "groq", model: "llama-3.3-70b-versatile", label: "Groq", topup: "https://console.groq.com/keys" },
+  { id: "anthropic", model: "claude-haiku-4-5", label: "Anthropic (Claude)", topup: "https://console.anthropic.com/settings/billing" },
+];
+async function probeProviders(): Promise<Array<{ id: string; label: string; status: string; topup: string; error?: string }>> {
+  return await Promise.all(PROBE_PROVIDERS.map(async (p) => {
+    if (!providerHasKey(p.id)) return { id: p.id, label: p.label, status: "no-key", topup: p.topup };
+    try {
+      // "json" in the prompt keeps Groq happy (it requires it when a JSON
+      // response_format is in play) without affecting the other providers.
+      await callProvider(p.id, { systemStable: 'Health probe — reply with this JSON: {"ok":true}', user: "ping (respond in json)", model: p.model, maxTokens: 12, timeoutMs: 10_000 });
+      return { id: p.id, label: p.label, status: "healthy", topup: p.topup };
+    } catch (e) {
+      const msg = String((e as Error).message || e);
+      let status = "errors";
+      if (/credit|billing|payment|insufficient|out of credit|quota.*(exceed|exhaust)|exceed.*quota/i.test(msg)) status = "credit";
+      else if (/invalid.{0,20}api.?key|unauthorized|\b401\b|authentication|permission_denied|expired.*key/i.test(msg)) status = "key";
+      else if (/rate.?limit|\b429\b|too many requests|overloaded/i.test(msg)) status = "rate";
+      // A 400 that isn't auth/quota/rate means the key reached the API and got a
+      // validation error → the provider is UP. Don't false-alarm on it.
+      else if (/\b400\b|invalid.?request|response_format|must contain/i.test(msg)) status = "healthy";
+      return { id: p.id, label: p.label, status, topup: p.topup, error: msg.slice(0, 140) };
+    }
+  }));
+}
+
+async function handleHealthNotify(dryRun: boolean) {
+  const probes = await probeProviders();
+  let scout: Awaited<ReturnType<typeof getScoutHealth>> | null = null;
+  try { scout = await getScoutHealth(); } catch { /* isolate */ }
+
+  const alerts: Array<{ severity: string; title: string }> = [];
+  // AI providers: dead key / out of credit = critical; 429 rate-limit = warning.
+  for (const p of probes) {
+    if (p.status === "credit" || p.status === "key") {
+      alerts.push({ severity: "critical", title: `${p.label}: ${p.status === "credit" ? "out of credit / quota" : "invalid or expired key"} — fix at ${p.topup}` });
+    } else if (p.status === "rate") {
+      alerts.push({ severity: "warning", title: `${p.label}: rate-limited (429) right now.` });
+    } else if (p.status === "errors") {
+      alerts.push({ severity: "warning", title: `${p.label}: probe failed — ${p.error || "unknown error"}` });
+    }
+  }
+  if (scout && scout.status === "critical") {
+    scout.issues.forEach((i) => alerts.push({ severity: "critical", title: "Job Agent: " + i }));
+  } else if (scout && scout.status === "warning") {
+    scout.issues.forEach((i) => alerts.push({ severity: "warning", title: "Job Agent: " + i }));
+  }
+
+  const critical = alerts.filter((a) => a.severity === "critical").length;
+  const adminEmail = (Deno.env.get("ADMIN_ALERT_EMAIL") || "").trim();
+
+  let emailed = false;
+  if (!dryRun && alerts.length && adminEmail && resendConfigured()) {
+    try {
+      const rows = alerts.map((a) =>
+        `<tr><td style="padding:9px 0;border-bottom:1px solid #1c2136;color:${a.severity === "critical" ? "#ffb9c5" : "#ffd79a"};font-size:14px;">` +
+        `<strong style="text-transform:uppercase;font-size:11px;letter-spacing:.06em;">${a.severity}</strong> · ${escHtml(a.title)}</td></tr>`
+      ).join("");
+      const html =
+        '<div style="background:#0a0d1a;padding:28px 0;font-family:Inter,Arial,sans-serif;">' +
+          '<div style="max-width:560px;margin:0 auto;background:#0f1424;border:1px solid #1c2136;border-radius:16px;padding:26px;">' +
+            '<div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#22e3ff;font-weight:700;">CareerBoost · System health</div>' +
+            `<h1 style="color:#e9ecf8;font-size:20px;margin:8px 0 4px;">${critical ? "⚠ " + critical + " critical issue" + (critical === 1 ? "" : "s") : alerts.length + " issue" + (alerts.length === 1 ? "" : "s")} need${critical === 1 || (critical === 0 && alerts.length === 1) ? "s" : ""} attention</h1>` +
+            '<p style="color:#8d94ab;font-size:13px;margin:0 0 14px;">Detected by the daily automated health check.</p>' +
+            '<table style="width:100%;border-collapse:collapse;">' + rows + "</table>" +
+            '<a href="' + escHtml(SITE) + '/#/admin" style="display:inline-block;margin-top:18px;background:linear-gradient(135deg,#22e3ff,#b06bff);color:#0a0d18;font-weight:700;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:10px;">Open the Console →</a>' +
+          "</div>" +
+        "</div>";
+      const res = await sendEmail({ to: adminEmail, subject: `CareerBoost health: ${critical ? critical + " critical" : alerts.length + " issue(s)"}`, html, tags: [{ name: "type", value: "admin-health-alert" }] });
+      emailed = res.ok;
+    } catch (e) {
+      console.error("[job-scout] health-notify email failed:", String((e as Error).message || e));
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    dryRun,
+    alerts,
+    critical,
+    emailed,
+    adminEmailConfigured: !!adminEmail,
+    providers: probes.map((p) => ({ id: p.id, status: p.status })),
+    scout: scout ? { status: scout.status, activeAutoAgents: scout.activeAutoAgents, cronStaleHours: scout.cronStaleHours, findings7d: scout.findings7d } : null,
+  });
+}
+
 async function handleUpdateFinding(userId: string, body: Record<string, unknown>) {
   const findingId = str(body.findingId, 60);
   if (!findingId) return errorResponse("findingId is required.", 400);
@@ -1122,14 +1220,14 @@ Deno.serve(withCors(async (req) => {
 
   // Cron + weekly-report authenticate with the shared secret (schedulers have
   // no user session).
-  if (action === "cron" || action === "weekly-report") {
+  if (action === "cron" || action === "weekly-report" || action === "health-notify") {
     const secret = cronSecretFromEnv();
     const provided = (req.headers.get("X-Cron-Secret") || "").trim();
     if (!secret || provided !== secret) return errorResponse("Unauthorized", 401);
     try {
-      return action === "cron"
-        ? await handleCron()
-        : await handleWeeklyReport(body.dryRun === true);
+      if (action === "cron") return await handleCron();
+      if (action === "weekly-report") return await handleWeeklyReport(body.dryRun === true);
+      return await handleHealthNotify(body.dryRun === true);
     } catch (err) {
       return errorResponse(String((err as Error).message || "job-scout " + action + " failed"), 500);
     }
