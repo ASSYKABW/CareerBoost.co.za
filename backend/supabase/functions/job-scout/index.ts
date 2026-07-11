@@ -61,9 +61,50 @@ interface AgentRow {
   max_per_scan: number;
   notify_push: boolean;
   notify_email: boolean;
+  scan_count: number;
+  upsell_sent: boolean;
   last_run_at: string | null;
   last_run_stats: Record<string, unknown> | null;
   last_notified_at: string | null;
+}
+
+// ---- Tier matrix ----------------------------------------------------------
+// Free is a TRIAL (4 scans, ~5h apart, then stop + upsell). Paid tiers step up
+// agent count, auto-scan rate, Deep-Scan breadth, results/scan and board access.
+interface TierLimit {
+  id: string;
+  agents: number;
+  scanQuota: number | null;   // null = unlimited
+  intervalMs: number;         // auto-scan interval (min gap between cron runs)
+  deepTitles: number;         // Deep-Scan expansion cap (<=1 disables expansion)
+  maxPerScan: number;         // findings delivered per scan
+  external: boolean;          // LinkedIn/Indeed (external-search) lane
+}
+const HOUR = 3_600_000;
+const TIER_LIMITS: Record<string, TierLimit> = {
+  free:   { id: "free",   agents: 1, scanQuota: 4,    intervalMs: 5 * HOUR - 5 * 60_000, deepTitles: 1, maxPerScan: 15, external: false },
+  plus:   { id: "plus",   agents: 1, scanQuota: null, intervalMs: 23 * HOUR,             deepTitles: 3, maxPerScan: 20, external: false },
+  pro:    { id: "pro",    agents: 3, scanQuota: null, intervalMs: 6 * HOUR - 5 * 60_000, deepTitles: 5, maxPerScan: 30, external: true },
+  career: { id: "career", agents: 5, scanQuota: null, intervalMs: HOUR - 5 * 60_000,     deepTitles: 6, maxPerScan: 50, external: true },
+};
+function tierOf(planId: string): TierLimit {
+  return TIER_LIMITS[String(planId || "").toLowerCase()] || TIER_LIMITS.free;
+}
+// Resolve a user's active plan id (free | plus | pro | career).
+async function planTier(userId: string): Promise<TierLimit> {
+  try {
+    const admin = getServiceClient();
+    const { data } = await admin
+      .from("subscriptions")
+      .select("plan_id, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const row = data as { plan_id?: string; status?: string } | null;
+    if (row && row.status === "active" && row.plan_id && TIER_LIMITS[row.plan_id.toLowerCase()]) {
+      return TIER_LIMITS[row.plan_id.toLowerCase()];
+    }
+  } catch { /* fall through to free */ }
+  return TIER_LIMITS.free;
 }
 
 function str(v: unknown, max = 200): string {
@@ -106,6 +147,7 @@ function toClientAgent(row: AgentRow) {
     maxPerScan: row.max_per_scan,
     notifyPush: row.notify_push !== false,
     notifyEmail: row.notify_email !== false,
+    scanCount: row.scan_count || 0,
     lastRunAt: row.last_run_at,
     lastRunStats: row.last_run_stats || null,
   };
@@ -188,9 +230,8 @@ async function callSearchFn(
   }
 }
 
-// Multi-agent (Phase 4b): free plans get 1 agent, paid up to 5.
-const MAX_AGENTS_FREE = 1;
-const MAX_AGENTS_PAID = 5;
+// Upper bound on agents any tier allows (Career = 5) — used to size queries.
+const MAX_AGENTS_ANY = 5;
 
 async function loadAgents(userId: string): Promise<AgentRow[]> {
   const admin = getServiceClient();
@@ -224,7 +265,7 @@ async function loadFindingsByAgent(userId: string): Promise<Record<string, unkno
     .eq("user_id", userId)
     .neq("status", "dismissed")
     .order("found_at", { ascending: false })
-    .limit(FINDINGS_LIMIT * MAX_AGENTS_PAID);
+    .limit(FINDINGS_LIMIT * MAX_AGENTS_ANY);
   if (error) throw new Error("findings load failed: " + error.message);
   const byAgent: Record<string, unknown[]> = {};
   for (const f of (data || []) as Record<string, unknown>[]) {
@@ -246,17 +287,22 @@ async function loadFindingsByAgent(userId: string): Promise<Record<string, unkno
 async function handleGet(userId: string) {
   const agents = await loadAgents(userId);
   const byAgent = agents.length ? await loadFindingsByAgent(userId) : {};
+  const tier = await planTier(userId);
   let totalNew = 0;
   const out = agents.map((a) => {
     const findings = (byAgent[a.id] || []).slice(0, FINDINGS_LIMIT);
     const newCount = findings.filter((f) => (f as { status?: string }).status === "new").length;
     totalNew += newCount;
-    return Object.assign(toClientAgent(a), { findings, newCount });
+    const exhausted = tier.scanQuota != null && (a.scan_count || 0) >= tier.scanQuota;
+    return Object.assign(toClientAgent(a), { findings, newCount, exhausted });
   });
   return jsonResponse({
     ok: true,
     agents: out,
-    limit: (await isPaidUser(userId)) ? MAX_AGENTS_PAID : MAX_AGENTS_FREE,
+    limit: tier.agents,
+    tier: tier.id,
+    scanQuota: tier.scanQuota,   // null = unlimited; UI shows "N of quota" when set
+    autoIntervalHours: Math.round(tier.intervalMs / HOUR),
     stats: { totalNew, agentCount: out.length },
   });
 }
@@ -270,33 +316,34 @@ async function handleSave(userId: string, body: Record<string, unknown>) {
   }
 
   const admin = getServiceClient();
-  const paid = await isPaidUser(userId);
+  const tier = await planTier(userId);
 
-  // Creating a NEW agent → enforce the per-plan cap.
+  // Creating a NEW agent → enforce the per-tier agent cap.
   if (!agentId) {
     const { count } = await admin
       .from("job_scout_agents")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId);
-    const cap = paid ? MAX_AGENTS_PAID : MAX_AGENTS_FREE;
-    if ((count || 0) >= cap) {
+    if ((count || 0) >= tier.agents) {
       return errorResponse(
-        paid
-          ? `You've reached the maximum of ${cap} agents.`
-          : "Free plans include 1 Job Agent. Upgrade to run up to " + MAX_AGENTS_PAID + ".",
+        tier.id === "free"
+          ? "Free includes 1 Job Agent. Upgrade to run more (Pro 3, Career 5)."
+          : `Your ${tier.id} plan includes ${tier.agents} agent${tier.agents === 1 ? "" : "s"}.` +
+            (tier.id !== "career" ? " Upgrade for more." : ""),
         403,
       );
     }
   } else {
-    // Updating → must own it.
     const existing = await loadAgentById(agentId, userId);
     if (!existing) return errorResponse("Agent not found.", 404);
   }
 
-  // Cadence: hourly auto-scans are a paid perk — free plans clamp to daily.
+  // Cadence is the user's on/off preference; the real auto-scan RATE is set by
+  // the tier at run time. Free is always automatic (5h ×4 trial), so we never
+  // store "manual" for it.
   const requestedCadence = oneOf(input.cadence, ["manual", "daily", "hourly"], "manual");
   let cadence = requestedCadence;
-  if (cadence === "hourly" && !paid) cadence = "daily";
+  if (tier.id === "free" && cadence === "manual") cadence = "daily";
 
   const fields = {
     name: str(input.name, 60) || "My Job Agent",
@@ -361,30 +408,19 @@ async function handleDelete(userId: string, body: Record<string, unknown>) {
   return jsonResponse({ ok: true });
 }
 
-// Paid check: any active non-free subscription. Free users are clamped to the
-// daily cadence; hourly auto-scans are a paid perk (agreed tiering).
-async function isPaidUser(userId: string): Promise<boolean> {
-  try {
-    const admin = getServiceClient();
-    const { data } = await admin
-      .from("subscriptions")
-      .select("plan_id, status")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const row = data as { plan_id?: string; status?: string } | null;
-    return !!row && row.status === "active" && !!row.plan_id && row.plan_id !== "free";
-  } catch {
-    return false; // fail closed: treat as free
-  }
-}
-
 async function handleScan(userId: string, authHeader: string, body: Record<string, unknown>) {
   const agentId = str(body.agentId, 60);
-  // No agentId → scan the user's first agent (back-compat for single-agent UI).
   const agent = agentId ? await loadAgentById(agentId, userId) : (await loadAgents(userId))[0] || null;
   if (!agent) return errorResponse("Set up your Job Agent first.", 400);
   if (!agent.active) return errorResponse("This agent is paused — activate it to scan.", 400);
-  const out = await runScanCore(agent, { jwt: authHeader });
+  const tier = await planTier(userId);
+  if (tier.scanQuota != null && (agent.scan_count || 0) >= tier.scanQuota) {
+    return errorResponse(
+      `You've used all ${tier.scanQuota} free scans. Upgrade to keep your agent hunting for new roles.`,
+      403,
+    );
+  }
+  const out = await runScanCore(agent, { jwt: authHeader }, tier);
   return jsonResponse({ ok: true, agentId: agent.id, newCount: out.newCount, findings: out.findings, stats: out.stats });
 }
 
@@ -461,9 +497,11 @@ async function llmExpandTitles(primary: string, base: string[], skills: string[]
 // Deep Scan title set = the agent's own titles + AI-expanded relatives, deduped
 // and capped. Cached 24h keyed on the title/skill set. Any failure degrades
 // gracefully to just the agent's own titles (a normal scan).
-async function expandTitles(agent: AgentRow): Promise<string[]> {
+async function expandTitles(agent: AgentRow, maxTitles: number): Promise<string[]> {
   const base = strArr(agent.target_titles, 5);
-  if (!base.length) return base;
+  // Deep Scan disabled for this tier (maxTitles <= 1) → just the agent's own
+  // titles, no AI expansion.
+  if (!base.length || maxTitles <= 1) return base.slice(0, Math.max(1, maxTitles));
   const skills = strArr(agent.must_have_skills, 6);
 
   let expansions: string[] = [];
@@ -494,19 +532,21 @@ async function expandTitles(agent: AgentRow): Promise<string[]> {
     if (!k || seen.has(k)) continue;
     seen.add(k);
     out.push(t);
-    if (out.length >= DEEP_SCAN_MAX_TITLES) break;
+    if (out.length >= Math.min(DEEP_SCAN_MAX_TITLES, maxTitles)) break;
   }
   return out;
 }
 
 // The scan pipeline shared by user-triggered scans (JWT auth) and cron scans
 // (internal secret). Throws on hard failures; returns delivery stats.
-async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
+async function runScanCore(agent: AgentRow, auth: ScanAuth, tierArg?: TierLimit): Promise<{
   newCount: number;
   findings: unknown[];
   stats: Record<string, unknown>;
+  exhausted?: boolean;
 }> {
   const userId = agent.user_id;
+  const tier = tierArg || await planTier(userId);
   // Recency window: since the last run (+1 day slack), clamped to [1, 30];
   // first scan looks back 14 days.
   const sinceDays = agent.last_run_at
@@ -529,7 +569,7 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
   // Indeed via Google/JSearch) and companies-search stay single-query to protect
   // their tight quotas. Expansion is cached 24h, so it's ~one LLM call per
   // unique title-set, not per scan.
-  const searchTitles = await expandTitles(agent);
+  const searchTitles = await expandTitles(agent, tier.deepTitles);
 
   const buildPayload = (title: string) => ({
     query: title,
@@ -542,14 +582,17 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
   });
   const primaryPayload = buildPayload(primaryTitle || (searchTitles[0] || ""));
 
-  // jobs-search fan-out (bounded concurrency) + one external + one companies.
+  // jobs-search fan-out (bounded concurrency) + one companies. external-search
+  // (LinkedIn/Indeed via Google/JSearch) is a Pro+ perk.
   const coreRuns = await mapWithConcurrency(
     searchTitles,
     DEEP_SCAN_CONCURRENCY,
     (t) => callSearchFn("jobs-search", buildPayload(t), auth),
   );
   const [external, companies] = await Promise.all([
-    callSearchFn("external-search", primaryPayload, auth),
+    tier.external
+      ? callSearchFn("external-search", primaryPayload, auth)
+      : Promise.resolve({ ok: true, jobs: [] as Record<string, unknown>[], error: undefined as string | undefined }),
     callSearchFn("companies-search", primaryPayload, auth),
   ]);
   const coreJobs = coreRuns.flatMap((r) => r.jobs);
@@ -590,7 +633,7 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
     (data || []).forEach((r: { fingerprint: string }) => seen.add(r.fingerprint));
   }
 
-  const cap = Math.max(1, Math.min(MAX_PER_SCAN_CAP, agent.max_per_scan || 30));
+  const cap = Math.max(1, Math.min(MAX_PER_SCAN_CAP, tier.maxPerScan, agent.max_per_scan || 30));
   const fresh = fps
     .filter((fp) => !seen.has(fp))
     .map((fp) => ({ fp, job: byFp.get(fp) as ScoutJob }))
@@ -627,22 +670,30 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
     if (seenErr) console.error("[job-scout] seen insert failed:", seenErr.message);
   }
 
+  // This scan counts against the tier quota (free trial = 4).
+  const newScanCount = (agent.scan_count || 0) + 1;
+  const quotaExhausted = tier.scanQuota != null && newScanCount >= tier.scanQuota;
+
   const stats = {
     fetched,
     newCount: delivered.length,
     sinceDays,
     deepScan: searchTitles.length > 1,
     titlesSearched: searchTitles,
+    tier: tier.id,
+    scanCount: newScanCount,
+    scanQuota: tier.scanQuota,
     lanes: laneStats,
     trigger: auth.cronSecret ? "cron" : "manual",
     ranAt: new Date().toISOString(),
   };
   const nowIso = new Date().toISOString();
+  // Existing columns — always safe to write.
   const agentUpdate: Record<string, unknown> = { last_run_at: nowIso, last_run_stats: stats };
+  if (quotaExhausted) agentUpdate.active = false; // free trial used up → stop auto-scanning
 
-  // Notify only on SCHEDULED runs that actually delivered something — a manual
-  // "Scan now" means the user is already looking at the inbox. Best-effort:
-  // notification failures never affect the scan result.
+  // Notify on SCHEDULED runs that delivered (a manual "Scan now" means the user
+  // is already looking). Best-effort — a failure never affects the scan.
   if (auth.cronSecret && delivered.length > 0) {
     try {
       const notified = await notifyUser(agent, delivered as DeliveredFinding[]);
@@ -651,10 +702,21 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
       console.error("[job-scout] notify failed for agent", agent.id, String((e as Error).message || e));
     }
   }
-
   await admin.from("job_scout_agents").update(agentUpdate).eq("id", agent.id);
 
-  return { newCount: delivered.length, findings: delivered, stats };
+  // Trial-counter columns live in migration 0052 — write them SEPARATELY so the
+  // scan still works if 0052 hasn't been applied (unknown-column error comes
+  // back in the result, not as a throw; we ignore it). Pre-0052 free is simply
+  // uncounted (effectively unlimited) until the columns exist.
+  const trialUpdate: Record<string, unknown> = { scan_count: newScanCount };
+  if (quotaExhausted && !agent.upsell_sent) trialUpdate.upsell_sent = true;
+  await admin.from("job_scout_agents").update(trialUpdate).eq("id", agent.id);
+
+  if (quotaExhausted && !agent.upsell_sent) {
+    try { await sendUpsell(agent); } catch (_e) { /* best-effort */ }
+  }
+
+  return { newCount: delivered.length, findings: delivered, stats, exhausted: quotaExhausted };
 }
 
 interface DeliveredFinding { id: string; job: ScoutJob; }
@@ -745,6 +807,53 @@ async function notifyUser(agent: AgentRow, delivered: DeliveredFinding[]): Promi
   return attempted;
 }
 
+// One-time "your free trial is used up" nudge (push + email), best-effort.
+async function sendUpsell(agent: AgentRow): Promise<void> {
+  const title = "Your free Job Agent scans are used up";
+  const line = "Upgrade to keep " + agent.name + " hunting for new roles automatically.";
+  const secret = cronSecretFromEnv();
+  if (secret) {
+    try {
+      await fetch(`${FN_BASE()}/push-send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Cron-Secret": secret },
+        body: JSON.stringify({
+          action: "send", segment: "users", userIds: [agent.user_id],
+          title, body: line, url: "/#/dashboard", tag: "job-scout-upsell",
+        }),
+      });
+    } catch { /* ignore */ }
+  }
+  if (!resendConfigured()) return;
+  try {
+    const admin = getServiceClient();
+    const { data: prof } = await admin.from("profiles").select("email, email_unsub_token").eq("user_id", agent.user_id).maybeSingle();
+    const email = (prof as { email?: string } | null)?.email || "";
+    if (!email) return;
+    const { data: supp } = await admin.from("email_suppressions").select("email").eq("email", email.toLowerCase()).maybeSingle();
+    if (supp) return;
+    let token = (prof as { email_unsub_token?: string } | null)?.email_unsub_token || "";
+    if (!token) { token = crypto.randomUUID().replace(/-/g, ""); await admin.from("profiles").update({ email_unsub_token: token }).eq("user_id", agent.user_id); }
+    const unsubUrl = `${FN_BASE()}/email-unsubscribe?u=${encodeURIComponent(agent.user_id)}&k=${encodeURIComponent(token)}`;
+    const dash = SITE + "/#/dashboard";
+    const html =
+      '<div style="background:#0a0d1a;padding:28px 0;font-family:Inter,Arial,sans-serif;">' +
+        '<div style="max-width:520px;margin:0 auto;background:#0f1424;border:1px solid #1c2136;border-radius:16px;padding:26px;">' +
+          '<div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#22e3ff;font-weight:700;">CareerBoost · Job Agent</div>' +
+          '<h1 style="color:#e9ecf8;font-size:21px;margin:8px 0 6px;">You’ve seen what your agent can do</h1>' +
+          '<p style="color:#8d94ab;font-size:14px;line-height:1.55;margin:0 0 16px;">Your free agent ran its 4 scans and surfaced brand-new roles for you. Upgrade and it keeps hunting automatically — more agents, faster scans, LinkedIn &amp; Indeed coverage, and Deep Scan across every related title.</p>' +
+          '<a href="' + escHtml(dash) + '" style="display:inline-block;background:linear-gradient(135deg,#22e3ff,#b06bff);color:#0a0d18;font-weight:700;font-size:14px;text-decoration:none;padding:11px 20px;border-radius:10px;">Upgrade &amp; keep hunting →</a>' +
+          '<p style="color:#5a6179;font-size:12px;margin:22px 0 0;"><a href="' + escHtml(unsubUrl) + '" style="color:#5566aa;">Unsubscribe</a></p>' +
+        "</div>" +
+      "</div>";
+    await sendEmail({
+      to: email, subject: title, html,
+      headers: { "List-Unsubscribe": `<${unsubUrl}>` },
+      tags: [{ name: "type", value: "job-scout-upsell" }],
+    });
+  } catch { /* ignore */ }
+}
+
 function escHtml(s: unknown): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -787,12 +896,6 @@ function buildDigestHtml(agent: AgentRow, delivered: DeliveredFinding[], unsubUr
 const CRON_PICK_LIMIT = 40;
 const CRON_RUN_CAP = 10;
 const CRON_CONCURRENCY = 3;
-// Slack below the nominal interval so a 30-min tick reliably catches hourly
-// agents every hour and daily agents once a day.
-const CADENCE_INTERVAL_MS: Record<string, number> = {
-  hourly: 55 * 60 * 1000,
-  daily: 23 * 60 * 60 * 1000,
-};
 
 async function handleCron() {
   if ((Deno.env.get("JOB_SCOUT_DISABLED") || "").trim() === "1") {
@@ -806,39 +909,31 @@ async function handleCron() {
     .from("job_scout_agents")
     .select("*")
     .eq("active", true)
-    .in("cadence", ["hourly", "daily"])
+    .neq("cadence", "manual")
     .order("last_run_at", { ascending: true, nullsFirst: true })
     .limit(CRON_PICK_LIMIT);
   if (error) return errorResponse("cron pick failed: " + error.message, 500);
 
+  // Resolve each candidate's tier, then keep the ones that are DUE at their
+  // tier's auto-scan rate and haven't exhausted a scan quota (free trial).
   const now = Date.now();
-  const candidates = ((data || []) as AgentRow[]).filter((a) => {
-    const interval = CADENCE_INTERVAL_MS[a.cadence];
-    if (!interval) return false;
-    if (!a.last_run_at) return true;
-    return now - Date.parse(a.last_run_at) >= interval;
-  });
-
-  const due: AgentRow[] = [];
-  for (const a of candidates) {
+  const due: Array<{ agent: AgentRow; tier: TierLimit }> = [];
+  for (const a of ((data || []) as AgentRow[])) {
     if (due.length >= CRON_RUN_CAP) break;
-    if (a.cadence === "hourly" && !(await isPaidUser(a.user_id))) {
-      // Free users run at most daily even if the row says hourly.
-      const dailyDue = !a.last_run_at ||
-        now - Date.parse(a.last_run_at) >= CADENCE_INTERVAL_MS.daily;
-      if (!dailyDue) continue;
-    }
-    due.push(a);
+    const tier = await planTier(a.user_id);
+    if (tier.scanQuota != null && (a.scan_count || 0) >= tier.scanQuota) continue; // trial used up
+    if (a.last_run_at && (now - Date.parse(a.last_run_at) < tier.intervalMs)) continue; // not due yet
+    due.push({ agent: a, tier });
   }
 
   const results: Record<string, unknown>[] = [];
   let cursor = 0;
   async function worker() {
     while (cursor < due.length) {
-      const agent = due[cursor];
+      const { agent, tier } = due[cursor];
       cursor += 1;
       try {
-        const out = await runScanCore(agent, { cronSecret: secret });
+        const out = await runScanCore(agent, { cronSecret: secret }, tier);
         results.push({ agentId: agent.id, newCount: out.newCount });
       } catch (e) {
         results.push({ agentId: agent.id, error: String((e as Error).message || e).slice(0, 200) });
@@ -851,7 +946,7 @@ async function handleCron() {
 
   return jsonResponse({
     ok: true,
-    considered: candidates.length,
+    considered: due.length,
     ran: results.length,
     results,
   });

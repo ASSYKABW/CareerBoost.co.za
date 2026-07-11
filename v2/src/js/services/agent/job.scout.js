@@ -15,6 +15,9 @@
     error: "",
     agents: [],            // each: {id,name,...config, findings:[], newCount, scanBusy}
     limit: 1,              // max agents for this plan (from server)
+    tier: "free",
+    scanQuota: null,       // free trial scan cap (null = unlimited)
+    autoIntervalHours: null,
     stats: { totalNew: 0, agentCount: 0 },
     saveBusy: false,
     editingId: null        // agent being edited in the wizard (null = new)
@@ -98,6 +101,9 @@
         return a;
       });
       state.limit = out.limit || 1;
+      state.tier = out.tier || "free";
+      state.scanQuota = (typeof out.scanQuota === "number") ? out.scanQuota : null;
+      state.autoIntervalHours = out.autoIntervalHours || null;
       state.stats = out.stats || { totalNew: 0, agentCount: state.agents.length };
       state.error = "";
       // Cron scans (Phase 2/3) deliver findings while the user is away, with no
@@ -504,6 +510,11 @@
       .concat(['<span class="chip violet"><i class="fa-solid fa-clock-rotate-left"></i> ' + esc(autoLabel) + "</span>"])
       .join("");
 
+    // Free tier is a trial: a scan quota (e.g. 4) that, once used, stops the agent.
+    const isTrial = typeof state.scanQuota === "number";
+    const scansUsed = a.scanCount || 0;
+    const exhausted = !!a.exhausted || (isTrial && scansUsed >= state.scanQuota);
+
     const statPill = function (num, label, accent) {
       return '<div class="js-stat"><span class="js-stat-num' + (accent ? " is-accent" : "") + '">' + esc(String(num)) + '</span><span class="js-stat-label">' + esc(label) + "</span></div>";
     };
@@ -511,7 +522,9 @@
       '<div class="js-stats">' +
         statPill(a.newCount || 0, "New", true) +
         statPill(findings.length, "In inbox") +
-        statPill(a.lastRunAt ? (timeAgo(a.lastRunAt) || "—") : "Never", "Last scan") +
+        (isTrial
+          ? statPill(scansUsed + " / " + state.scanQuota, "Free scans")
+          : statPill(a.lastRunAt ? (timeAgo(a.lastRunAt) || "—") : "Never", "Last scan")) +
         (stats && typeof stats.fetched === "number" ? statPill(stats.fetched, "Last fetch") : "") +
       "</div>";
 
@@ -544,14 +557,21 @@
         '<div class="js-targeting">' + targetingChips + "</div>" +
         deepScanHtml +
         statsHtml +
-        '<div class="js-scan-row">' +
-          '<button type="button" class="btn-primary js-scan-btn" data-scout-scan="' + esc(a.id) + '"' + (a.scanBusy ? " disabled" : "") + ">" +
-            (a.scanBusy
-              ? '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning every board…'
-              : '<i class="fa-solid fa-radar"></i> Scan now') +
-          "</button>" +
-          (a.cadence !== "manual" ? '<span class="js-scan-hint"><i class="fa-solid fa-bolt"></i> also runs automatically</span>' : "") +
-        "</div>" +
+        (exhausted
+          ? '<div class="js-trial-done">' +
+              '<div><strong>Free trial complete.</strong> You\'ve seen what your agent can do — upgrade and it keeps hunting automatically, with more agents, faster scans, and LinkedIn/Indeed coverage.</div>' +
+              '<button type="button" class="btn-primary btn-sm" data-scout-upgrade="1"><i class="fa-solid fa-crown"></i> Upgrade to keep hunting</button>' +
+            "</div>"
+          : isTrial
+            ? '<div class="js-scan-row"><span class="js-scan-hint"><i class="fa-solid fa-bolt"></i> Auto-scans every ' + esc(String(state.autoIntervalHours || 5)) + "h · " + (state.scanQuota - scansUsed) + " free scan" + ((state.scanQuota - scansUsed) === 1 ? "" : "s") + " left</span></div>"
+            : '<div class="js-scan-row">' +
+                '<button type="button" class="btn-primary js-scan-btn" data-scout-scan="' + esc(a.id) + '"' + (a.scanBusy ? " disabled" : "") + ">" +
+                  (a.scanBusy
+                    ? '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning every board…'
+                    : '<i class="fa-solid fa-radar"></i> Scan now') +
+                "</button>" +
+                (a.cadence !== "manual" ? '<span class="js-scan-hint"><i class="fa-solid fa-bolt"></i> also runs automatically</span>' : "") +
+              "</div>") +
         (visible.length
           ? '<div class="js-inbox-head"><h4>Latest finds</h4><span class="js-rule"></span></div>' +
             '<div class="js-findings">' + visible.map(renderFindingRow).join("") + "</div>" +
@@ -648,6 +668,13 @@
     });
     document.querySelectorAll("[data-scout-scan]").forEach(function (btn) {
       btn.addEventListener("click", function () { runScan(btn.getAttribute("data-scout-scan")); });
+    });
+    document.querySelectorAll("[data-scout-upgrade]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (window.CBV2.upgradeModal && typeof window.CBV2.upgradeModal.open === "function") window.CBV2.upgradeModal.open("job-scout-agents");
+        else if (window.CBV2.navigate) window.CBV2.navigate("#/billing");
+        else toast("info", "Upgrade to keep your agent running.");
+      });
     });
     document.querySelectorAll("[data-scout-edit]").forEach(function (btn) {
       btn.addEventListener("click", function () { openWizard(btn.getAttribute("data-scout-edit")); });
