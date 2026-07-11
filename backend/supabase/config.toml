@@ -272,3 +272,9 @@ verify_jwt = false
 # + brand_settings.push_paused.
 [functions.push-send]
 verify_jwt = false
+
+# Job Scout Agent — user actions validate the JWT in-code (getAuthedUser); the
+# cron action authenticates with X-Cron-Secret. Gateway bypass is required so
+# the scheduler (which has no user session) can reach the function.
+[functions.job-scout]
+verify_jwt = false
