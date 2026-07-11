@@ -21,8 +21,14 @@
 import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
 import { resendConfigured, sendEmail } from "../_shared/resend.ts";
+import { callProvider, extractJson, type LLMProvider, providerHasKey } from "../_shared/llm.ts";
+import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 
 const FINDINGS_LIMIT = 50;
+// Deep Scan: how wide to fan the 10-board aggregator, and expansion cache TTL.
+const DEEP_SCAN_MAX_TITLES = 6;
+const DEEP_SCAN_CONCURRENCY = 3;
+const TITLE_EXPAND_TTL_SECONDS = 24 * 60 * 60;
 const MAX_PER_SCAN_CAP = 50;
 const FN_TIMEOUT_MS = 25_000;
 
@@ -304,6 +310,117 @@ async function handleScan(userId: string, authHeader: string) {
   return jsonResponse({ ok: true, newCount: out.newCount, findings: out.findings, stats: out.stats });
 }
 
+// Bounded-concurrency map — keeps the Deep Scan fan-out from opening N
+// simultaneous edge-function calls.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const i = cursor++;
+      out[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => worker()));
+  return out;
+}
+
+// One cheap LLM call → related job titles the candidate would also apply to.
+// Tries providers in cost order, first one with a key AND quota wins — so a
+// Gemini 429 (free-tier exhaustion) transparently falls back to Groq/Anthropic.
+const EXPAND_PROVIDERS: Array<{ provider: LLMProvider; model: string }> = [
+  { provider: "gemini", model: "gemini-2.0-flash" },
+  { provider: "groq", model: "llama-3.3-70b-versatile" },
+  { provider: "anthropic", model: "claude-haiku-4-5" },
+  { provider: "openai", model: "gpt-4o-mini" },
+];
+
+async function llmExpandTitles(primary: string, base: string[], skills: string[]): Promise<string[]> {
+  const systemStable =
+    "You expand a job title into closely-related job titles a candidate would ALSO apply to. " +
+    "Return ONLY real, commonly-used titles for the SAME profession and a similar seniority — synonyms, " +
+    "adjacent specializations, and common naming variants. Never invent titles, never drift to unrelated " +
+    'fields, and do not repeat the input titles. Respond as JSON: {"titles": ["...", ...]} with at most 5 items.';
+  const user =
+    "Target title: " + primary +
+    (base.length > 1 ? "\nAlso targeting: " + base.slice(1).join(", ") : "") +
+    (skills.length ? "\nKey skills: " + skills.join(", ") : "");
+  const outputSchema = {
+    type: "object",
+    properties: { titles: { type: "array", items: { type: "string" } } },
+    required: ["titles"],
+  };
+
+  let lastErr = "";
+  for (const { provider, model } of EXPAND_PROVIDERS) {
+    if (!providerHasKey(provider)) continue;
+    try {
+      const res = await callProvider(provider, {
+        systemStable,
+        user,
+        model,
+        outputSchema,
+        temperature: 0.2,
+        maxTokens: 220,
+        timeoutMs: 12_000,
+      });
+      const parsed = extractJson<{ titles?: unknown }>(res.text);
+      const titles = Array.isArray(parsed.titles) ? parsed.titles : [];
+      const out = titles.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 5);
+      if (out.length) return out;
+    } catch (e) {
+      lastErr = provider + ": " + String((e as Error).message || e);
+    }
+  }
+  if (lastErr) throw new Error(lastErr);
+  return [];
+}
+
+// Deep Scan title set = the agent's own titles + AI-expanded relatives, deduped
+// and capped. Cached 24h keyed on the title/skill set. Any failure degrades
+// gracefully to just the agent's own titles (a normal scan).
+async function expandTitles(agent: AgentRow): Promise<string[]> {
+  const base = strArr(agent.target_titles, 5);
+  if (!base.length) return base;
+  const skills = strArr(agent.must_have_skills, 6);
+
+  let expansions: string[] = [];
+  try {
+    const cacheKey = await buildKvKey({
+      v: "scout-title-expand-1",
+      titles: base.map((s) => s.toLowerCase()).sort(),
+      skills: skills.map((s) => s.toLowerCase()).sort(),
+    });
+    const cached = await readKvCache<string[]>("other", cacheKey);
+    if (cached.payload && Array.isArray(cached.payload)) {
+      expansions = cached.payload;
+    } else {
+      expansions = await llmExpandTitles(base[0], base, skills);
+      if (expansions.length) {
+        writeKvCache("other", cacheKey, expansions, TITLE_EXPAND_TTL_SECONDS).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.error("[job-scout] title expansion failed:", String((e as Error).message || e).slice(0, 200));
+    expansions = [];
+  }
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of [...base, ...expansions]) {
+    const k = t.toLowerCase().trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= DEEP_SCAN_MAX_TITLES) break;
+  }
+  return out;
+}
+
 // The scan pipeline shared by user-triggered scans (JWT auth) and cron scans
 // (internal secret). Throws on hard failures; returns delivery stats.
 async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
@@ -319,37 +436,58 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
     : 14;
 
   const primaryTitle = (agent.target_titles && agent.target_titles[0]) || "";
-  const payload = {
-    query: primaryTitle,
-    filters: {
-      location: agent.location || "",
-      locationStrictness: agent.location_strictness || "balanced",
-      remoteOnly: agent.work_mode === "remote",
-      postedWithinDays: sinceDays,
-      sort: "newest",
-    },
+  const baseFilters = {
+    location: agent.location || "",
+    locationStrictness: agent.location_strictness || "balanced",
+    remoteOnly: agent.work_mode === "remote",
+    postedWithinDays: sinceDays,
+    sort: "newest",
+  };
+  const skills = agent.must_have_skills || [];
+
+  // DEEP SCAN: AI-expand the target titles into the whole family of related
+  // roles ("Fire Engineer" → fire protection / safety / sprinkler engineer…),
+  // then fan out the 10-board aggregator across each. external-search (LinkedIn/
+  // Indeed via Google/JSearch) and companies-search stay single-query to protect
+  // their tight quotas. Expansion is cached 24h, so it's ~one LLM call per
+  // unique title-set, not per scan.
+  const searchTitles = await expandTitles(agent);
+
+  const buildPayload = (title: string) => ({
+    query: title,
+    filters: baseFilters,
     nlq: {
-      keywords: [...(agent.target_titles || []), ...(agent.must_have_skills || [])].slice(0, 12),
+      keywords: [title, ...skills].slice(0, 12),
       location: agent.location || null,
       remote: agent.work_mode === "remote",
     },
-  };
+  });
+  const primaryPayload = buildPayload(primaryTitle || (searchTitles[0] || ""));
 
-  const [core, external, companies] = await Promise.all([
-    callSearchFn("jobs-search", payload, auth),
-    callSearchFn("external-search", payload, auth),
-    callSearchFn("companies-search", payload, auth),
+  // jobs-search fan-out (bounded concurrency) + one external + one companies.
+  const coreRuns = await mapWithConcurrency(
+    searchTitles,
+    DEEP_SCAN_CONCURRENCY,
+    (t) => callSearchFn("jobs-search", buildPayload(t), auth),
+  );
+  const [external, companies] = await Promise.all([
+    callSearchFn("external-search", primaryPayload, auth),
+    callSearchFn("companies-search", primaryPayload, auth),
   ]);
+  const coreJobs = coreRuns.flatMap((r) => r.jobs);
+  const coreOk = coreRuns.some((r) => r.ok);
   const laneStats = {
-    core: { ok: core.ok, count: core.jobs.length, error: core.error },
+    core: { ok: coreOk, count: coreJobs.length, titles: searchTitles.length },
     external: { ok: external.ok, count: external.jobs.length, error: external.error },
     companies: { ok: companies.ok, count: companies.jobs.length, error: companies.error },
+    deepScan: searchTitles.length > 1,
+    titlesSearched: searchTitles,
   };
 
   // Merge → compact → exclusion filter → in-batch dedupe by fingerprint.
   const excludes = (agent.exclude_keywords || []).map((x) => x.toLowerCase()).filter(Boolean);
   const byFp = new Map<string, ScoutJob>();
-  for (const raw of [...core.jobs, ...external.jobs, ...companies.jobs]) {
+  for (const raw of [...coreJobs, ...external.jobs, ...companies.jobs]) {
     const job = compactJob(raw);
     if (!job.title || !job.url) continue;
     const text = (job.title + " " + job.descriptionText).toLowerCase();
@@ -415,6 +553,8 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
     fetched,
     newCount: delivered.length,
     sinceDays,
+    deepScan: searchTitles.length > 1,
+    titlesSearched: searchTitles,
     lanes: laneStats,
     trigger: auth.cronSecret ? "cron" : "manual",
     ranAt: new Date().toISOString(),
