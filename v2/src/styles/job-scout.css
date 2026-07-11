@@ -315,6 +315,23 @@ select.js-input { padding-right: 2.3rem; }
 .js-field-hint { display: block; margin-top: 4px; font-size: var(--font-size-12); color: var(--color-text-dim); }
 .js-field-row { display: flex; gap: var(--space-12); flex-wrap: wrap; }
 .js-field-row > .js-field { flex: 1; min-width: 150px; }
+
+.js-toggles { display: flex; gap: var(--space-8); flex-wrap: wrap; margin-bottom: var(--space-16); }
+.js-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-8);
+  padding: 9px 13px; border-radius: var(--radius-10); cursor: pointer;
+  border: 1px solid var(--color-border); background: rgba(255, 255, 255, 0.02);
+  font-size: var(--font-size-13); color: var(--color-text-muted);
+  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.js-toggle input { accent-color: var(--color-primary); width: 15px; height: 15px; }
+.js-toggle:hover { border-color: var(--color-border-strong); }
+.js-toggle:has(input:checked) {
+  color: var(--color-text);
+  border-color: rgba(34, 227, 255, 0.4);
+  background: rgba(34, 227, 255, 0.06);
+}
+.js-toggle i { opacity: 0.85; }
 .js-modal-foot { display: flex; justify-content: flex-end; gap: var(--space-10); margin-top: var(--space-6); }
 
 /* ---- responsive ---------------------------------------------------------- */

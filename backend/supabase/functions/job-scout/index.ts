@@ -20,6 +20,7 @@
 
 import { errorResponse, handleOptions, jsonResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedUser, getServiceClient } from "../_shared/auth.ts";
+import { resendConfigured, sendEmail } from "../_shared/resend.ts";
 
 const FINDINGS_LIMIT = 50;
 const MAX_PER_SCAN_CAP = 50;
@@ -52,8 +53,11 @@ interface AgentRow {
   active: boolean;
   cadence: string;
   max_per_scan: number;
+  notify_push: boolean;
+  notify_email: boolean;
   last_run_at: string | null;
   last_run_stats: Record<string, unknown> | null;
+  last_notified_at: string | null;
 }
 
 function str(v: unknown, max = 200): string {
@@ -94,6 +98,8 @@ function toClientAgent(row: AgentRow) {
     active: row.active,
     cadence: row.cadence,
     maxPerScan: row.max_per_scan,
+    notifyPush: row.notify_push !== false,
+    notifyEmail: row.notify_email !== false,
     lastRunAt: row.last_run_at,
     lastRunStats: row.last_run_stats || null,
   };
@@ -255,11 +261,22 @@ async function handleSave(userId: string, body: Record<string, unknown>) {
     .select("*")
     .single();
   if (error) return errorResponse("agent save failed: " + error.message, 500);
-  return jsonResponse({
-    ok: true,
-    agent: toClientAgent(data as AgentRow),
-    cadenceClamped: requestedCadence !== cadence,
-  });
+
+  // Notify prefs live in columns from migration 0050. Persist them in a
+  // SEPARATE best-effort update so `save` still works if 0050 hasn't been
+  // applied yet (PostgREST returns the unknown-column error in the result, not
+  // as a throw — we simply ignore it). Phase 3 fully activates once 0050 lands.
+  const notifyPush = input.notifyPush !== false;
+  const notifyEmail = input.notifyEmail !== false;
+  await admin
+    .from("job_scout_agents")
+    .update({ notify_push: notifyPush, notify_email: notifyEmail })
+    .eq("id", (data as AgentRow).id);
+
+  const client = toClientAgent(data as AgentRow);
+  client.notifyPush = notifyPush;
+  client.notifyEmail = notifyEmail;
+  return jsonResponse({ ok: true, agent: client, cadenceClamped: requestedCadence !== cadence });
 }
 
 // Paid check: any active non-free subscription. Free users are clamped to the
@@ -402,12 +419,143 @@ async function runScanCore(agent: AgentRow, auth: ScanAuth): Promise<{
     trigger: auth.cronSecret ? "cron" : "manual",
     ranAt: new Date().toISOString(),
   };
-  await admin
-    .from("job_scout_agents")
-    .update({ last_run_at: new Date().toISOString(), last_run_stats: stats })
-    .eq("id", agent.id);
+  const nowIso = new Date().toISOString();
+  const agentUpdate: Record<string, unknown> = { last_run_at: nowIso, last_run_stats: stats };
+
+  // Notify only on SCHEDULED runs that actually delivered something — a manual
+  // "Scan now" means the user is already looking at the inbox. Best-effort:
+  // notification failures never affect the scan result.
+  if (auth.cronSecret && delivered.length > 0) {
+    try {
+      const notified = await notifyUser(agent, delivered as DeliveredFinding[]);
+      if (notified) agentUpdate.last_notified_at = nowIso;
+    } catch (e) {
+      console.error("[job-scout] notify failed for agent", agent.id, String((e as Error).message || e));
+    }
+  }
+
+  await admin.from("job_scout_agents").update(agentUpdate).eq("id", agent.id);
 
   return { newCount: delivered.length, findings: delivered, stats };
+}
+
+interface DeliveredFinding { id: string; job: ScoutJob; }
+
+const SITE = (Deno.env.get("SITE_URL") || "https://www.careerboost.co.za").replace(/\/+$/, "");
+const FN_BASE = () => `${Deno.env.get("SUPABASE_URL") || ""}/functions/v1`;
+
+// Deliver "your agent found N roles" via the channels the user left enabled.
+// Returns true if at least one channel was attempted.
+async function notifyUser(agent: AgentRow, delivered: DeliveredFinding[]): Promise<boolean> {
+  const n = delivered.length;
+  const top = delivered[0]?.job?.title || "a new role";
+  const headline = `${n} new ${n === 1 ? "role" : "roles"} for ${agent.name}`;
+  let attempted = false;
+
+  // ---- PWA push (best-effort) --------------------------------------------
+  if (agent.notify_push) {
+    const secret = cronSecretFromEnv();
+    if (secret) {
+      attempted = true;
+      try {
+        await fetch(`${FN_BASE()}/push-send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Cron-Secret": secret },
+          body: JSON.stringify({
+            action: "send",
+            segment: "users",
+            userIds: [agent.user_id],
+            title: "Your Job Agent found " + n + (n === 1 ? " new role" : " new roles"),
+            body: n === 1 ? String(top).slice(0, 120) : `${top} + ${n - 1} more — tap to review.`,
+            url: "/#/dashboard",
+            tag: "job-scout",
+          }),
+        });
+      } catch (e) {
+        console.error("[job-scout] push-send failed:", String((e as Error).message || e));
+      }
+    }
+  }
+
+  // ---- Email digest (best-effort, compliant) ------------------------------
+  if (agent.notify_email && resendConfigured()) {
+    try {
+      const admin = getServiceClient();
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("email, email_unsub_token")
+        .eq("user_id", agent.user_id)
+        .maybeSingle();
+      const email = (prof as { email?: string } | null)?.email || "";
+      if (email) {
+        // Respect global email opt-outs.
+        const { data: supp } = await admin
+          .from("email_suppressions")
+          .select("email")
+          .eq("email", email.toLowerCase())
+          .maybeSingle();
+        if (!supp) {
+          let token = (prof as { email_unsub_token?: string } | null)?.email_unsub_token || "";
+          if (!token) {
+            token = crypto.randomUUID().replace(/-/g, "");
+            await admin.from("profiles").update({ email_unsub_token: token }).eq("user_id", agent.user_id);
+          }
+          const unsubUrl = `${FN_BASE()}/email-unsubscribe?u=${encodeURIComponent(agent.user_id)}&k=${encodeURIComponent(token)}`;
+          attempted = true;
+          const res = await sendEmail({
+            to: email,
+            subject: headline,
+            html: buildDigestHtml(agent, delivered, unsubUrl),
+            headers: { "List-Unsubscribe": `<${unsubUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+            tags: [{ name: "type", value: "job-scout-digest" }],
+          });
+          if (res.ok) {
+            await admin.from("admin_email_log").insert({
+              user_id: agent.user_id,
+              email,
+              kind: "job_scout_digest",
+              resend_message_id: res.id,
+            }).then(() => {}, () => {}); // log table shape may vary; never fail the send
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[job-scout] email digest failed:", String((e as Error).message || e));
+    }
+  }
+
+  return attempted;
+}
+
+function escHtml(s: unknown): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function buildDigestHtml(agent: AgentRow, delivered: DeliveredFinding[], unsubUrl: string): string {
+  const rows = delivered.slice(0, 6).map((f) => {
+    const j = f.job || ({} as ScoutJob);
+    const meta = [j.company, j.location].filter(Boolean).map(escHtml).join(" · ");
+    return (
+      '<tr><td style="padding:12px 0;border-bottom:1px solid #1c2136;">' +
+        '<a href="' + escHtml(j.url || SITE) + '" style="color:#e9ecf8;font-weight:600;font-size:15px;text-decoration:none;">' + escHtml(j.title || "New role") + "</a>" +
+        (meta ? '<div style="color:#8d94ab;font-size:13px;margin-top:3px;">' + meta + "</div>" : "") +
+      "</td></tr>"
+    );
+  }).join("");
+  const n = delivered.length;
+  const dash = SITE + "/#/dashboard";
+  return (
+    '<div style="background:#0a0d1a;padding:28px 0;font-family:Inter,Arial,sans-serif;">' +
+      '<div style="max-width:520px;margin:0 auto;background:#0f1424;border:1px solid #1c2136;border-radius:16px;padding:26px;">' +
+        '<div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#22e3ff;font-weight:700;">CareerBoost · Job Agent</div>' +
+        '<h1 style="color:#e9ecf8;font-size:21px;margin:8px 0 4px;">Your agent found ' + n + " new " + (n === 1 ? "role" : "roles") + "</h1>" +
+        '<p style="color:#8d94ab;font-size:14px;margin:0 0 16px;">Fresh matches for <strong style="color:#c9d0e6;">' + escHtml(agent.name) + "</strong> that you haven’t seen before.</p>" +
+        '<table style="width:100%;border-collapse:collapse;">' + rows + "</table>" +
+        '<a href="' + escHtml(dash) + '" style="display:inline-block;margin-top:20px;background:linear-gradient(135deg,#22e3ff,#b06bff);color:#0a0d18;font-weight:700;font-size:14px;text-decoration:none;padding:11px 20px;border-radius:10px;">Review in CareerBoost →</a>' +
+        '<p style="color:#5a6179;font-size:12px;margin:22px 0 0;">You get these because your Job Agent’s email alerts are on. Turn them off in the agent settings, or <a href="' + escHtml(unsubUrl) + '" style="color:#5566aa;">unsubscribe</a>.</p>' +
+      "</div>" +
+    "</div>"
+  );
 }
 
 // ---------------------------------------------------------------------------

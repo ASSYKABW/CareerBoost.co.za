@@ -224,7 +224,9 @@
         location: state.agent.location || "",
         strictness: state.agent.locationStrictness || "balanced",
         workMode: state.agent.workMode || "any",
-        cadence: state.agent.cadence || "daily"
+        cadence: state.agent.cadence || "daily",
+        notifyPush: state.agent.notifyPush !== false,
+        notifyEmail: state.agent.notifyEmail !== false
       };
     }
     const store = window.CBV2.store;
@@ -293,6 +295,11 @@
             "</select>") +
         "</div>" +
         '<p class="js-field-hint" style="margin:-4px 0 14px;"><i class="fa-solid fa-bolt"></i> Your agent runs in the background — new finds are waiting when you return.</p>' +
+        '<span class="js-field-label">Notify me when it finds new roles</span>' +
+        '<div class="js-toggles">' +
+          '<label class="js-toggle"><input type="checkbox" id="js-agent-notify-push"' + (p.notifyPush ? " checked" : "") + '><span><i class="fa-solid fa-bell"></i> Push notification</span></label>' +
+          '<label class="js-toggle"><input type="checkbox" id="js-agent-notify-email"' + (p.notifyEmail ? " checked" : "") + '><span><i class="fa-solid fa-envelope"></i> Email digest</span></label>' +
+        "</div>" +
         '<div class="js-modal-foot">' +
           '<button type="button" class="btn-ghost" id="js-agent-cancel">Cancel</button>' +
           '<button type="button" class="btn-primary" id="js-agent-submit"><i class="fa-solid fa-wand-magic-sparkles"></i> ' + (state.agent ? "Save changes" : "Create agent & scan") + "</button>" +
@@ -346,6 +353,8 @@
         locationStrictness: (strictEl && strictEl.value) || "balanced",
         workMode: (modeEl && modeEl.value) || "any",
         cadence: (cadenceEl && cadenceEl.value) || "daily",
+        notifyPush: !!(document.getElementById("js-agent-notify-push") || {}).checked,
+        notifyEmail: !!(document.getElementById("js-agent-notify-email") || {}).checked,
         active: true
       }
     };
