@@ -33,9 +33,14 @@ export interface SkillRoute {
 //   - GPT-4o-mini is the cheap mid-tier on OpenAI.
 export const SKILL_ROUTING: Record<Skill, SkillRoute> = {
   // ----- Cheap classifiers / structured extraction (~50× cheaper) -----------
-  "query-parse":              { provider: "gemini",    model: "gemini-2.0-flash",     tier: "cheap" },
-  "job-match-score":          { provider: "gemini",    model: "gemini-2.0-flash",     tier: "cheap" },
-  "jd-analyze":               { provider: "gemini",    model: "gemini-2.0-flash",     tier: "cheap" },
+  // NOTE (2026-07): routed to Groq because the Gemini AND OpenAI keys are
+  // quota-exhausted (429). Groq's llama-3.3-70b handles the structured JSON
+  // these skills need, and ai-run's fallback chain still tries the others.
+  // When Gemini billing is restored, flip these back to gemini-2.0-flash
+  // (the cheapest) — that's the only change needed.
+  "query-parse":              { provider: "groq",      model: "llama-3.3-70b-versatile", tier: "cheap" },
+  "job-match-score":          { provider: "groq",      model: "llama-3.3-70b-versatile", tier: "cheap" },
+  "jd-analyze":               { provider: "groq",      model: "llama-3.3-70b-versatile", tier: "cheap" },
   "resume-parse":             { provider: "anthropic", model: "claude-haiku-4-5",     tier: "cheap" },
   "interview-score":          { provider: "anthropic", model: "claude-haiku-4-5",     tier: "cheap" },
 
