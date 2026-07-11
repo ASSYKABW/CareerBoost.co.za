@@ -1,0 +1,34 @@
+# Daily system health check — emails the admin if any of the 4 AI providers is
+# dead/out-of-credit/rate-limited, or the Job Agent scheduler has stalled.
+#
+# Uses the SAME secrets as the other job-scout workflows:
+#   SUPABASE_FUNCTIONS_URL, JOB_SCOUT_CRON_SECRET
+# The admin email target is the ADMIN_ALERT_EMAIL Supabase secret (set that to
+# receive the alerts; without it the check runs but sends nothing).
+name: Job Scout health check
+
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run daily health check
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.JOB_SCOUT_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / JOB_SCOUT_CRON_SECRET not set — skipping."
+            exit 0
+          fi
+          echo "→ job-scout health check"
+          curl -fsS -X POST "$FN_URL/job-scout" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"action":"health-notify"}'
+          echo ""
