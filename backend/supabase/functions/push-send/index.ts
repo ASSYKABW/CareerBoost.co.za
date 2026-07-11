@@ -36,10 +36,14 @@ Deno.serve(withCors(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
-  // Auth: cron secret OR admin JWT.
-  const cronSecret = (Deno.env.get("CRON_SECRET") || "").trim();
+  // Auth: cron secret OR admin JWT. Accept the Job Scout secret too, so the
+  // job-scout cron runner can fire "your agent found N roles" pushes without a
+  // separate shared secret.
   const provided = (req.headers.get("X-Cron-Secret") || "").trim();
-  if (!(cronSecret && provided === cronSecret)) {
+  const cronSecrets = [Deno.env.get("CRON_SECRET"), Deno.env.get("JOB_SCOUT_CRON_SECRET")]
+    .map((s) => (s || "").trim())
+    .filter(Boolean);
+  if (!(provided && cronSecrets.includes(provided))) {
     try { await getAuthedAdmin(req); } catch (err) { return errorResponse((err as Error).message || "Unauthorized", 403); }
   }
 
