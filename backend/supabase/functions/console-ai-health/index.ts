@@ -19,6 +19,7 @@ import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { getProviderHealth } from "../_shared/provider-health.ts";
 import { getScoutHealth } from "../_shared/scout-health.ts";
 import { probeProviders } from "../_shared/provider-probe.ts";
+import { bustRuntimeConfig } from "../_shared/runtime-config.ts";
 
 const DAY_MS = 86_400_000;
 const USD_PER_M_INPUT = 1.0;
@@ -164,7 +165,12 @@ Deno.serve(withCors(async (req) => {
   let providers = ph.providers;
   let critical = ph.critical;
   try {
-    const probes = await probeProviders();
+    // recheck=true (after the operator pastes a new key / clicks "Re-check now")
+    // → drop the cached Console keys so getProviderKey reads the just-saved one,
+    // and force a fresh probe instead of the 10-min cache.
+    const recheck = body.recheck === true;
+    if (recheck) bustRuntimeConfig("provider_keys");
+    const probes = await probeProviders(recheck);
     const byId: Record<string, { status: string; error?: string }> = {};
     probes.forEach((p) => { byId[p.id] = { status: p.status, error: p.error }; });
     providers = ph.providers.map((p) => {

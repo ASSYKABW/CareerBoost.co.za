@@ -8,7 +8,8 @@
 //
 // Cached ~10 min in kv_cache so opening the Console doesn't re-probe (4 tiny
 // LLM calls) on every render; the daily health-notify forces a fresh probe.
-import { callProvider, type LLMProvider, providerHasKey } from "./llm.ts";
+import { callProvider, type LLMProvider } from "./llm.ts";
+import { getProviderKey } from "./runtime-config.ts";
 import { buildKvKey, readKvCache, writeKvCache } from "./kv-cache.ts";
 
 export interface ProviderProbe {
@@ -29,7 +30,9 @@ const PROBE: Array<{ id: LLMProvider; model: string; label: string; topup: strin
 ];
 
 async function probeOne(p: { id: LLMProvider; model: string; label: string; topup: string }): Promise<ProviderProbe> {
-  if (!providerHasKey(p.id)) return { id: p.id, label: p.label, status: "no-key", topup: p.topup };
+  // Resolve env OR Console-override key — so a key pasted in the Console is
+  // tested even when no env secret is set.
+  if (!(await getProviderKey(p.id))) return { id: p.id, label: p.label, status: "no-key", topup: p.topup };
   try {
     // "json" in the prompt keeps Groq happy (it demands it when a JSON
     // response_format is in play) without affecting the others.
