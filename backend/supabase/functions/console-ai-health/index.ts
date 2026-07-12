@@ -18,6 +18,7 @@ import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { getProviderHealth } from "../_shared/provider-health.ts";
 import { getScoutHealth } from "../_shared/scout-health.ts";
+import { probeProviders } from "../_shared/provider-probe.ts";
 
 const DAY_MS = 86_400_000;
 const USD_PER_M_INPUT = 1.0;
@@ -157,6 +158,23 @@ Deno.serve(withCors(async (req) => {
   } catch (_e) { /* ignore */ }
 
   const ph = await getProviderHealth();
+  // Override each provider's status with the ACTIVE probe (the reliable signal —
+  // catches out-of-credit / 429 that the passive ai_usage check can't see because
+  // ai-run's fallback silently recovers them). Keep the passive counts + key config.
+  let providers = ph.providers;
+  let critical = ph.critical;
+  try {
+    const probes = await probeProviders();
+    const byId: Record<string, { status: string; error?: string }> = {};
+    probes.forEach((p) => { byId[p.id] = { status: p.status, error: p.error }; });
+    providers = ph.providers.map((p) => {
+      const pr = byId[p.id];
+      if (!pr || pr.status === "no-key") return p;
+      return { ...p, status: pr.status, lastError: pr.error || p.lastError };
+    });
+    critical = providers.filter((p) => p.status === "credit" || p.status === "key");
+  } catch (_e) { /* fall back to passive */ }
+
   let scout: Awaited<ReturnType<typeof getScoutHealth>> | null = null;
   try { scout = await getScoutHealth(); } catch (_e) { /* isolate */ }
   const aiHealth = {
@@ -167,7 +185,7 @@ Deno.serve(withCors(async (req) => {
       { key: "incidents", label: "Open incidents", tone: incidents.length ? "amber" : "green", fmt: "int", value: incidents.length, delta: criticalCount ? criticalCount + " critical" : "all clear", deltaDir: incidents.length ? "down" : "up", spark: [] },
     ],
     bySkill, byModel, incidents, failures,
-    providers: ph.providers, critical: ph.critical,
+    providers, critical,
     scout,
   };
   return jsonResponse({ ok: true, aiHealth });
