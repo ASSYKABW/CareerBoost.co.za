@@ -400,7 +400,7 @@
         return MOCK;
       }
     },
-    loadAiHealth: async function () {
+    loadAiHealth: async function (opts) {
       var MOCK = {
         _mock: true,
         kpis: [
@@ -436,7 +436,7 @@
       };
       if (isMock()) return MOCK;
       try {
-        var d = await call("console-ai-health", {});
+        var d = await call("console-ai-health", (opts && opts.recheck) ? { recheck: true } : {});
         return (d && d.aiHealth) ? d.aiHealth : MOCK;
       } catch (e) {
         console.warn("[console] console-ai-health failed, using sample data:", e.message);
