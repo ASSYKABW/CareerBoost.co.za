@@ -24,6 +24,7 @@ import { resendConfigured, sendEmail } from "../_shared/resend.ts";
 import { callProvider, extractJson, type LLMProvider, providerHasKey } from "../_shared/llm.ts";
 import { buildKvKey, readKvCache, writeKvCache } from "../_shared/kv-cache.ts";
 import { getScoutHealth } from "../_shared/scout-health.ts";
+import { probeProviders } from "../_shared/provider-probe.ts";
 
 const FINDINGS_LIMIT = 50;
 // Deep Scan: how wide to fan the 10-board aggregator, and expansion cache TTL.
@@ -1074,40 +1075,8 @@ function buildWeeklyHtml(jobs: ScoutJob[], total: number, unsubUrl: string): str
 // Health-notify (admin ops): secret-authed. Checks all 4 AI providers + the
 // Job Agent system and, if anything is critical, emails the admin. Runs daily.
 // Deduped by the daily cadence; no-op (with a note) if ADMIN_ALERT_EMAIL unset.
-// ---------------------------------------------------------------------------
-// Active probe: ping every configured AI provider with a 1-token call so we
-// catch dead keys / quota-429 EVEN when the ai-run fallback silently recovered
-// them (those never land in ai_usage as failures). ~4 tiny calls/day.
-const PROBE_PROVIDERS: Array<{ id: LLMProvider; model: string; label: string; topup: string }> = [
-  { id: "gemini", model: "gemini-2.0-flash", label: "Google Gemini", topup: "https://aistudio.google.com/app/apikey" },
-  { id: "openai", model: "gpt-4o-mini", label: "OpenAI", topup: "https://platform.openai.com/account/billing/overview" },
-  { id: "groq", model: "llama-3.3-70b-versatile", label: "Groq", topup: "https://console.groq.com/keys" },
-  { id: "anthropic", model: "claude-haiku-4-5", label: "Anthropic (Claude)", topup: "https://console.anthropic.com/settings/billing" },
-];
-async function probeProviders(): Promise<Array<{ id: string; label: string; status: string; topup: string; error?: string }>> {
-  return await Promise.all(PROBE_PROVIDERS.map(async (p) => {
-    if (!providerHasKey(p.id)) return { id: p.id, label: p.label, status: "no-key", topup: p.topup };
-    try {
-      // "json" in the prompt keeps Groq happy (it requires it when a JSON
-      // response_format is in play) without affecting the other providers.
-      await callProvider(p.id, { systemStable: 'Health probe — reply with this JSON: {"ok":true}', user: "ping (respond in json)", model: p.model, maxTokens: 12, timeoutMs: 10_000 });
-      return { id: p.id, label: p.label, status: "healthy", topup: p.topup };
-    } catch (e) {
-      const msg = String((e as Error).message || e);
-      let status = "errors";
-      if (/credit|billing|payment|insufficient|out of credit|quota.*(exceed|exhaust)|exceed.*quota/i.test(msg)) status = "credit";
-      else if (/invalid.{0,20}api.?key|unauthorized|\b401\b|authentication|permission_denied|expired.*key/i.test(msg)) status = "key";
-      else if (/rate.?limit|\b429\b|too many requests|overloaded/i.test(msg)) status = "rate";
-      // A 400 that isn't auth/quota/rate means the key reached the API and got a
-      // validation error → the provider is UP. Don't false-alarm on it.
-      else if (/\b400\b|invalid.?request|response_format|must contain/i.test(msg)) status = "healthy";
-      return { id: p.id, label: p.label, status, topup: p.topup, error: msg.slice(0, 140) };
-    }
-  }));
-}
-
 async function handleHealthNotify(dryRun: boolean) {
-  const probes = await probeProviders();
+  const probes = await probeProviders(true); // force a fresh probe for the daily check
   let scout: Awaited<ReturnType<typeof getScoutHealth>> | null = null;
   try { scout = await getScoutHealth(); } catch { /* isolate */ }
 
