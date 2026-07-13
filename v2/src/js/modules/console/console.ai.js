@@ -140,10 +140,10 @@
         '<td class="n"><span class="cbc-chip ' + st.tone + '"><i class="fa-solid ' + st.icon + '"></i> ' + esc(st.label) + "</span></td>" +
         '<td class="n" style="white-space:nowrap">' + topup + setBtn + clearBtn + "</td></tr>";
     }).join("");
-    return banner + '<section class="cbc-card cbc-panel" id="cbc-pk"><div class="cbc-ph"><div><div class="cbc-eb">Ops control</div><h2>Provider health &amp; credits</h2></div><button class="cbc-btn cbc-sm" data-pk-recheck title="Ping every provider now with a live test call"><i class="fa-solid fa-rotate"></i> Re-check now</button></div>' +
+    return '<div id="cbc-pk-wrap">' + banner + '<section class="cbc-card cbc-panel" id="cbc-pk"><div class="cbc-ph"><div><div class="cbc-eb">Ops control</div><h2>Provider health &amp; credits</h2></div><button class="cbc-btn cbc-sm" data-pk-recheck title="Ping every provider now with a live test call"><i class="fa-solid fa-rotate"></i> Re-check now</button></div>' +
       '<div style="font-size:12px;color:var(--c-muted);margin-bottom:11px">Runs dry or the key expires? Buy credit (or generate a new key) at the provider, then paste the key here — it goes live for every AI call within ~60s, no redeploy. Keys are stored server-side and never shown again.</div>' +
       '<div id="cbc-pk-edit"></div>' +
-      '<table class="cbc-table"><thead><tr><th>Provider</th><th>Key</th><th style="text-align:right">OK</th><th style="text-align:right">Fail</th><th style="text-align:right">Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' + rows + "</tbody></table></section>";
+      '<table class="cbc-table"><thead><tr><th>Provider</th><th>Key</th><th style="text-align:right">OK</th><th style="text-align:right">Fail</th><th style="text-align:right">Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' + rows + "</tbody></table></section></div>";
   }
 
   // Inline "paste a new key" form (rendered into #cbc-pk-edit).
@@ -158,7 +158,10 @@
   }
 
   function bindProviderKeys(bodyEl) {
-    var host = bodyEl.querySelector("#cbc-pk"); if (!host) return;
+    // Bind to the WRAPPER (banner + table) so the banner's "Paste new key"
+    // buttons — which live outside #cbc-pk — are caught too. The wrapper is
+    // re-created on every load(), so the listener never stacks.
+    var host = bodyEl.querySelector("#cbc-pk-wrap"); if (!host) return;
     var toast = (window.CBConsole.ui && window.CBConsole.ui.toast) || function (m) { console.log(m); };
     host.addEventListener("click", async function (e) {
       var t = e.target.closest ? e.target.closest("[data-pk-edit],[data-pk-save],[data-pk-cancel],[data-pk-clear],[data-pk-recheck]") : null;
