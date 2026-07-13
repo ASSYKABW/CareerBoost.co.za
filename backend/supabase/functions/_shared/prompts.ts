@@ -196,8 +196,10 @@ export const prompts: Record<Skill, PromptSpec> = {
     systemStable:
       "You are an expert cover-letter writer. Write a concise, confident, " +
       "specific cover letter tailored to the provided role, company, and " +
-      "candidate highlights. Avoid clichés and generic filler. Match the " +
-      "requested tone." + JSON_ONLY +
+      "candidate highlights. Avoid clichés and generic filler. When concrete " +
+      "candidate proof points are provided, ground the letter in that specific " +
+      "evidence instead of generic claims — but never fabricate metrics, titles, " +
+      "or facts that were not provided. Match the requested tone." + JSON_ONLY +
       ' Schema: { "subject": string, "body": string }' +
       " `body` must be 3-4 short paragraphs. Length: short = 120-180 words, " +
       "medium = 200-280 words, long = 300-380 words. Default to medium. " +
@@ -215,6 +217,18 @@ export const prompts: Record<Skill, PromptSpec> = {
       const why = pick(input, ["why", "motivation", "about"]);
       const candidateBg = pick(input, ["candidate", "background", "resume"]);
       const jd = pick(input, ["jobDescription", "jd", "jobPosting"]);
+      // P0: consume the user-selected Proof Bank evidence (achievements /
+      // bullets). The client sends these as `evidenceAssets`, but the prompt
+      // previously never read the field — so the specific proof a candidate
+      // hand-picked never reached the model. List them so the model can weave
+      // the most relevant into the evidence paragraph.
+      const evidenceArr = (input && typeof input === "object" && Array.isArray((input as Record<string, unknown>).evidenceAssets))
+        ? ((input as Record<string, unknown>).evidenceAssets as unknown[]).map((x) => String(x).trim()).filter(Boolean)
+        : [];
+      const evidenceBlock = evidenceArr.length
+        ? "\n\nCANDIDATE PROOF POINTS (user-selected concrete evidence — weave the most relevant of these into the body as specific proof; integrate them naturally rather than listing verbatim, and do not invent numbers beyond what is stated here):\n" +
+          evidenceArr.slice(0, 8).map((e) => "- " + e.slice(0, 300)).join("\n")
+        : "";
       // Phase 2: structured JD analysis from a chained jd-analyze call.
       // When present, list the JD's actual priority keywords + required
       // skills + top responsibilities so the cover letter weaves them in.
@@ -243,6 +257,7 @@ export const prompts: Record<Skill, PromptSpec> = {
         (why ? "\nWHY THIS COMPANY: " + why : "") +
         (jd ? "\n\nJOB DESCRIPTION (full text):\n" + jd.slice(0, 6000) : "") +
         jdAnalysisBlock +
+        evidenceBlock +
         (prev ? "\n\nPREVIOUS DRAFT (for context only; do not copy phrases):\n" + prev : "") +
         (candidateBg ? "\n\nCANDIDATE BACKGROUND:\n" + candidateBg : "") +
         aiContextBlock(input) +
