@@ -455,12 +455,16 @@
         ${score.issues.length
           ? '<ul class="export-preflight-list">' + score.issues.map(function (x) { return "<li>" + st(x) + "</li>"; }).join("") + "</ul>"
           : '<p class="muted">Strong letter quality baseline detected.</p>'}
+        <div class="cover-fix-head">
+          <span class="cover-mini-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Improve with AI</span>
+          <small class="muted">Each button rewrites the draft with your role, JD, and selected evidence in context.</small>
+        </div>
         <div class="ats-quick-fix-row cover-fix-row">
-          <button class="btn-ghost btn-sm" type="button" data-cover-fix="improve-opening"><i class="fa-solid fa-wand-magic-sparkles"></i> Improve opening</button>
-          <button class="btn-ghost btn-sm" type="button" data-cover-fix="add-metric"><i class="fa-solid fa-hashtag"></i> Add evidence hook</button>
-          <button class="btn-ghost btn-sm" type="button" data-cover-fix="tighten"><i class="fa-solid fa-scissors"></i> Tighten wording</button>
-          <button class="btn-ghost btn-sm" type="button" data-cover-fix="add-cta"><i class="fa-solid fa-arrow-right"></i> Add stronger close</button>
-          <button class="btn-ghost btn-sm" type="button" data-cover-fix="anti-generic"><i class="fa-solid fa-shield-halved"></i> Anti-generic polish</button>
+          <button class="btn-ghost btn-sm" type="button" data-cover-fix="improve-opening"><i class="fa-solid fa-bolt"></i> Sharpen opening</button>
+          <button class="btn-ghost btn-sm" type="button" data-cover-fix="add-metric"><i class="fa-solid fa-chart-line"></i> Strengthen evidence</button>
+          <button class="btn-ghost btn-sm" type="button" data-cover-fix="tighten"><i class="fa-solid fa-scissors"></i> Tighten</button>
+          <button class="btn-ghost btn-sm" type="button" data-cover-fix="add-cta"><i class="fa-solid fa-flag-checkered"></i> Stronger close</button>
+          <button class="btn-ghost btn-sm" type="button" data-cover-fix="anti-generic"><i class="fa-solid fa-fingerprint"></i> Make specific</button>
         </div>
       </article>
       <label class="form-row-full">Subject
@@ -469,6 +473,21 @@
       <label class="form-row-full">Body
         <textarea id="cover-body" rows="12">${st(body)}</textarea>
       </label>
+      <div class="export-preflight cover-preview-card">
+        <div class="export-preflight-head">
+          <label><i class="fa-solid fa-eye"></i> Live preview</label>
+          <select id="cover-preview-template" class="cover-preview-template" aria-label="Preview template">
+            ${COVER_TEMPLATES.map(function (t) {
+              const selected = t.id === viewState.coverTemplate ? "selected" : "";
+              return '<option value="' + st(t.id) + '" ' + selected + ">" + st(t.name) + "</option>";
+            }).join("")}
+          </select>
+        </div>
+        <div class="cover-preview-frame-wrap">
+          <iframe id="cover-preview-frame" class="cover-preview-frame" title="Cover letter preview" sandbox loading="lazy"></iframe>
+        </div>
+        <p class="muted cover-preview-hint">Exactly how your letter exports in the selected template — edit above to see it update live.</p>
+      </div>
       <div class="export-preflight cover-ab-card">
         <div class="export-preflight-head">
           <label>Preflight QA</label>
@@ -829,12 +848,11 @@
     `;
   }
 
-  async function generate(opts) {
-    opts = opts || {};
+  // Assemble the cover-letter input from the current form + selected assets.
+  // Shared by generate() and the AI "Improve" rewrites so both feed the model
+  // the exact same context (evidence, JD, tone, length, candidate background).
+  function collectCoverInput() {
     const form = document.getElementById("cover-form");
-    if (!form) {
-      return;
-    }
     const fd = new FormData(form);
     const selected = selectedAssets();
     const selectedStrengths = selected
@@ -865,7 +883,6 @@
       jobDescription ? ("Job posting context: " + jobDescription.slice(0, 1800)) : ""
     ].filter(Boolean).join(" | ");
     const range = lengthRange(length);
-    const currentDraft = getActiveDraft();
     const input = {
       company: company,
       role: role,
@@ -874,9 +891,7 @@
       template: String(fd.get("template") || viewState.coverTemplate || "professional-clean"),
       strengths: strengthsText
         .split(",")
-        .map(function (s) {
-          return s.trim();
-        })
+        .map(function (s) { return s.trim(); })
         .filter(Boolean)
         .concat(selectedStrengths)
         .filter(function (v, i, arr) { return arr.indexOf(v) === i; }),
@@ -885,13 +900,46 @@
       jobPosting: jobDescription.slice(0, 6000),
       evidenceAssets: selectedEvidence,
       candidate: ((window.CBV2.store.getAll().resume || {}).base || "").slice(0, 4000),
-      desiredWordRange: range.min + "-" + range.max,
-      rewriteInstruction: opts.forceRewrite
-        ? "Rewrite the entire cover letter from scratch to strictly match the requested length band."
-        : "Write a full cover letter aligned to requested length.",
-      previousDraft: (opts.forceRewrite && currentDraft && currentDraft.body) ? String(currentDraft.body).slice(0, 3500) : ""
+      desiredWordRange: range.min + "-" + range.max
     };
     viewState.coverTemplate = input.template;
+    return { input: input, company: company, role: role };
+  }
+
+  // Run the jd-analyze → cover-letter-generate chain and length-normalize the
+  // result. Shared by generate() and aiRewrite(). The structured jd-analyze
+  // pass injects the posting's exact priority terms; it's cached server-side
+  // so repeats are free, and non-fatal on failure.
+  async function runCoverGeneration(input) {
+    const ai = window.CBAI || {};
+    if (typeof ai.runSkill !== "function") {
+      throw new Error("AI orchestrator not available.");
+    }
+    if (input.jobDescription && input.jobDescription.trim().length > 80) {
+      try {
+        const analysis = await ai.runSkill("jd-analyze", { jd: input.jobDescription.slice(0, 6000) });
+        if (analysis && analysis.data) input.jdAnalyzed = analysis.data;
+      } catch (e) { /* proceed without structured JD analysis */ }
+    }
+    const result = await ai.runSkill("cover-letter-generate", input);
+    if (result && result.data && typeof result.data.body === "string") {
+      result.data.body = normalizeDraftLength(result.data.subject, result.data.body, input);
+    }
+    return result;
+  }
+
+  async function generate(opts) {
+    opts = opts || {};
+    const form = document.getElementById("cover-form");
+    if (!form) {
+      return;
+    }
+    const currentDraft = getActiveDraft();
+    const input = collectCoverInput().input;
+    input.rewriteInstruction = opts.forceRewrite
+      ? "Rewrite the entire cover letter from scratch to strictly match the requested length band."
+      : "Write a full cover letter aligned to requested length.";
+    input.previousDraft = (opts.forceRewrite && currentDraft && currentDraft.body) ? String(currentDraft.body).slice(0, 3500) : "";
     if (!input.company || !input.role) {
       viewState.error = "Company and role are required.";
       document.getElementById("cover-output").innerHTML = '<p class="ai-error">' + viewState.error + "</p>";
@@ -911,29 +959,7 @@
     document.getElementById("cover-output").innerHTML = renderResult();
 
     try {
-      const ai = window.CBAI || {};
-      if (typeof ai.runSkill !== "function") {
-        throw new Error("AI orchestrator not available.");
-      }
-      // Phase 2: chain jd-analyze → cover-letter-generate when a JD is provided.
-      // The structured analysis (requiredSkills, keywords, responsibilities) gets
-      // injected as `jdAnalyzed` so the cover-letter prompt can echo the JD's
-      // exact priority terms instead of inferring from raw text. The
-      // server-side response cache makes the jd-analyze call free on repeats.
-      if (jobDescription && jobDescription.trim().length > 80) {
-        try {
-          const analysis = await ai.runSkill("jd-analyze", { jd: jobDescription.slice(0, 6000) });
-          if (analysis && analysis.data) {
-            input.jdAnalyzed = analysis.data;
-          }
-        } catch (e) {
-          // Non-fatal — proceed without structured JD analysis.
-        }
-      }
-      const result = await ai.runSkill("cover-letter-generate", input);
-      if (result && result.data && typeof result.data.body === "string") {
-        result.data.body = normalizeDraftLength(result.data.subject, result.data.body, input);
-      }
+      const result = await runCoverGeneration(input);
       viewState.result = result;
       window.CBV2.store.setCoverLetterResult(result);
       // Phase Billing: optimistic decrement.
@@ -946,6 +972,90 @@
       document.getElementById("cover-output").innerHTML = renderResult();
       bindOutputControls();
     }
+  }
+
+  // Module-scope re-render for the draft output (callable from aiRewrite()).
+  function rerenderCoverOutput() {
+    const out = document.getElementById("cover-output");
+    if (!out) return;
+    out.innerHTML = renderResult();
+    bindOutputControls();
+  }
+
+  // P1 #3: the "Improve" actions are real AI rewrites now, not regex hacks.
+  // Each feeds the current draft back to cover-letter-generate as previousDraft
+  // with a targeted rewriteInstruction, using the same form/evidence context as
+  // a fresh generate.
+  const AI_REWRITE_INSTRUCTIONS = {
+    "improve-opening": "Rewrite the cover letter with a markedly stronger OPENING — hook the reader in the first sentence with a specific, role-relevant angle and name the company early. Preserve the candidate's real facts and the substance of the rest of the letter.",
+    "add-metric": "Rewrite the cover letter to foreground the candidate's most concrete, QUANTIFIED achievements from the provided proof points and background, making the business impact explicit. Never invent numbers, titles, or facts that were not provided.",
+    "tighten": "Rewrite the cover letter tighter — remove redundancy, hedging, and filler; keep only the strongest and most specific points; fit the requested length band.",
+    "add-cta": "Rewrite the cover letter's CLOSING into a confident, specific call to action with a professional sign-off, while preserving the substance of the rest of the letter.",
+    "anti-generic": "Rewrite the cover letter to remove every cliché and generic filler phrase. Make each claim specific to THIS exact role and company, grounded in the candidate's real evidence."
+  };
+
+  async function aiRewrite(kind) {
+    const instruction = AI_REWRITE_INSTRUCTIONS[kind];
+    if (!instruction || viewState.busy) return;
+    const form = document.getElementById("cover-form");
+    if (!form) return;
+    const bodyEl = document.getElementById("cover-body");
+    const curBody = bodyEl ? bodyEl.value : getActiveDraft().body;
+    if (!curBody || !curBody.trim()) { toastInfo("Generate a draft first."); return; }
+
+    const input = collectCoverInput().input;
+    if (!input.company || !input.role) { toastInfo("Add company and role first."); return; }
+    input.rewriteInstruction = instruction;
+    input.previousDraft = String(curBody).slice(0, 3500);
+
+    // Phase Billing: entitlement gate (an improve is a fresh generation).
+    const gate = window.CBV2 && window.CBV2.entitlementGate;
+    if (gate) {
+      const ok = await gate.checkQuota("ai_covers");
+      if (!ok) return;
+    }
+
+    const fixButtons = Array.prototype.slice.call(document.querySelectorAll("[data-cover-fix]"));
+    const clicked = document.querySelector('[data-cover-fix="' + kind + '"]');
+    const originalHtml = clicked ? clicked.innerHTML : "";
+    fixButtons.forEach(function (b) { b.disabled = true; });
+    if (clicked) clicked.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Improving…';
+    viewState.busy = true;
+    try {
+      const result = await runCoverGeneration(input);
+      if (!result || !result.data || typeof result.data.body !== "string") {
+        throw new Error("No improved draft returned.");
+      }
+      viewState.busy = false;
+      viewState.result = result;
+      window.CBV2.store.setCoverLetterResult(result);
+      const ent = window.CBV2 && window.CBV2.entitlements;
+      if (ent && ent.recordConsumption) ent.recordConsumption("ai_covers");
+      rerenderCoverOutput();
+      toastInfo("Letter improved with AI.");
+    } catch (err) {
+      viewState.busy = false;
+      fixButtons.forEach(function (b) { b.disabled = false; });
+      if (clicked) clicked.innerHTML = originalHtml;
+      toastInfo(err && err.message ? err.message : "Improve failed.");
+    }
+  }
+
+  // P1 #4: live template preview. Renders the current draft through the same
+  // buildCoverHtml() the export path uses, into a sandboxed iframe — so what
+  // you see is exactly what exports. Called on load, on edit (debounced), and
+  // on template change.
+  function updateCoverPreview() {
+    const frame = document.getElementById("cover-preview-frame");
+    if (!frame) return;
+    const subjectEl = document.getElementById("cover-subject");
+    const bodyEl = document.getElementById("cover-body");
+    const d = getActiveDraft();
+    const subject = subjectEl ? subjectEl.value : d.subject;
+    const body = bodyEl ? bodyEl.value : d.body;
+    try {
+      frame.srcdoc = buildCoverHtml(subject, body, viewState.coverTemplate);
+    } catch (e) { /* ignore render errors */ }
   }
 
   function bindOutputControls() {
@@ -1296,11 +1406,35 @@
     }
     const autoFix = document.getElementById("cover-autofix");
     if (autoFix) autoFix.addEventListener("click", function () { applyQuickFix("autofix"); });
+    // P1 #3: the "Improve" buttons now trigger a real AI rewrite.
     document.querySelectorAll("[data-cover-fix]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        applyQuickFix(btn.getAttribute("data-cover-fix"));
+        aiRewrite(btn.getAttribute("data-cover-fix"));
       });
     });
+
+    // P1 #4: live template preview. Debounce edits so we don't rebuild the
+    // iframe on every keystroke; repaint instantly on template change.
+    let previewTimer = null;
+    function schedulePreview() {
+      if (previewTimer) clearTimeout(previewTimer);
+      previewTimer = setTimeout(updateCoverPreview, 220);
+    }
+    const subjInput = document.getElementById("cover-subject");
+    const bodyInput = document.getElementById("cover-body");
+    if (subjInput) subjInput.addEventListener("input", schedulePreview);
+    if (bodyInput) bodyInput.addEventListener("input", schedulePreview);
+    const previewTemplate = document.getElementById("cover-preview-template");
+    if (previewTemplate) {
+      previewTemplate.addEventListener("change", function () {
+        viewState.coverTemplate = previewTemplate.value || "professional-clean";
+        const formSel = document.getElementById("cover-template");
+        if (formSel) formSel.value = viewState.coverTemplate;
+        updateCoverPreview();
+      });
+    }
+    updateCoverPreview();
+
     bindAssetInsertActions();
   }
 
@@ -1420,6 +1554,10 @@
     if (templateSel) {
       templateSel.addEventListener("change", function () {
         viewState.coverTemplate = templateSel.value || "professional-clean";
+        // Keep the draft's live-preview selector + iframe in sync.
+        const previewSel = document.getElementById("cover-preview-template");
+        if (previewSel) previewSel.value = viewState.coverTemplate;
+        updateCoverPreview();
       });
     }
     const rolePackInputSel = document.getElementById("cover-rolepack-input");
