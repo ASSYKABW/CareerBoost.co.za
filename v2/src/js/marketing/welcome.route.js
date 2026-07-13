@@ -28,10 +28,15 @@
   // accent colors so the feature grid isn't all one teal shade.
   const FEATURES = [
     {
+      // Flagship feature — rendered as a full-width spotlight card above the
+      // grid (see renderFeature + .lp-feature--lead), so the remaining six
+      // tile cleanly as two rows of three.
       icon: "fa-satellite-dish",
       title: "AI Job Agent",
       tone: "violet",
-      body: "Set it up once and it hunts for you — auto-scanning every board on a schedule, expanding your title with Deep Scan, and delivering only brand-new, résumé-matched roles to your dashboard."
+      lead: true,
+      tag: "New",
+      body: "Set it up once and it hunts for you — auto-scanning every board on a schedule, expanding your title with Deep Scan, and delivering only brand-new, résumé-matched roles straight to your dashboard."
     },
     {
       icon: "fa-bullseye",
@@ -360,9 +365,24 @@
 
   function renderFeature(f) {
     const tone = f.tone || "cyan";
+    const icon = '<span class="lp-feature-icon"><i class="fa-solid ' + f.icon + '" aria-hidden="true"></i></span>';
+    // Flagship feature spans the full grid width with a horizontal layout:
+    // icon + title (and optional "New" pill) on the left, body on the right.
+    if (f.lead) {
+      const tag = f.tag ? '<span class="lp-feature-tag">' + f.tag + '</span>' : "";
+      return (
+        '<article class="lp-feature lp-feature--' + tone + ' lp-feature--lead">' +
+          '<div class="lp-feature-lead-intro">' +
+            icon +
+            '<div class="lp-feature-lead-title">' + tag + '<h3>' + f.title + '</h3></div>' +
+          '</div>' +
+          '<p>' + f.body + '</p>' +
+        '</article>'
+      );
+    }
     return (
       '<article class="lp-feature lp-feature--' + tone + '">' +
-        '<span class="lp-feature-icon"><i class="fa-solid ' + f.icon + '" aria-hidden="true"></i></span>' +
+        icon +
         '<h3>' + f.title + '</h3>' +
         '<p>' + f.body + '</p>' +
       '</article>'
@@ -636,7 +656,7 @@
             '<header class="lp-section-head">' +
               '<span class="lp-eyebrow">Features</span>' +
               '<h2>Everything your job search needs, in one place.</h2>' +
-              '<p>Six features that work together — research, tailoring, practice, tracking, and follow-ups all in the same flow.</p>' +
+              '<p>An AI agent that hunts while you rest — plus research, tailoring, interview practice, tracking, and follow-ups, all in one connected flow.</p>' +
             '</header>' +
             '<div class="lp-feature-grid">' + features + '</div>' +
           '</div>' +
