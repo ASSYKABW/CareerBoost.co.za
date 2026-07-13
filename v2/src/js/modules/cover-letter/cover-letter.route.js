@@ -201,23 +201,12 @@
     let b = String(body || "").trim();
     if (!b) return b;
     const range = lengthRange(input && input.length);
-    let words = countWords(b);
-    if (words < range.min) {
-      const company = (input && input.company) || "the company";
-      const role = (input && input.role) || "the role";
-      const strengths = Array.isArray(input && input.strengths) ? input.strengths.slice(0, 3).join(", ") : "";
-      const why = String((input && input.why) || "").split("|")[0].trim();
-      const pad = [];
-      if (strengths) pad.push("My background in " + strengths + " allows me to contribute quickly with measurable outcomes in " + role + ".");
-      if (why) pad.push(why);
-      pad.push("I am confident I can support " + company + " by combining execution discipline, stakeholder communication, and continuous improvement.");
-      while (words < range.min && pad.length) {
-        const next = pad.shift();
-        b += "\n\n" + next;
-        words = countWords(b);
-      }
-    }
-    if (words > range.max) {
+    // Enforce only the UPPER bound. We deliberately no longer pad short drafts
+    // with canned sentences — that injected the exact generic filler the prompt
+    // (and the quality score) work to strip out, and it couldn't know the
+    // candidate's real evidence. The model already targets the requested word
+    // band; a genuinely concise letter beats a padded one.
+    if (countWords(b) > range.max) {
       const parts = b.split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean);
       while (countWords(parts.join("\n\n")) > range.max && parts.length > 3) parts.pop();
       b = parts.join("\n\n");
