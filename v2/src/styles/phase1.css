@@ -9152,6 +9152,60 @@ input[type="color"]#export-accent::-webkit-color-swatch { border-radius: 6px; bo
   padding-top: 10px;
 }
 
+/* P1 #3: "Improve with AI" header above the rewrite buttons. */
+.cover-fix-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 8px;
+}
+.cover-fix-head .cover-mini-label i {
+  margin-right: 5px;
+  color: #7bdff2;
+}
+.cover-fix-head small {
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.cover-fix-row .btn-sm[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* P1 #4: live template preview. */
+.cover-preview-card .export-preflight-head {
+  align-items: center;
+}
+.cover-preview-template {
+  max-width: 200px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(76, 201, 240, 0.28);
+  background: rgba(10, 16, 30, 0.85);
+  color: #e8f1ff;
+  font-size: 12.5px;
+}
+.cover-preview-frame-wrap {
+  margin-top: 4px;
+  height: 520px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(76, 201, 240, 0.2);
+  background: #eceef2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.cover-preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #eceef2;
+}
+.cover-preview-hint {
+  margin-top: 8px;
+  font-size: 11.5px;
+}
+
 @media (max-width: 1180px) {
   .cover-command,
   .cover-workspace {
