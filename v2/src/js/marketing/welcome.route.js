@@ -28,6 +28,12 @@
   // accent colors so the feature grid isn't all one teal shade.
   const FEATURES = [
     {
+      icon: "fa-satellite-dish",
+      title: "AI Job Agent",
+      tone: "violet",
+      body: "Set it up once and it hunts for you — auto-scanning every board on a schedule, expanding your title with Deep Scan, and delivering only brand-new, résumé-matched roles to your dashboard."
+    },
+    {
       icon: "fa-bullseye",
       title: "Role intelligence",
       tone: "cyan",
@@ -133,6 +139,7 @@
       zar: { monthly: 0, label: "R0" },
       usd: { monthly: 0, label: "$0" },
       features: [
+        "<b>AI Job Agent</b> · 4-scan trial",
         "1 AI resume tailor / mo",
         "2 cover letters / mo",
         "1 mock interview / mo (text)",
@@ -150,6 +157,7 @@
       zar: { monthly: 210, label: "R210", annual: 175, annualLabel: "R175", annualTotal: "R2,100" },
       usd: { monthly: 11.99, label: "$11.99", annual: 9.92, annualLabel: "$9.92", annualTotal: "$119" },
       features: [
+        "<b>AI Job Agent</b> · auto-scans daily",
         "10 resume tailorings / mo",
         "15 cover letters / mo",
         "3 mock interviews / mo",
@@ -167,6 +175,7 @@
       zar: { monthly: 380, label: "R380", annual: 317, annualLabel: "R317", annualTotal: "R3,800" },
       usd: { monthly: 21.99, label: "$21.99", annual: 18.25, annualLabel: "$18.25", annualTotal: "$219" },
       features: [
+        "<b>3 AI Job Agents</b> · LinkedIn + Indeed",
         "<b>Unlimited</b> resumes + covers",
         "10 voice mock interviews / mo",
         "<b>Unlimited</b> research + saved jobs",
@@ -184,6 +193,7 @@
       zar: { monthly: 699, label: "R699", annual: 583, annualLabel: "R583", annualTotal: "R6,990" },
       usd: { monthly: 39.99, label: "$39.99", annual: 29.08, annualLabel: "$29.08", annualTotal: "$349" },
       features: [
+        "<b>5 AI Job Agents</b> · hourly scans",
         "<b>Everything unlimited</b>",
         "<b>Unlimited</b> voice mock interviews",
         "Priority AI (faster + smarter)",
@@ -239,7 +249,7 @@
     },
     {
       q: "What's included in the free plan?",
-      a: "Full pipeline tracking, the Chrome extension, calendar reminders, plus monthly AI quotas: 1 resume tailor, 2 cover letters, 1 mock interview, 1 research brief, 5 saved jobs."
+      a: "A 4-scan trial of the AI Job Agent, full pipeline tracking, the Chrome extension, calendar reminders, plus monthly AI quotas: 1 resume tailor, 2 cover letters, 1 mock interview, 1 research brief, 5 saved jobs."
     },
     {
       q: "Can I cancel anytime?",
@@ -478,6 +488,8 @@
   // line items. Values use ✓ / ✗ / numbers — short enough that all
   // four columns stay readable at narrow widths.
   const COMPARE_ROWS = [
+    { label: "AI Job Agents",             values: ["Trial (4 scans)", "1 · daily", "3 · every 6h", "5 · hourly"] },
+    { label: "Agent Deep Scan + LinkedIn/Indeed", values: ["—", "Deep Scan", "+ LinkedIn/Indeed", "+ LinkedIn/Indeed"] },
     { label: "AI resume tailorings / mo", values: ["1", "10", "Unlimited", "Unlimited"] },
     { label: "Cover letters / mo",        values: ["2", "15", "Unlimited", "Unlimited"] },
     { label: "Mock interviews / mo",      values: ["1 (text)", "3", "10 voice", "Unlimited voice"] },
