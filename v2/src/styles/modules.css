@@ -5616,6 +5616,53 @@ a.settings-status-card:hover {
   color: var(--lp-text-muted);
 }
 
+/* ── Lead feature — the flagship card spans the full grid width and lays
+   out horizontally (icon + title on the left, description on the right),
+   so the newest feature reads as the headline act and the remaining six
+   tile cleanly as two rows of three below it. */
+.lp-feature--lead {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 30px;
+  padding: 28px 32px;
+  background:
+    radial-gradient(135% 160% at 0% 0%, rgba(167, 139, 250, 0.16), transparent 58%),
+    var(--lp-surface);
+  border-color: rgba(167, 139, 250, 0.26);
+}
+.lp-feature--lead:hover { border-color: rgba(167, 139, 250, 0.5); }
+.lp-feature-lead-intro {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 0 0 288px;
+}
+.lp-feature--lead .lp-feature-icon {
+  width: 54px; height: 54px;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.lp-feature-lead-title { display: flex; flex-direction: column; gap: 7px; }
+.lp-feature--lead h3 { font-size: 22px; }
+.lp-feature--lead p {
+  flex: 1;
+  font-size: 15px;
+  max-width: 68ch;
+}
+.lp-feature-tag {
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.16);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
 /* ── Steps ────────────────────────────────────────────────────────── */
 .lp-step-grid {
   display: grid;
@@ -6132,6 +6179,10 @@ a.settings-status-card:hover {
   .lp-nav-link { color: var(--lp-text); font-weight: 500; }
 
   .lp-feature-grid { grid-template-columns: 1fr; }
+  /* Lead card drops its horizontal split and stacks like the rest. */
+  .lp-feature--lead { flex-direction: column; align-items: flex-start; gap: 14px; padding: 24px; }
+  .lp-feature-lead-intro { flex: none; }
+  .lp-feature--lead p { max-width: none; }
   .lp-step-grid { grid-template-columns: 1fr; }
   .lp-pricing-grid { grid-template-columns: 1fr; }
   .lp-trust-grid { grid-template-columns: 1fr 1fr; }
