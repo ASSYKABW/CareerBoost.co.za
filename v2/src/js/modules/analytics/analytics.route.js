@@ -2429,6 +2429,34 @@
     return _derivedMemo.data;
   }
 
+  // P1: the analytics page was one ~16-panel scroll. Group the panels into
+  // focused, deep-scannable sections with a persistent command-center summary
+  // on top. The active section is a module var (survives re-render); switching
+  // re-renders so only the active tab's panels build.
+  const ANALYTICS_SECTIONS = [
+    { id: "overview", label: "Overview", icon: "fa-gauge-high" },
+    { id: "pipeline", label: "Pipeline", icon: "fa-diagram-project" },
+    { id: "coaching", label: "Coaching", icon: "fa-brain" },
+    { id: "fit", label: "Fit & quality", icon: "fa-crosshairs" }
+  ];
+  let activeAnalyticsSection = "overview";
+  function currentAnalyticsSection() {
+    return ANALYTICS_SECTIONS.some(function (s) { return s.id === activeAnalyticsSection; })
+      ? activeAnalyticsSection : "overview";
+  }
+  function renderAnalyticsTabs(active) {
+    return (
+      '<nav class="analytics-tabs" role="tablist" aria-label="Analytics sections">' +
+        ANALYTICS_SECTIONS.map(function (s) {
+          const on = s.id === active;
+          return '<button type="button" role="tab" class="analytics-tab' + (on ? " is-active" : "") + '"' +
+            ' aria-selected="' + (on ? "true" : "false") + '" data-analytics-section="' + s.id + '">' +
+            '<i class="fa-solid ' + s.icon + '" aria-hidden="true"></i> ' + s.label + '</button>';
+        }).join("") +
+      '</nav>'
+    );
+  }
+
   function renderView() {
     const apps = window.CBV2.store.getApplications();
     if (!apps.length) {
@@ -2442,19 +2470,15 @@
     const intel = derived.intel;
     const totalInWindow = weeks.reduce(function (s, b) { return s + b.count; }, 0);
     const avgWeekly = Math.round((totalInWindow / 8) * 10) / 10;
+    const section = currentAnalyticsSection();
 
-    return (
-      '<section class="page-container analytics-page">' +
-        renderCommandCenter(intel) +
-        renderNextActions(intel) +
-        renderExplainableRecommendationPanel(apps) +
-        renderMomentumMetrics(intel) +
-        renderCandidateIntelligencePanel() +
-        renderSavedRoleFitPanel(apps) +
-        renderHealthMatrix(intel) +
-        renderInsightCards(intel) +
+    // Lazy per-section rendering — the heavy panels (per-application fit scoring
+    // under "fit", the coaching engine under "coaching") only build for the
+    // active tab instead of on every visit.
+    let body = "";
+    if (section === "pipeline") {
+      body =
         renderPipelineFunnel(intel) +
-
         '<section class="card panel-lg">' +
           '<div class="panel-head">' +
             '<h2>Applications per week</h2>' +
@@ -2462,7 +2486,6 @@
           '</div>' +
           renderWeeklyChart(weeks) +
         '</section>' +
-
         '<section class="two-pane">' +
           '<article class="card panel-lg">' +
             '<div class="panel-head">' +
@@ -2479,7 +2502,6 @@
             renderTimeInStage(averages) +
           '</article>' +
         '</section>' +
-
         '<section class="card panel-lg">' +
           '<div class="panel-head">' +
             '<h2>Needs a nudge</h2>' +
@@ -2487,16 +2509,47 @@
           '</div>' +
           '<p class="page-subtitle">Applications that have sat idle — follow up, update status, or close out.</p>' +
           renderStaleList(apps) +
-        '</section>' +
-        renderJudgePanel(apps) +
+        '</section>';
+    } else if (section === "coaching") {
+      body = renderJudgePanel(apps);
+    } else if (section === "fit") {
+      body =
+        renderExplainableRecommendationPanel(apps) +
+        renderCandidateIntelligencePanel() +
+        renderSavedRoleFitPanel(apps) +
         renderSearchQualityCard(apps) +
-        renderCoverLetterCard() +
+        renderCoverLetterCard();
+    } else {
+      body =
+        renderNextActions(intel) +
+        renderMomentumMetrics(intel) +
+        renderHealthMatrix(intel) +
+        renderInsightCards(intel);
+    }
+
+    return (
+      '<section class="page-container analytics-page">' +
+        renderCommandCenter(intel) +
+        renderAnalyticsTabs(section) +
+        '<div class="analytics-section" role="tabpanel">' + body + '</div>' +
       '</section>'
     );
   }
 
   window.CBV2.routes.analytics = renderView;
   window.CBV2.afterRender.analytics = function () {
+    // Section tabs — switch the active analytics section and re-render.
+    document.querySelectorAll("[data-analytics-section]").forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        const id = tab.getAttribute("data-analytics-section");
+        if (id && id !== activeAnalyticsSection) {
+          activeAnalyticsSection = id;
+          if (window.CBV2 && typeof window.CBV2.renderCurrentRoute === "function") {
+            window.CBV2.renderCurrentRoute();
+          }
+        }
+      });
+    });
     const btn = document.getElementById("export-csv");
     if (btn) {
       btn.addEventListener("click", function () {
