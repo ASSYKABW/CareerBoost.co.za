@@ -45,6 +45,42 @@
 
   function getSt() { return window.CBV2.sanitizeText; }
 
+  // P0: serialize + deep-merge preference writes. Every settings form used to
+  // read profile.get().preferences, shallow-assign its own key, and write the
+  // whole blob back — so two near-simultaneous saves raced on the same snapshot
+  // and the later write reverted the earlier one's change. This queues writes
+  // so each reads the freshest profile (the previous update sets profile.get()
+  // before it resolves) and deep-merges nested objects instead of replacing.
+  let _prefSaveChain = Promise.resolve();
+  function deepMergePreferences(base, patch) {
+    const out = Object.assign({}, base && typeof base === "object" ? base : {});
+    Object.keys(patch || {}).forEach(function (k) {
+      const pv = patch[k];
+      const bv = out[k];
+      if (pv && typeof pv === "object" && !Array.isArray(pv) && bv && typeof bv === "object" && !Array.isArray(bv)) {
+        out[k] = deepMergePreferences(bv, pv);
+      } else {
+        out[k] = pv;
+      }
+    });
+    return out;
+  }
+  function savePreferencePatch(patch) {
+    const run = function () {
+      if (!(window.CBV2.profile && typeof window.CBV2.profile.update === "function")) {
+        return Promise.resolve(null);
+      }
+      const current = (window.CBV2.profile.get && window.CBV2.profile.get()) || {};
+      const preferences = (current.preferences && typeof current.preferences === "object") ? current.preferences : {};
+      return window.CBV2.profile.update({ preferences: deepMergePreferences(preferences, patch) });
+    };
+    // Chain so concurrent saves serialize; a failed write doesn't break the
+    // chain for the next writer.
+    const result = _prefSaveChain.then(run, run);
+    _prefSaveChain = result.then(function () {}, function () {});
+    return result;
+  }
+
   function setFormStatus(key, patch) {
     if (!viewState.formStatus[key]) {
       viewState.formStatus[key] = { dirty: false, kind: "idle", text: "" };
@@ -2937,23 +2973,17 @@
         });
       }
       try {
-        if (window.CBV2.profile && typeof window.CBV2.profile.update === "function") {
-          const current = (window.CBV2.profile.get && window.CBV2.profile.get()) || {};
-          const preferences = (current.preferences && typeof current.preferences === "object") ? current.preferences : {};
-          await window.CBV2.profile.update({
-            preferences: Object.assign({}, preferences, {
-              jobPreferences: {
-                roleProfile: roleProfile,
-                location: location,
-                remoteOnly: remoteMode === "remote_only",
-                postedWithinDays: postedWithinDays,
-                seniority: roleProfile.seniority,
-                strictMode: roleProfile.strictMode,
-                updatedAt: new Date().toISOString()
-              }
-            })
-          });
-        }
+        await savePreferencePatch({
+          jobPreferences: {
+            roleProfile: roleProfile,
+            location: location,
+            remoteOnly: remoteMode === "remote_only",
+            postedWithinDays: postedWithinDays,
+            seniority: roleProfile.seniority,
+            strictMode: roleProfile.strictMode,
+            updatedAt: new Date().toISOString()
+          }
+        });
         viewState.message = "Job preferences saved and synced.";
         setFormStatus("jobPreferences", { dirty: false, kind: "success", text: "Saved & synced." });
         if (window.CBV2.toast) window.CBV2.toast.success("Preferences saved.");
@@ -3006,13 +3036,7 @@
         updatedAt: new Date().toISOString()
       };
       try {
-        if (window.CBV2.profile && typeof window.CBV2.profile.update === "function") {
-          const current = (window.CBV2.profile.get && window.CBV2.profile.get()) || {};
-          const preferences = (current.preferences && typeof current.preferences === "object") ? current.preferences : {};
-          await window.CBV2.profile.update({
-            preferences: Object.assign({}, preferences, { aiPreferences: next })
-          });
-        }
+        await savePreferencePatch({ aiPreferences: next });
         if (!next.consentTelemetry && window.CBAI && window.CBAI.telemetry && typeof window.CBAI.telemetry.clear === "function") {
           window.CBAI.telemetry.clear();
         }
