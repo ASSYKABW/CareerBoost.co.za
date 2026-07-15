@@ -123,6 +123,7 @@ const SCRIPTS = [
   "./src/js/modules/settings/settings.referral.js",
   "./src/js/modules/settings/settings.email-consent.js",
   "./src/js/modules/settings/settings.push.js",
+  "./src/js/modules/settings/settings.appearance.js",
   "./src/js/modules/settings/settings.route.js",
   // Legacy admin (admin.route.js, admin-helpers, admin-realtime, all 24
   // sections, admin.css) deleted at the 2026-07 cutover — the Console at
