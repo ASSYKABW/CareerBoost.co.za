@@ -45,40 +45,13 @@
 
   function getSt() { return window.CBV2.sanitizeText; }
 
-  // P0: serialize + deep-merge preference writes. Every settings form used to
-  // read profile.get().preferences, shallow-assign its own key, and write the
-  // whole blob back — so two near-simultaneous saves raced on the same snapshot
-  // and the later write reverted the earlier one's change. This queues writes
-  // so each reads the freshest profile (the previous update sets profile.get()
-  // before it resolves) and deep-merges nested objects instead of replacing.
-  let _prefSaveChain = Promise.resolve();
-  function deepMergePreferences(base, patch) {
-    const out = Object.assign({}, base && typeof base === "object" ? base : {});
-    Object.keys(patch || {}).forEach(function (k) {
-      const pv = patch[k];
-      const bv = out[k];
-      if (pv && typeof pv === "object" && !Array.isArray(pv) && bv && typeof bv === "object" && !Array.isArray(bv)) {
-        out[k] = deepMergePreferences(bv, pv);
-      } else {
-        out[k] = pv;
-      }
-    });
-    return out;
-  }
+  // P1: preference-write helper moved to settings.shared.js so extracted
+  // sub-modules share it. Thin alias keeps the remaining in-file callers
+  // (job preferences) working until they're extracted too.
   function savePreferencePatch(patch) {
-    const run = function () {
-      if (!(window.CBV2.profile && typeof window.CBV2.profile.update === "function")) {
-        return Promise.resolve(null);
-      }
-      const current = (window.CBV2.profile.get && window.CBV2.profile.get()) || {};
-      const preferences = (current.preferences && typeof current.preferences === "object") ? current.preferences : {};
-      return window.CBV2.profile.update({ preferences: deepMergePreferences(preferences, patch) });
-    };
-    // Chain so concurrent saves serialize; a failed write doesn't break the
-    // chain for the next writer.
-    const result = _prefSaveChain.then(run, run);
-    _prefSaveChain = result.then(function () {}, function () {});
-    return result;
+    return (window.CBV2.settingsShared && window.CBV2.settingsShared.savePreferencePatch)
+      ? window.CBV2.settingsShared.savePreferencePatch(patch)
+      : Promise.resolve(null);
   }
 
   function setFormStatus(key, patch) {
@@ -1396,142 +1369,6 @@
     `;
   }
 
-  function getMetricNumber(value, fallback) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : (fallback || 0);
-  }
-
-  function renderAiUsageStats(telemetry) {
-    const st = getSt();
-    const success = getMetricNumber(telemetry && telemetry.success, 0);
-    const failed = getMetricNumber(telemetry && telemetry.failed, 0);
-    const totalRaw = telemetry && (telemetry.totalEvents != null ? telemetry.totalEvents : telemetry.total);
-    const total = getMetricNumber(totalRaw, success + failed);
-    const avgLatency = getMetricNumber(telemetry && telemetry.avgLatencyMs, 0);
-    const successRate = total ? Math.round((success / total) * 100) : 0;
-
-    return `
-      <details class="settings-advanced settings-ai-usage">
-        <summary>
-          <span><i class="fa-solid fa-chart-line"></i> Usage stats</span>
-          <span class="chip cyan">${st(String(total))} calls</span>
-        </summary>
-        ${telemetry
-          ? `<div class="settings-ai-stats-grid">
-              <div class="settings-ai-stat">
-                <span>Successful</span>
-                <strong>${st(String(success))}</strong>
-              </div>
-              <div class="settings-ai-stat">
-                <span>Failed</span>
-                <strong>${st(String(failed))}</strong>
-              </div>
-              <div class="settings-ai-stat">
-                <span>Success rate</span>
-                <strong>${st(String(successRate))}%</strong>
-              </div>
-              <div class="settings-ai-stat">
-                <span>Avg latency</span>
-                <strong>${st(String(avgLatency))}ms</strong>
-              </div>
-            </div>
-            <p class="ai-meta settings-ai-usage-note">Usage stats are local to this browser and help you spot slow or failing AI actions.</p>`
-          : '<p class="ai-meta settings-ai-usage-note">Telemetry appears after your first AI action.</p>'}
-      </details>
-    `;
-  }
-
-  function renderAiPersonalizationSection() {
-    const profile = (window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || null;
-    const prefRoot = (profile && profile.preferences && typeof profile.preferences === "object") ? profile.preferences : {};
-    const ai = (prefRoot.aiPreferences && typeof prefRoot.aiPreferences === "object") ? prefRoot.aiPreferences : {};
-    const modules = (ai.modules && typeof ai.modules === "object") ? ai.modules : {};
-    const personalizedMode = ai.personalizedMode !== false;
-    const tone = ai.tone || "professional";
-    const responseLength = ai.responseLength || "balanced";
-    const localeStyle = ai.localeStyle || "global";
-    const consentTelemetry = ai.consentTelemetry !== false;
-    const consentPersonalizedAi = ai.consentPersonalizedAi !== false;
-    const jobSearchOn = modules.jobSearch !== false;
-    const resumeOn = modules.resume !== false;
-    const coverLetterOn = modules.coverLetter !== false;
-    const interviewOn = modules.interview !== false;
-    const telemetry = window.CBAI && window.CBAI.telemetry && typeof window.CBAI.telemetry.getSummary === "function"
-      ? window.CBAI.telemetry.getSummary()
-      : null;
-    const status = viewState.formStatus.aiPreferences || { dirty: false, kind: "idle", text: "" };
-    const statusText = status.dirty ? "Unsaved changes." : (status.text || "No recent changes.");
-    const statusKind = status.dirty ? "pending" : (status.kind || "idle");
-    return `
-      <section class="card panel-lg settings-section">
-        <div class="panel-head">
-          <h2>AI personalization</h2>
-          <span class="chip ${personalizedMode ? "green" : "warning"}">${personalizedMode ? "Personalized" : "Stateless"}</span>
-        </div>
-        <p class="page-subtitle">
-          Control how strongly AI adapts to your profile, writing style, and module preferences.
-        </p>
-        <form id="ai-preferences-form" class="form-grid settings-form settings-ai-form">
-          <div class="grid-3 full-row">
-            <label>Personalization mode
-              <select id="ai-personalized-mode">
-                <option value="on" ${personalizedMode ? "selected" : ""}>On (use my profile context)</option>
-                <option value="off" ${!personalizedMode ? "selected" : ""}>Off (stateless responses)</option>
-              </select>
-            </label>
-            <label>Tone
-              <select id="ai-tone">
-                <option value="professional" ${tone === "professional" ? "selected" : ""}>Professional</option>
-                <option value="friendly" ${tone === "friendly" ? "selected" : ""}>Friendly</option>
-                <option value="confident" ${tone === "confident" ? "selected" : ""}>Confident</option>
-                <option value="concise" ${tone === "concise" ? "selected" : ""}>Concise</option>
-              </select>
-            </label>
-            <label>Response length
-              <select id="ai-response-length">
-                <option value="short" ${responseLength === "short" ? "selected" : ""}>Short</option>
-                <option value="balanced" ${responseLength === "balanced" ? "selected" : ""}>Balanced</option>
-                <option value="detailed" ${responseLength === "detailed" ? "selected" : ""}>Detailed</option>
-              </select>
-            </label>
-          </div>
-          <details class="settings-advanced full-row">
-            <summary>Show advanced options</summary>
-            <label style="margin-top:10px;">Locale/style
-              <select id="ai-locale-style">
-                <option value="global" ${localeStyle === "global" ? "selected" : ""}>Global English</option>
-                <option value="us" ${localeStyle === "us" ? "selected" : ""}>US English</option>
-                <option value="uk" ${localeStyle === "uk" ? "selected" : ""}>UK English</option>
-                <option value="eu" ${localeStyle === "eu" ? "selected" : ""}>EU international</option>
-              </select>
-            </label>
-            <fieldset class="full-row" style="margin-top:10px;">
-              <legend><i class="fa-solid fa-sliders"></i> Apply personalization to modules</legend>
-              <div class="settings-inline-checks">
-                <label><input type="checkbox" id="ai-module-job-search" ${jobSearchOn ? "checked" : ""} /> Job Search</label>
-                <label><input type="checkbox" id="ai-module-resume" ${resumeOn ? "checked" : ""} /> Resume Lab</label>
-                <label><input type="checkbox" id="ai-module-cover-letter" ${coverLetterOn ? "checked" : ""} /> Cover Letter</label>
-                <label><input type="checkbox" id="ai-module-interview" ${interviewOn ? "checked" : ""} /> Interview Prep</label>
-              </div>
-            </fieldset>
-            <fieldset class="full-row" style="margin-top:10px;">
-              <legend><i class="fa-solid fa-shield-halved"></i> Consent</legend>
-              <div class="settings-inline-checks">
-                <label><input type="checkbox" id="ai-consent-personalized" ${consentPersonalizedAi ? "checked" : ""} /> Allow profile-based AI personalization</label>
-                <label><input type="checkbox" id="ai-consent-telemetry" ${consentTelemetry ? "checked" : ""} /> Allow AI usage telemetry</label>
-              </div>
-            </fieldset>
-          </details>
-          <div class="form-actions full-row">
-            <button class="btn-primary" id="ai-preferences-save" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save AI preferences</button>
-          </div>
-        </form>
-        <p class="settings-save-state settings-save-state--${statusKind}">${statusText}</p>
-        ${renderAiUsageStats(telemetry)}
-      </section>
-    `;
-  }
-
   function countSnapshotSummary(snapshot) {
     const data = snapshot && typeof snapshot === "object" ? snapshot : {};
     const resume = data.resume && typeof data.resume === "object" ? data.resume : {};
@@ -1867,7 +1704,9 @@
             ${showDocuments ? renderSavedCvSection() : ""}
             ${showDocuments ? renderCareerAssetsSection() : ""}
 
-            ${showAi ? renderAiPersonalizationSection() : ""}
+            ${showAi && window.CBV2.settingsAi && window.CBV2.settingsAi.render
+              ? window.CBV2.settingsAi.render()
+              : ""}
 
             ${showAccount ? renderAccountIdentitySection() : ""}
 
@@ -2910,62 +2749,6 @@
     });
   }
 
-  function bindAiPreferences() {
-    const form = document.getElementById("ai-preferences-form");
-    if (!form) return;
-    const markDirty = function () {
-      setFormStatus("aiPreferences", { dirty: true, kind: "pending", text: "Unsaved changes." });
-      const line = form.parentElement && form.parentElement.querySelector(".settings-save-state");
-      if (line) {
-        line.textContent = "Unsaved changes.";
-        line.classList.remove("settings-save-state--success", "settings-save-state--error", "settings-save-state--idle");
-        line.classList.add("settings-save-state--pending");
-      }
-    };
-    form.addEventListener("input", markDirty);
-    form.addEventListener("change", markDirty);
-    form.addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const val = function (id, fallback) {
-        const el = document.getElementById(id);
-        return el ? el.value : fallback;
-      };
-      const checked = function (id, fallback) {
-        const el = document.getElementById(id);
-        return el ? !!el.checked : !!fallback;
-      };
-      const next = {
-        personalizedMode: val("ai-personalized-mode", "on") === "on",
-        tone: val("ai-tone", "professional"),
-        responseLength: val("ai-response-length", "balanced"),
-        localeStyle: val("ai-locale-style", "global"),
-        modules: {
-          jobSearch: checked("ai-module-job-search", true),
-          resume: checked("ai-module-resume", true),
-          coverLetter: checked("ai-module-cover-letter", true),
-          interview: checked("ai-module-interview", true)
-        },
-        consentPersonalizedAi: checked("ai-consent-personalized", true),
-        consentTelemetry: checked("ai-consent-telemetry", true),
-        updatedAt: new Date().toISOString()
-      };
-      try {
-        await savePreferencePatch({ aiPreferences: next });
-        if (!next.consentTelemetry && window.CBAI && window.CBAI.telemetry && typeof window.CBAI.telemetry.clear === "function") {
-          window.CBAI.telemetry.clear();
-        }
-        viewState.message = "AI personalization preferences saved.";
-        setFormStatus("aiPreferences", { dirty: false, kind: "success", text: "Saved & synced." });
-        if (window.CBV2.toast) window.CBV2.toast.success("AI preferences saved.");
-      } catch (err) {
-        viewState.message = "Failed to save AI preferences: " + ((err && err.message) || "unknown error");
-        setFormStatus("aiPreferences", { dirty: false, kind: "error", text: "Save failed." });
-        if (window.CBV2.toast) window.CBV2.toast.error("AI preferences save failed.");
-      }
-      window.CBV2.renderCurrentRoute();
-    });
-  }
-
   function bindSavedCvSettings() {
     const root = document.getElementById("saved-cv-section");
     if (!root) return;
@@ -3211,7 +2994,9 @@
     bindForm();
     bindProfile();
     bindJobPreferences();
-    bindAiPreferences();
+    if (window.CBV2.settingsAi && typeof window.CBV2.settingsAi.bind === "function") {
+      window.CBV2.settingsAi.bind();
+    }
     bindApplyAssist();
     bindSavedCvSettings();
     bindCareerAssetsSettings();
