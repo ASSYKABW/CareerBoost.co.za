@@ -14912,3 +14912,62 @@ body.has-discount-banner {
   .cb-discount-banner-cta { font-size: 12px; padding: 6px 12px; }
   body.has-discount-banner { padding-top: 84px; }
 }
+
+/* ── P1: Analytics section tabs ─────────────────────────────────────────
+   Groups the former one-scroll analytics page into focused sections beneath
+   a persistent command-center summary. Uses the app's cyan/violet tokens. */
+.analytics-page .analytics-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 20px 0 4px;
+  padding: 6px;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  background: var(--color-glass, rgba(14, 18, 32, 0.62));
+}
+.analytics-page .analytics-tab {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-muted, #8d94ab);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.analytics-page .analytics-tab:hover {
+  color: var(--color-text, #e9ecf8);
+  background: rgba(34, 227, 255, 0.08);
+}
+.analytics-page .analytics-tab.is-active {
+  color: #06131b;
+  background: linear-gradient(135deg, var(--color-primary, #22e3ff), var(--color-primary-2, #6b7dff));
+  border-color: rgba(34, 227, 255, 0.5);
+  box-shadow: 0 10px 24px rgba(34, 227, 255, 0.22);
+}
+.analytics-page .analytics-tab:focus-visible {
+  outline: 2px solid var(--color-primary, #22e3ff);
+  outline-offset: 2px;
+}
+.analytics-page .analytics-tab i { font-size: 13px; }
+.analytics-page .analytics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 20px;
+}
+@media (max-width: 640px) {
+  .analytics-page .analytics-tab { flex-basis: calc(50% - 6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .analytics-page .analytics-tab { transition: none; }
+}
