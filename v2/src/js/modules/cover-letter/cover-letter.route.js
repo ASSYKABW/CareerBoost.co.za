@@ -14,7 +14,11 @@
     sortAssetsByJd: false,         // user-toggled — when true, proof bank sorts by JD relevance
     rankAssetsBusy: false,
     assetSimilarities: {},         // map: assetId → cosine similarity (0..1)
-    assetRankSourceJdHash: ""      // hash of the JD used for current rankings (so re-rank fires on JD change)
+    assetRankSourceJdHash: "",     // hash of the JD used for current rankings (so re-rank fires on JD change)
+    // P2b: structured JD analysis from the last generation, so the quality
+    // score can measure how many of the JD's real keywords the letter covers.
+    lastJdAnalyzed: null,          // { requiredSkills, keywords, ... } | null
+    lastJdAnalyzedFor: ""          // djb2 hash of the JD text that was analyzed
   };
 
   const COVER_TEMPLATES = [
@@ -312,35 +316,85 @@
     }
   }
 
+  // P2b: turn the (already-computed) jd-analyze output into a keyword-coverage
+  // signal. Returns { total, matched, missing[] } or null when there's no fresh
+  // analysis for the JD currently in the form (so coverage never goes stale
+  // after the user edits the posting).
+  function jdCoverageForScore(lowBody, ctx) {
+    const analyzed = viewState.lastJdAnalyzed;
+    if (!analyzed || typeof analyzed !== "object") return null;
+    const currentJd = String((ctx && ctx.jobDescription) || "").trim();
+    if (!currentJd || djb2Hash(currentJd) !== viewState.lastJdAnalyzedFor) return null;
+    const terms = [];
+    [analyzed.requiredSkills, analyzed.keywords].forEach(function (arr) {
+      (Array.isArray(arr) ? arr : []).forEach(function (t) {
+        const v = String(t || "").trim();
+        if (v && v.length >= 3) terms.push(v);
+      });
+    });
+    const seen = {};
+    const uniq = [];
+    terms.forEach(function (t) {
+      const k = t.toLowerCase();
+      if (!seen[k]) { seen[k] = 1; uniq.push(t); }
+    });
+    const capped = uniq.slice(0, 14);
+    if (capped.length < 3) return null; // too few terms to be a meaningful signal
+    const missing = [];
+    let matched = 0;
+    capped.forEach(function (t) {
+      if (lowBody.indexOf(t.toLowerCase()) !== -1) matched += 1;
+      else missing.push(t);
+    });
+    return { total: capped.length, matched: matched, missing: missing };
+  }
+
   function computeCoverScore(subject, body, ctx) {
-    const breakdown = { alignment: 25, evidence: 25, structure: 25, clarity: 25 };
+    let alignment = 25, evidence = 25, structure = 25, clarity = 25;
     const issues = [];
     const s = String(subject || "").trim();
     const b = String(body || "").trim();
     const low = b.toLowerCase();
     const paras = b ? b.split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean) : [];
 
-    if (!s) { breakdown.alignment -= 6; issues.push("Missing subject line."); }
-    if (ctx.role && !low.includes(String(ctx.role).toLowerCase())) { breakdown.alignment -= 8; issues.push("Role is not clearly mentioned in the body."); }
-    if (ctx.company && !low.includes(String(ctx.company).toLowerCase())) { breakdown.alignment -= 8; issues.push("Company name is not clearly referenced."); }
+    if (!s) { alignment -= 6; issues.push("Missing subject line."); }
+    if (ctx.role && !low.includes(String(ctx.role).toLowerCase())) { alignment -= 8; issues.push("Role is not clearly mentioned in the body."); }
+    if (ctx.company && !low.includes(String(ctx.company).toLowerCase())) { alignment -= 8; issues.push("Company name is not clearly referenced."); }
 
     const metricHits = (b.match(/\d+[%kKmM]?|\$\d+/g) || []).length;
-    if (!metricHits) { breakdown.evidence -= 12; issues.push("No measurable impact in the letter."); }
-    if (metricHits === 1) { breakdown.evidence -= 4; }
+    if (!metricHits) { evidence -= 12; issues.push("No measurable impact in the letter."); }
+    if (metricHits === 1) { evidence -= 4; }
 
-    if (paras.length < 3) { breakdown.structure -= 8; issues.push("Letter is too short; aim for intro + evidence + close."); }
-    if (!/(dear|hello|hi)\s+/i.test(b)) { breakdown.structure -= 6; issues.push("Opening greeting is missing."); }
-    if (!/(thank you|looking forward|sincerely|best regards|kind regards)/i.test(b)) { breakdown.structure -= 6; issues.push("Closing call-to-action/signoff is weak or missing."); }
+    if (paras.length < 3) { structure -= 8; issues.push("Letter is too short; aim for intro + evidence + close."); }
+    if (!/(dear|hello|hi)\s+/i.test(b)) { structure -= 6; issues.push("Opening greeting is missing."); }
+    if (!/(thank you|looking forward|sincerely|best regards|kind regards)/i.test(b)) { structure -= 6; issues.push("Closing call-to-action/signoff is weak or missing."); }
 
-    if (b.length > 2200) { breakdown.clarity -= 10; issues.push("Letter is too long and may lose recruiter attention."); }
-    if (paras.some(function (p) { return p.length > 750; })) { breakdown.clarity -= 8; issues.push("One or more paragraphs are too dense."); }
-    if (/\b(i am writing to apply|i believe i am a perfect fit|to whom it may concern)\b/i.test(low)) { breakdown.clarity -= 6; issues.push("Contains generic phrasing; personalize more."); }
+    if (b.length > 2200) { clarity -= 10; issues.push("Letter is too long and may lose recruiter attention."); }
+    if (paras.some(function (p) { return p.length > 750; })) { clarity -= 8; issues.push("One or more paragraphs are too dense."); }
+    if (/\b(i am writing to apply|i believe i am a perfect fit|to whom it may concern)\b/i.test(low)) { clarity -= 6; issues.push("Contains generic phrasing; personalize more."); }
 
-    Object.keys(breakdown).forEach(function (k) {
-      breakdown[k] = Math.max(0, Math.min(25, Math.round(breakdown[k])));
-    });
-    const score = breakdown.alignment + breakdown.evidence + breakdown.structure + breakdown.clarity;
-    return { score: score, breakdown: breakdown, issues: issues.slice(0, 6) };
+    const clamp = function (n) { return Math.max(0, Math.min(25, Math.round(n))); };
+    const breakdown = [
+      { label: "Role & company alignment", val: clamp(alignment) },
+      { label: "Evidence strength", val: clamp(evidence) },
+      { label: "Structure quality", val: clamp(structure) },
+      { label: "Clarity & readability", val: clamp(clarity) }
+    ];
+
+    // JD keyword coverage — inserted as a second dimension when available, so
+    // the score reflects real ATS alignment instead of ignoring the analyzed JD.
+    const jd = jdCoverageForScore(low, ctx);
+    if (jd) {
+      breakdown.splice(1, 0, { label: "JD keyword match", val: clamp((jd.matched / jd.total) * 25) });
+      if (jd.missing.length) {
+        issues.unshift("Weave in JD keywords: " + jd.missing.slice(0, 6).join(", ") + ".");
+      }
+    }
+
+    const maxSum = breakdown.length * 25;
+    const rawSum = breakdown.reduce(function (a, x) { return a + x.val; }, 0);
+    const score = Math.round((rawSum / maxSum) * 100);
+    return { score: score, breakdown: breakdown, issues: issues.slice(0, 6), jd: jd };
   }
 
   function computeCoverPreflight(subject, body) {
@@ -429,12 +483,12 @@
     if (!active) {
       return '<p class="ai-meta">Fill in the inputs and click Generate to draft a tailored cover letter.</p>';
     }
-    const bars = [
-      { label: "Role & company alignment", val: score.breakdown.alignment },
-      { label: "Evidence strength", val: score.breakdown.evidence },
-      { label: "Structure quality", val: score.breakdown.structure },
-      { label: "Clarity & readability", val: score.breakdown.clarity }
-    ];
+    // P2b: breakdown is a dimension array (4, or 5 when JD keyword coverage
+    // applies), each scored out of 25.
+    const bars = score.breakdown;
+    const jdChip = score.jd
+      ? '<span class="chip ' + (score.jd.matched >= Math.ceil(score.jd.total * 0.7) ? "green" : score.jd.matched >= Math.ceil(score.jd.total * 0.4) ? "warning" : "rose") + '" title="JD keywords covered in the letter"><i class="fa-solid fa-key"></i> JD ' + score.jd.matched + '/' + score.jd.total + '</span>'
+      : "";
     return `
       <p class="ai-meta">Provider: ${st(active.provider)} | Confidence: ${Math.round(active.confidence * 100)}%</p>
       ${renderPhase4CoverBoard(subject, body, snapshot)}
@@ -443,6 +497,7 @@
           <label>Cover Letter Score</label>
           <div style="display:flex;gap:8px;align-items:center;">
             <span class="chip ${score.score >= 85 ? "green" : score.score >= 70 ? "warning" : "rose"}">${score.score}/100</span>
+            ${jdChip}
             <button class="btn-ghost btn-sm" id="cover-toggle-score" type="button">${viewState.scoreDetailsOpen ? "Hide details" : "Why this score?"}</button>
           </div>
         </div>
@@ -570,6 +625,7 @@
         <button class="btn-secondary" id="copy-cover" type="button"><i class="fa-solid fa-copy"></i> Copy</button>
         <button class="btn-secondary" id="download-cover-txt" type="button"><i class="fa-solid fa-file-lines"></i> .txt</button>
         <button class="btn-secondary" id="download-cover-html" type="button"><i class="fa-solid fa-code"></i> .html</button>
+        <button class="btn-secondary" id="download-cover-doc" type="button"><i class="fa-solid fa-file-word"></i> Word</button>
         <button class="btn-secondary" id="print-cover" type="button"><i class="fa-solid fa-print"></i> Print / PDF</button>
         <button class="btn-primary" id="save-cover" type="button">Save Draft</button>
       </div>
@@ -623,6 +679,18 @@
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + st(subject || "Cover Letter") + '</title><style>' + baseCss +
       ".cl-doc{max-width:800px;padding:18px 24px 22px;font:13.5px/1.58 Arial,sans-serif;color:#111827;} .top{background:#60798f;color:#fff;text-align:center;padding:8px 14px;margin-bottom:12px;} .nm{margin:0;font-size:28px;font-style:italic;font-weight:700;} .meta{margin-top:4px;font-size:11px;} .g{font-weight:700;margin:6px 0 8px;} .cl-body p{margin:0 0 8px;} .cl-sign{margin-top:10px;font-weight:700;}" +
       "</style></head><body><article class=\"cl-doc\"><header class=\"top\"><h1 class=\"nm\">" + st("[first name]   [last name]") + "</h1><div class=\"meta\">" + st(email) + " | " + st(phone) + "</div></header><p class=\"g\">" + st(greeting) + "</p><div class=\"cl-body\">" + bodyHtml + "</div><p class=\"cl-sign\">" + st(name) + "</p></article></body></html>";
+  }
+
+  // P2a: Word-openable export. Reuses the exact template HTML the .html/print
+  // paths render, adding the MS Office namespaces so Word treats it as a
+  // document (editable, styled) rather than a raw web page. Not a binary .docx,
+  // but Word opens it cleanly and users can re-save as .docx — a real Word
+  // export where the studio previously offered none.
+  function buildCoverWordDoc(subject, body, templateId) {
+    return buildCoverHtml(subject, body, templateId).replace(
+      "<html>",
+      "<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" xmlns=\"http://www.w3.org/TR/REC-html40\">"
+    );
   }
 
   function renderView() {
@@ -918,7 +986,13 @@
     if (input.jobDescription && input.jobDescription.trim().length > 80) {
       try {
         const analysis = await ai.runSkill("jd-analyze", { jd: input.jobDescription.slice(0, 6000) });
-        if (analysis && analysis.data) input.jdAnalyzed = analysis.data;
+        if (analysis && analysis.data) {
+          input.jdAnalyzed = analysis.data;
+          // P2b: keep the analysis (tied to this JD's hash) so the quality
+          // score can measure keyword coverage without a fresh AI call.
+          viewState.lastJdAnalyzed = analysis.data;
+          viewState.lastJdAnalyzedFor = djb2Hash(String(input.jobDescription || "").trim());
+        }
       } catch (e) { /* proceed without structured JD analysis */ }
     }
     const result = await ai.runSkill("cover-letter-generate", input);
@@ -1063,6 +1137,7 @@
     const saveBtn = document.getElementById("save-cover");
     const txtBtn = document.getElementById("download-cover-txt");
     const htmlBtn = document.getElementById("download-cover-html");
+    const docBtn = document.getElementById("download-cover-doc");
     const printBtn = document.getElementById("print-cover");
     const saveVarA = document.getElementById("cover-save-variant-a");
     const saveVarB = document.getElementById("cover-save-variant-b");
@@ -1212,6 +1287,22 @@
         const a = document.createElement("a");
         a.href = url;
         a.download = "cover-letter-" + viewState.coverTemplate + ".html";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      });
+    }
+    if (docBtn) {
+      docBtn.addEventListener("click", function () {
+        const f = readFields();
+        // Leading BOM so Word reads it as UTF-8.
+        const doc = "﻿" + buildCoverWordDoc(f.subject, f.body, viewState.coverTemplate);
+        const blob = new Blob([doc], { type: "application/msword;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "cover-letter-" + viewState.coverTemplate + ".doc";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
