@@ -766,11 +766,41 @@
     );
   }
 
-  const JUDGE_STORAGE_KEY = "cbv2_ai_judge_v1";
+  const JUDGE_STORAGE_KEY_BASE = "cbv2_ai_judge_v1";
+  // P0: scope the AI-Judge / coaching state per signed-in user. A single global
+  // key let coaching history + A/B experiment stats bleed across accounts on a
+  // shared browser. getUser() is a synchronous cached accessor (null when
+  // signed out → an "anon" bucket).
+  function currentUserId() {
+    try {
+      const u = window.CBV2 && window.CBV2.auth && typeof window.CBV2.auth.getUser === "function"
+        ? window.CBV2.auth.getUser() : null;
+      return u && u.id ? String(u.id) : "";
+    } catch (e) { return ""; }
+  }
+  function judgeStorageKey() {
+    return JUDGE_STORAGE_KEY_BASE + ":" + (currentUserId() || "anon");
+  }
 
   function loadJudgeState() {
+    const uid = currentUserId();
+    const key = JUDGE_STORAGE_KEY_BASE + ":" + (uid || "anon");
     try {
-      const raw = localStorage.getItem(JUDGE_STORAGE_KEY);
+      let raw = localStorage.getItem(key);
+      // One-time migration: a signed-in user with no scoped data yet adopts the
+      // legacy un-scoped blob, then we delete it so it can't leak into another
+      // account on this browser. Only migrate when signed in — otherwise the
+      // real owner could lose it to the "anon" bucket.
+      if (!raw && uid) {
+        const legacy = localStorage.getItem(JUDGE_STORAGE_KEY_BASE);
+        if (legacy) {
+          try {
+            localStorage.setItem(key, legacy);
+            localStorage.removeItem(JUDGE_STORAGE_KEY_BASE);
+          } catch (e) { /* ignore storage errors */ }
+          raw = legacy;
+        }
+      }
       if (!raw) return { reports: [] };
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.reports)) return { reports: [] };
@@ -792,7 +822,7 @@
 
   function saveJudgeState(state) {
     try {
-      localStorage.setItem(JUDGE_STORAGE_KEY, JSON.stringify(state || { reports: [] }));
+      localStorage.setItem(judgeStorageKey(), JSON.stringify(state || { reports: [] }));
     } catch (e) {
       // ignore storage errors
     }
@@ -2326,22 +2356,6 @@
     if (window.CBV2.toast) window.CBV2.toast.success("Exported " + apps.length + " applications to CSV.");
   }
 
-  function renderEmpty() {
-    return (
-      '<section class="card panel-lg">' +
-        '<div class="empty-state">' +
-          '<div class="empty-state-icon"><i class="fa-solid fa-chart-column"></i></div>' +
-          '<h3>Analytics unlock once your pipeline has data.</h3>' +
-          '<p>Add a few applications and move them between stages — this page will populate with weekly trends, conversion rates, and time-in-stage benchmarks.</p>' +
-          '<div class="empty-state-actions">' +
-            '<a class="btn-primary" href="#/applications?add=1"><i class="fa-solid fa-plus"></i> Add application</a>' +
-            '<a class="btn-secondary" href="#/job-search"><i class="fa-solid fa-magnifying-glass"></i> Find roles</a>' +
-          '</div>' +
-        '</div>' +
-      '</section>'
-    );
-  }
-
   function renderEmptyIntelligencePage() {
     return (
       '<section class="page-container analytics-page">' +
@@ -2376,18 +2390,58 @@
     );
   }
 
+  // P0: memoize the per-render derived analytics. renderView recomputed weekly
+  // buckets, conversion, time-in-stage and the whole intelligence bundle on
+  // every visit; this caches them against a content signature of the inputs
+  // those computes read (applications + search runs + saved jobs + resume),
+  // with a short TTL backstop so anything outside the signature (e.g. a fresh
+  // calendar event feeding "upcoming interviews") can never stay stale for more
+  // than a few seconds.
+  const DERIVED_TTL_MS = 5000;
+  let _derivedMemo = { sig: "", at: 0, data: null };
+  function derivedSignature(apps) {
+    let h = 5381;
+    const add = function (s) {
+      s = String(s == null ? "" : s);
+      for (let i = 0; i < s.length; i++) { h = ((h << 5) + h + s.charCodeAt(i)) | 0; }
+    };
+    for (let i = 0; i < apps.length; i++) {
+      const a = apps[i] || {};
+      add((a.id || "") + "|" + (a.stage || "") + "|" + (a.updatedAt || a.updated_at || "") + "|" + (a.notes ? 1 : 0));
+    }
+    const store = window.CBV2.store;
+    try { const sa = store.getJobSearchAnalytics ? store.getJobSearchAnalytics() : null; add("sr:" + ((sa && sa.runs && sa.runs.length) || 0)); } catch (e) { /* ignore */ }
+    try { add("sj:" + ((store.getSavedJobs && store.getSavedJobs().length) || 0)); } catch (e) { /* ignore */ }
+    try { const rz = (store.getAll && store.getAll().resume) || {}; add("rz:" + ((rz.base && rz.base.length) || 0) + "|" + (rz.updatedAt || "")); } catch (e) { /* ignore */ }
+    return apps.length + ":" + (h >>> 0);
+  }
+  function getDerived(apps) {
+    const sig = derivedSignature(apps);
+    const now = Date.now();
+    if (_derivedMemo.data && _derivedMemo.sig === sig && (now - _derivedMemo.at) < DERIVED_TTL_MS) {
+      return _derivedMemo.data;
+    }
+    const weeks = buildWeeklyBuckets(apps, 8);
+    const averages = computeTimeInStage(apps);
+    const conversions = computeStageConversion(apps);
+    const intel = buildAnalyticsIntelligence(apps, weeks, conversions, averages);
+    _derivedMemo = { sig: sig, at: now, data: { weeks: weeks, averages: averages, conversions: conversions, intel: intel } };
+    return _derivedMemo.data;
+  }
+
   function renderView() {
     const apps = window.CBV2.store.getApplications();
     if (!apps.length) {
       return renderEmptyIntelligencePage();
     }
 
-    const weeks = buildWeeklyBuckets(apps, 8);
+    const derived = getDerived(apps);
+    const weeks = derived.weeks;
+    const averages = derived.averages;
+    const conversions = derived.conversions;
+    const intel = derived.intel;
     const totalInWindow = weeks.reduce(function (s, b) { return s + b.count; }, 0);
     const avgWeekly = Math.round((totalInWindow / 8) * 10) / 10;
-    const averages = computeTimeInStage(apps);
-    const conversions = computeStageConversion(apps);
-    const intel = buildAnalyticsIntelligence(apps, weeks, conversions, averages);
 
     return (
       '<section class="page-container analytics-page">' +
