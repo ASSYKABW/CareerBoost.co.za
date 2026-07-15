@@ -24,7 +24,6 @@
     saving: false,
     message: ""
   };
-  let prefMigrationTried = false;
   const settingsMeta = window.CBV2.settingsMeta || {};
   const SETTINGS_TABS = settingsMeta.TABS || ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "extension", "advanced"];
   const ADMIN_ROLES = settingsMeta.ADMIN_ROLES || ["admin", "owner", "developer"];
@@ -44,15 +43,6 @@
   };
 
   function getSt() { return window.CBV2.sanitizeText; }
-
-  // P1: preference-write helper moved to settings.shared.js so extracted
-  // sub-modules share it. Thin alias keeps the remaining in-file callers
-  // (job preferences) working until they're extracted too.
-  function savePreferencePatch(patch) {
-    return (window.CBV2.settingsShared && window.CBV2.settingsShared.savePreferencePatch)
-      ? window.CBV2.settingsShared.savePreferencePatch(patch)
-      : Promise.resolve(null);
-  }
 
   function setFormStatus(key, patch) {
     if (!viewState.formStatus[key]) {
@@ -1263,112 +1253,6 @@
     return "";
   }
 
-  function renderJobPreferencesSection() {
-    const st = getSt();
-    const store = window.CBV2.store;
-    const profile = (window.CBV2.profile && window.CBV2.profile.get && window.CBV2.profile.get()) || null;
-    const prefRoot = (profile && profile.preferences && typeof profile.preferences === "object") ? profile.preferences : {};
-    const cloud = (prefRoot.jobPreferences && typeof prefRoot.jobPreferences === "object")
-      ? prefRoot.jobPreferences
-      : {};
-    const js = (store && store.getJobSearchState && store.getJobSearchState()) || {};
-    const rp = Object.assign({}, js.roleProfile || {}, cloud.roleProfile || {});
-    const filters = js.lastFilters || {};
-    const titles = Array.isArray(rp.targetTitles) ? rp.targetTitles.join(", ") : "";
-    const skills = Array.isArray(rp.mustHaveSkills) ? rp.mustHaveSkills.join(", ") : "";
-    const excludes = Array.isArray(rp.excludeKeywords) ? rp.excludeKeywords.join(", ") : "";
-    const location = cloud.location != null ? String(cloud.location || "") : String(filters.location || "");
-    const remoteOnly = typeof cloud.remoteOnly === "boolean" ? cloud.remoteOnly : !!filters.remoteOnly;
-    const recency = cloud.postedWithinDays != null ? Number(cloud.postedWithinDays) || 0 : Number(filters.postedWithinDays) || 0;
-    const seniority = cloud.seniority || rp.seniority || "any";
-    const strictMode = typeof cloud.strictMode === "boolean" ? cloud.strictMode : !!rp.strictMode;
-    const recencyLabel = recency > 0 ? ("Last " + recency + " days") : "Any time";
-    const hasAnyPreference =
-      Boolean(titles.trim()) ||
-      Boolean(skills.trim()) ||
-      Boolean(excludes.trim()) ||
-      Boolean(location.trim()) ||
-      Boolean(remoteOnly) ||
-      recency > 0;
-    const isCloudBacked = !!profile;
-    const status = viewState.formStatus.jobPreferences || { dirty: false, kind: "idle", text: "" };
-    const statusText = status.dirty ? "Unsaved changes." : (status.text || "No recent changes.");
-    const statusKind = status.dirty ? "pending" : (status.kind || "idle");
-    return `
-      <section class="card panel-lg settings-section">
-        <div class="panel-head">
-          <h2>Job Search Profile</h2>
-          <span class="chip ${isCloudBacked ? "green" : "warning"}">${isCloudBacked ? "Cloud synced" : "Local only"}</span>
-        </div>
-        <p class="page-subtitle">
-          These preferences power search constraints, match scoring, and AI tailoring. CareerBoost manages the job-board connections for you, so this screen stays focused on the roles you actually want.
-        </p>
-        ${!hasAnyPreference
-          ? '<div class="ai-notice"><i class="fa-solid fa-lightbulb"></i><div>Your job-search profile is still blank. Add role targets and skills to get better recommendations, stronger AI tailoring, and a more personal dashboard.</div></div>'
-          : ""}
-        <form id="job-preferences-form" class="form-grid settings-form">
-          <label class="full-row">Target roles (comma separated)
-            <input id="jp-target-roles" type="text" maxlength="300" value="${st(titles)}" placeholder="Frontend Engineer, Product Manager" />
-          </label>
-          <label class="full-row">Must-have skills (comma separated)
-            <input id="jp-must-have-skills" type="text" maxlength="300" value="${st(skills)}" placeholder="React, TypeScript, SQL" />
-          </label>
-          <div class="grid-3 full-row">
-            <label>Location
-              <input id="jp-location" type="text" maxlength="120" value="${st(location)}" placeholder="Remote · EU · Berlin" />
-            </label>
-            <label>Remote preference
-              <select id="jp-remote-mode">
-                <option value="any" ${!remoteOnly ? "selected" : ""}>Any</option>
-                <option value="remote_only" ${remoteOnly ? "selected" : ""}>Remote only</option>
-              </select>
-            </label>
-            <div class="settings-kv">
-              <p>Current summary</p>
-              <strong>${st((titles || "No roles") + " · " + (location || "Global") + " · " + recencyLabel)}</strong>
-            </div>
-          </div>
-          <details class="settings-advanced full-row">
-            <summary>Show advanced options</summary>
-            <div class="grid-3" style="margin-top:10px;">
-              <label>Posted window
-                <select id="jp-posted-days">
-                  <option value="0" ${recency === 0 ? "selected" : ""}>Any time</option>
-                  <option value="7" ${recency === 7 ? "selected" : ""}>Last 7 days</option>
-                  <option value="14" ${recency === 14 ? "selected" : ""}>Last 14 days</option>
-                  <option value="30" ${recency === 30 ? "selected" : ""}>Last 30 days</option>
-                </select>
-              </label>
-              <label>Seniority
-                <select id="jp-seniority">
-                  <option value="any" ${seniority === "any" ? "selected" : ""}>Any</option>
-                  <option value="junior" ${seniority === "junior" ? "selected" : ""}>Junior</option>
-                  <option value="mid" ${seniority === "mid" ? "selected" : ""}>Mid</option>
-                  <option value="senior" ${seniority === "senior" ? "selected" : ""}>Senior</option>
-                  <option value="lead" ${seniority === "lead" ? "selected" : ""}>Lead</option>
-                </select>
-              </label>
-              <label>Strict match mode
-                <select id="jp-strict-mode">
-                  <option value="off" ${!strictMode ? "selected" : ""}>Off</option>
-                  <option value="on" ${strictMode ? "selected" : ""}>On</option>
-                </select>
-              </label>
-            </div>
-            <label style="margin-top:10px;">Exclude keywords (comma separated)
-              <input id="jp-exclude-keywords" type="text" maxlength="300" value="${st(excludes)}" placeholder="intern, unpaid, relocation-only" />
-            </label>
-          </details>
-          <div class="form-actions full-row">
-            <button class="btn-primary" id="jp-save" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save job-search profile</button>
-            <a class="btn-secondary" href="#/job-search"><i class="fa-solid fa-magnifying-glass"></i> Open Job Search</a>
-          </div>
-        </form>
-        <p class="settings-save-state settings-save-state--${st(statusKind)}">${st(statusText)} These values also update in-memory Job Search defaults instantly.</p>
-      </section>
-    `;
-  }
-
   function countSnapshotSummary(snapshot) {
     const data = snapshot && typeof snapshot === "object" ? snapshot : {};
     const resume = data.resume && typeof data.resume === "object" ? data.resume : {};
@@ -1521,61 +1405,6 @@
     return roleCandidates.some(function (r) { return ADMIN_ROLES.indexOf(r) >= 0; });
   }
 
-  async function maybeBackfillJobPreferences() {
-    if (prefMigrationTried) return;
-    prefMigrationTried = true;
-    const profileApi = window.CBV2.profile;
-    const store = window.CBV2.store;
-    if (!profileApi || typeof profileApi.get !== "function" || typeof profileApi.update !== "function") return;
-    const profile = profileApi.get();
-    if (!profile || !profile.preferences || typeof profile.preferences !== "object") return;
-
-    const prefs = profile.preferences;
-    if (prefs.jobPreferences && typeof prefs.jobPreferences === "object") return;
-
-    const legacyTargetRole = String(prefs.targetRole || "").trim();
-    const legacyLocation = String(prefs.location || "").trim();
-    const legacyRemote = String(prefs.remote || "").toLowerCase();
-    const js = (store && typeof store.getJobSearchState === "function" && store.getJobSearchState()) || {};
-    const jsRole = js.roleProfile || {};
-    const jsFilters = js.lastFilters || {};
-
-    const roleProfile = {
-      targetTitles: legacyTargetRole ? [legacyTargetRole] : (Array.isArray(jsRole.targetTitles) ? jsRole.targetTitles.slice(0, 8) : []),
-      seniority: jsRole.seniority || "any",
-      mustHaveSkills: Array.isArray(jsRole.mustHaveSkills) ? jsRole.mustHaveSkills.slice(0, 20) : [],
-      excludeKeywords: Array.isArray(jsRole.excludeKeywords) ? jsRole.excludeKeywords.slice(0, 20) : [],
-      strictMode: !!jsRole.strictMode
-    };
-    const jobPreferences = {
-      roleProfile: roleProfile,
-      location: legacyLocation || String(jsFilters.location || ""),
-      remoteOnly: legacyRemote === "remote" || legacyRemote === "remote_only" || !!jsFilters.remoteOnly,
-      postedWithinDays: Number(jsFilters.postedWithinDays) || 0,
-      seniority: roleProfile.seniority,
-      strictMode: roleProfile.strictMode,
-      updatedAt: new Date().toISOString(),
-      migratedFromLegacy: true
-    };
-    const hasMeaningfulData =
-      roleProfile.targetTitles.length ||
-      roleProfile.mustHaveSkills.length ||
-      roleProfile.excludeKeywords.length ||
-      jobPreferences.location ||
-      jobPreferences.remoteOnly ||
-      jobPreferences.postedWithinDays > 0;
-    if (!hasMeaningfulData) return;
-
-    try {
-      await profileApi.update({
-        preferences: Object.assign({}, prefs, { jobPreferences: jobPreferences })
-      });
-    } catch (e) {
-      // Non-fatal. Migration can retry on next route mount.
-      prefMigrationTried = false;
-    }
-  }
-
   function renderSettingsTabNav(activeTab, canAccessAdvanced) {
     const items = (typeof settingsMeta.visibleTabs === "function" ? settingsMeta.visibleTabs(canAccessAdvanced) : [
       { id: "overview", icon: "fa-gauge-high", label: "Overview" },
@@ -1696,7 +1525,9 @@
             ${showMe ? renderPersonalHero() : ""}
             ${showMe ? renderProfileSection() : ""}
 
-            ${showJobPreferences ? renderJobPreferencesSection() : ""}
+            ${showJobPreferences && window.CBV2.settingsJobPrefs && window.CBV2.settingsJobPrefs.render
+              ? window.CBV2.settingsJobPrefs.render()
+              : ""}
             ${showAppearance && window.CBV2.settingsAppearance && window.CBV2.settingsAppearance.render
               ? window.CBV2.settingsAppearance.render()
               : ""}
@@ -2679,76 +2510,6 @@
     }
   }
 
-  function bindJobPreferences() {
-    const form = document.getElementById("job-preferences-form");
-    if (!form) return;
-    const markDirty = function () {
-      setFormStatus("jobPreferences", { dirty: true, kind: "pending", text: "Unsaved changes." });
-      const line = form.parentElement && form.parentElement.querySelector(".settings-save-state");
-      if (line) {
-        line.textContent = "Unsaved changes. These values also update in-memory Job Search defaults instantly.";
-        line.classList.remove("settings-save-state--success", "settings-save-state--error", "settings-save-state--idle");
-        line.classList.add("settings-save-state--pending");
-      }
-    };
-    form.addEventListener("input", markDirty);
-    form.addEventListener("change", markDirty);
-    form.addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const splitCsv = function (raw) {
-        return String(raw || "")
-          .split(",")
-          .map(function (x) { return x.trim(); })
-          .filter(Boolean)
-          .slice(0, 20);
-      };
-      const roleProfile = {
-        targetTitles: splitCsv((document.getElementById("jp-target-roles") || {}).value || ""),
-        mustHaveSkills: splitCsv((document.getElementById("jp-must-have-skills") || {}).value || ""),
-        excludeKeywords: splitCsv((document.getElementById("jp-exclude-keywords") || {}).value || ""),
-        seniority: ((document.getElementById("jp-seniority") || {}).value || "any"),
-        strictMode: ((document.getElementById("jp-strict-mode") || {}).value || "off") === "on"
-      };
-      const location = ((document.getElementById("jp-location") || {}).value || "").trim();
-      const remoteMode = ((document.getElementById("jp-remote-mode") || {}).value || "any");
-      const postedWithinDays = Number(((document.getElementById("jp-posted-days") || {}).value || 0) || 0);
-      const store = window.CBV2.store;
-      const js = (store && store.getJobSearchState && store.getJobSearchState()) || {};
-      const nextFilters = Object.assign({}, js.lastFilters || {}, {
-        location: location,
-        remoteOnly: remoteMode === "remote_only",
-        postedWithinDays: postedWithinDays
-      });
-      if (store && typeof store.setJobSearchState === "function") {
-        store.setJobSearchState({
-          roleProfile: roleProfile,
-          lastFilters: nextFilters
-        });
-      }
-      try {
-        await savePreferencePatch({
-          jobPreferences: {
-            roleProfile: roleProfile,
-            location: location,
-            remoteOnly: remoteMode === "remote_only",
-            postedWithinDays: postedWithinDays,
-            seniority: roleProfile.seniority,
-            strictMode: roleProfile.strictMode,
-            updatedAt: new Date().toISOString()
-          }
-        });
-        viewState.message = "Job preferences saved and synced.";
-        setFormStatus("jobPreferences", { dirty: false, kind: "success", text: "Saved & synced." });
-        if (window.CBV2.toast) window.CBV2.toast.success("Preferences saved.");
-      } catch (err) {
-        viewState.message = "Preferences saved locally, but cloud sync failed: " + ((err && err.message) || "unknown error");
-        setFormStatus("jobPreferences", { dirty: false, kind: "error", text: "Saved locally. Cloud sync failed." });
-        if (window.CBV2.toast) window.CBV2.toast.error("Cloud sync failed.");
-      }
-      window.CBV2.renderCurrentRoute();
-    });
-  }
-
   function bindSavedCvSettings() {
     const root = document.getElementById("saved-cv-section");
     if (!root) return;
@@ -2990,10 +2751,14 @@
 
   window.CBV2.routes.settings = renderView;
   window.CBV2.afterRender.settings = function () {
-    maybeBackfillJobPreferences();
+    if (window.CBV2.settingsJobPrefs && typeof window.CBV2.settingsJobPrefs.backfill === "function") {
+      window.CBV2.settingsJobPrefs.backfill();
+    }
     bindForm();
     bindProfile();
-    bindJobPreferences();
+    if (window.CBV2.settingsJobPrefs && typeof window.CBV2.settingsJobPrefs.bind === "function") {
+      window.CBV2.settingsJobPrefs.bind();
+    }
     if (window.CBV2.settingsAi && typeof window.CBV2.settingsAi.bind === "function") {
       window.CBV2.settingsAi.bind();
     }
