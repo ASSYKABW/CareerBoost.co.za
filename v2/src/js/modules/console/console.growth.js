@@ -17,6 +17,10 @@
   var U = function () { return window.CBConsole.util; };
   var D = function () { return window.CBConsole.data; };
   function esc(s) { return U().escapeHtml(s); }
+  function toast(m) {
+    var f = window.CBConsole.ui && window.CBConsole.ui.toast;
+    if (f) f(m); else console.log(m);
+  }
 
   // ── Website traffic (anonymous visitors) ────────────────────────────
   // The pre-signup half of the funnel. Before 0053 + usage-ingest this was
@@ -93,6 +97,93 @@
       "</div></div>";
   }
 
+  // ── Content engine ──────────────────────────────────────────────────
+  // The engine is fully built (market-scan → fact-led drafts) but had no
+  // trigger anywhere: Content Studio was deleted with the legacy admin and the
+  // GitHub cron no-ops until its secrets are set. So it produced nothing, and
+  // nothing in the Console explained why. This panel is the trigger.
+  function enginePanel(e) {
+    e = e || {};
+    var segs = e.segments || [];
+    var scanned = Number(e.scannedTotal) || 0;
+    var ok = Number(e.sufficientCount) || 0;
+
+    var state, tone;
+    if (!segs.length) { state = "no market data this week"; tone = "amber"; }
+    else if (!ok) { state = "scanned, but samples too small to quote"; tone = "amber"; }
+    else { state = ok + " of " + segs.length + " segments ready"; tone = "green"; }
+
+    var segLine = segs.length
+      ? '<div class="cbc-tr-list" style="margin-top:10px">' + segs.map(function (s) {
+          return '<div class="cbc-tr-row"><span class="cbc-tr-nm">' + esc(s.label || s.segment) + '</span>' +
+            '<span class="cbc-chip ' + (s.sufficient ? "green" : "dim") + '">' + (s.sufficient ? "quotable" : "thin") + "</span>" +
+            '<b class="cbc-tr-n">' + (Number(s.scanned) || 0) + "</b></div>";
+        }).join("") + "</div>"
+      : '<div style="color:var(--c-muted);font-size:12.5px;margin-top:8px">' +
+        'No scan has run for the week of ' + esc(String(e.weekStart || "—")) + '. ' +
+        'Until one does, drafts fall back to generic angles instead of this week\'s real numbers.</div>';
+
+    // A failed agent run is the single most useful thing to surface here: the
+    // agent has no provider fallback, so a dry key stops it dead.
+    var runNote = "";
+    if (e.lastRunStatus === "failed" && e.lastRunError) {
+      var credit = /credit balance|too low|quota/i.test(e.lastRunError);
+      runNote = '<div style="margin-top:12px;font-size:11.5px;color:var(--c-amber);line-height:1.6">' +
+        '<i class="fa-solid fa-triangle-exclamation"></i> Last agent run failed — ' +
+        esc(credit ? "the AI provider is out of credit." : e.lastRunError) + "</div>";
+    }
+
+    return '<div class="cbc-card cbc-panel" id="cbc-engine">' +
+      '<div class="cbc-ph"><div><div class="cbc-eb">Content engine</div><h2>Market data &amp; drafts</h2></div>' +
+        '<span class="cbc-chip ' + tone + '">' + esc(state) + "</span></div>" +
+      '<div class="cbc-tr-kpis">' +
+        '<div class="cbc-tr-k"><span>Jobs scanned</span><b>' + scanned + "</b></div>" +
+        '<div class="cbc-tr-k"><span>Segments ready</span><b>' + ok + " / " + segs.length + "</b></div>" +
+        '<div class="cbc-tr-k"><span>Content pieces</span><b>' + (Number(e.pieces) || 0) + "</b></div>" +
+        '<div class="cbc-tr-k"><span>Social drafts</span><b>' + (Number(e.drafts) || 0) + "</b></div>" +
+      "</div>" +
+      segLine + runNote +
+      '<div class="cbc-qa" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="cbc-btn cbc-sm" data-eng="market-scan"><i class="fa-solid fa-radar"></i> Refresh market data</button>' +
+        '<button class="cbc-btn cbc-sm" data-eng="draft"><i class="fa-solid fa-pen-nib"></i> Generate draft</button>' +
+        '<button class="cbc-btn cbc-sm" data-eng="newsletter-draft"><i class="fa-solid fa-envelope"></i> Weekly newsletter</button>' +
+        '<button class="cbc-btn cbc-sm" data-eng="publish-due"><i class="fa-solid fa-paper-plane"></i> Publish due</button>' +
+      "</div>" +
+      '<div style="margin-top:10px;font-size:11.5px;color:var(--c-dim);line-height:1.6">' +
+        'Scanning reads the live SA job market and stores one snapshot per week — no AI, nothing sent to users. ' +
+        'Drafts always land as <b>needs_review</b>.' +
+      "</div></div>";
+  }
+
+  function bindEngine(bodyEl) {
+    bodyEl.addEventListener("click", async function (ev) {
+      var t = ev.target.closest ? ev.target.closest("[data-eng]") : null;
+      if (!t) return;
+      var task = t.getAttribute("data-eng");
+      var label = t.innerHTML;
+      t.disabled = true;
+      t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + (task === "market-scan" ? "Scanning the market…" : "Working…");
+      try {
+        var r = await D().runMarketingTask(task);
+        var msg = "Done.";
+        if (task === "market-scan" && r && r.segments) {
+          var total = r.segments.reduce(function (n, s) { return n + (Number(s.scanned) || 0); }, 0);
+          var good = r.segments.filter(function (s) { return s.sufficient; }).length;
+          msg = total
+            ? "Scanned " + total + " jobs — " + good + " of " + r.segments.length + " segments have enough data to quote."
+            : "The scan returned no jobs. The job providers may be rate-limited — try again shortly.";
+        } else if (r && r.piece) { msg = "Draft created — it's in the review queue."; }
+        toast(msg);
+        load(bodyEl);
+      } catch (err) {
+        t.disabled = false;
+        t.innerHTML = label;
+        var m = (err && err.message) ? err.message : "That task failed.";
+        toast(/credit|quota|too low/i.test(m) ? "The AI provider is out of credit — the scan works, but drafting needs a top-up." : m);
+      }
+    });
+  }
+
   function channelsTable(channels) {
     if (!channels || !channels.length) return '<div style="color:var(--c-muted);font-size:12.5px">No attributed signups in the last 30 days.</div>';
     var body = channels.map(function (c) {
@@ -131,7 +222,7 @@
   }
 
   function experimentsTable(exps) {
-    if (!exps || !exps.length) return '<div style="color:var(--c-muted);font-size:12.5px">No experiments yet. Create one in Content Studio (legacy admin) — it shows up here.</div>';
+    if (!exps || !exps.length) return '<div style="color:var(--c-muted);font-size:12.5px">No experiments yet. Nothing creates them from the Console — they are seeded directly in <code>marketing_experiments</code> for now.</div>';
     var body = exps.map(function (e) {
       var tone = e.status === "running" ? "green" : e.status === "done" ? "violet" : "dim";
       var winner = e.winner ? '<span class="cbc-chip cyan">' + esc(e.winner) + '</span>' : '<span style="color:var(--c-dim)">—</span>';
@@ -315,7 +406,6 @@
 
   function bindCopilot(bodyEl, drafts) {
     var host = bodyEl.querySelector("#cbc-mk"); if (!host) return;
-    var toast = (window.CBConsole.ui && window.CBConsole.ui.toast) || function (m) { console.log(m); };
     var byId = {};
     (drafts || []).forEach(function (d) { byId[d.id] = d; });
     host.addEventListener("click", async function (e) {
@@ -416,6 +506,9 @@
       // Traffic sits first: it's the top of the funnel, and it's the half that
       // was invisible until 0053 + usage-ingest made anonymous rows possible.
       trafficPanel(g.traffic) +
+      // The engine's own status + its only trigger. Above the copilot, because
+      // a draft written without market data is the thing we're trying to stop.
+      enginePanel(g.engine) +
       copilotPanel(dq) +
       '<section class="cbc-kpis cbc-kpis--4">' + (g.kpis || []).map(U().kpiCard).join("") + '</section>' +
       '<section class="cbc-grid cbc-g-2a">' +
@@ -434,6 +527,7 @@
       U().countUp(n, Number(n.getAttribute("data-count")), n.getAttribute("data-fmt"));
     });
     bindCopilot(bodyEl, (dq && dq.drafts) || []);
+    bindEngine(bodyEl);
   }
 
   window.CBConsole.sections.growth = { load: load };

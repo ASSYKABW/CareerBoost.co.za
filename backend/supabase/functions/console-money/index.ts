@@ -18,6 +18,15 @@ const DAY_MS = 86_400_000;
 const PRICE_ZAR: Record<string, number> = { plus: 210, pro: 380, career: 699 };
 const PAID_PLANS = ["plus", "pro", "career"];
 const ACTIVE_STATES = ["active", "trialing", "past_due"];
+
+// A comp (admin-granted free months) writes plan_id='pro'/status='active' with
+// no processor behind it — identical to a real subscription apart from the
+// money. Counting those as MRR reports revenue that does not exist, and it
+// inflates by the FULL plan price on the first grant. Revenue therefore means
+// "a payment processor is attached"; access is counted separately.
+function isRealPayer(s: Record<string, unknown>): boolean {
+  return !!(s.payment_processor || s.stripe_subscription_id || s.paystack_subscription_code);
+}
 function isoAgo(days: number): string { return new Date(Date.now() - days * DAY_MS).toISOString(); }
 function titleCase(s: string): string { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function planTone(p: string): string { return p === "career" ? "violet" : "cyan"; }
@@ -71,13 +80,31 @@ Deno.serve(withCors(async (req) => {
   // ── Subscriptions (single fetch, aggregate in TS) ─────────────────
   let subs: Array<Record<string, unknown>> = [];
   try {
-    const { data } = await svc.from("subscriptions").select("plan_id,status,created_at,canceled_at").limit(20000);
+    const { data } = await svc
+      .from("subscriptions")
+      .select("plan_id,status,created_at,canceled_at,current_period_end,payment_processor,stripe_subscription_id,paystack_subscription_code")
+      .limit(20000);
     subs = (data || []) as Array<Record<string, unknown>>;
   } catch (_e) { /* leave empty */ }
 
-  const activePaid = subs.filter((s) => PAID_PLANS.includes(String(s.plan_id)) && ACTIVE_STATES.includes(String(s.status)));
+  // Everyone on a paid tier — bought or comped. This is ACCESS, not revenue.
+  const activeAccess = subs.filter((s) => PAID_PLANS.includes(String(s.plan_id)) && ACTIVE_STATES.includes(String(s.status)));
+  // Only the ones actually paying feed MRR.
+  const activePaid = activeAccess.filter(isRealPayer);
+  const comped = activeAccess.filter((s) => !isRealPayer(s));
   const mrr = activePaid.reduce((sum, s) => sum + (PRICE_ZAR[String(s.plan_id)] || 0), 0);
+  const compedValue = comped.reduce((sum, s) => sum + (PRICE_ZAR[String(s.plan_id)] || 0), 0);
   const newPaid30 = activePaid.filter((s) => String(s.created_at) >= isoAgo(30)).length;
+
+  // A paid sub whose period ended but which nothing has renewed: either the
+  // processor webhook is not firing or the customer has lapsed. Both mean MRR
+  // is counting money that may not arrive, so surface it rather than hide it.
+  const nowIso = new Date().toISOString();
+  const stalePaid = activePaid.filter((s) => {
+    const end = s.current_period_end ? String(s.current_period_end) : "";
+    return !!end && end < nowIso;
+  });
+  const staleValue = stalePaid.reduce((sum, s) => sum + (PRICE_ZAR[String(s.plan_id)] || 0), 0);
 
   // Churn: canceled within 30d (canceled_at set OR status canceled recently).
   const churn30 = subs.filter((s) => {
@@ -98,11 +125,13 @@ Deno.serve(withCors(async (req) => {
     }
   } catch (_e) { /* ignore */ }
 
-  // By-plan breakdown.
+  // By-plan breakdown: paying vs comped, so a plan full of comps cannot read as
+  // a plan full of revenue.
   const plans = PAID_PLANS.map((p) => {
     const count = activePaid.filter((s) => String(s.plan_id) === p).length;
-    return { plan: titleCase(p), planTone: planTone(p), count, mrr: count * (PRICE_ZAR[p] || 0) };
-  }).filter((p) => p.count > 0);
+    const compCount = comped.filter((s) => String(s.plan_id) === p).length;
+    return { plan: titleCase(p), planTone: planTone(p), count, comped: compCount, mrr: count * (PRICE_ZAR[p] || 0) };
+  }).filter((p) => p.count > 0 || p.comped > 0);
 
   // Promo performance.
   let promo: Record<string, unknown> = { active: false, percent: 0, endDate: null, grants: { active: 0, redeemed: 0 } };
@@ -128,13 +157,21 @@ Deno.serve(withCors(async (req) => {
   const money = {
     kpis: [
       { key: "mrr", label: "MRR (ZAR)", tone: "green", fmt: "zar", value: mrr, delta: newPaid30 ? "+" + newPaid30 + " paid (30d)" : "steady", deltaDir: "up", spark: spark },
-      { key: "paid", label: "Active paid", tone: "cyan", fmt: "int", value: activePaid.length, delta: newPaid30 ? "+" + newPaid30 + " (30d)" : "steady", deltaDir: "up", spark: spark },
+      { key: "paid", label: "Active paid", tone: "cyan", fmt: "int", value: activePaid.length, delta: comped.length ? "+" + comped.length + " comped" : (newPaid30 ? "+" + newPaid30 + " (30d)" : "steady"), deltaDir: "up", spark: spark },
       { key: "churn", label: "Churn (30d)", tone: "amber", fmt: "int", value: churn30, delta: churnPct + "% of paid", deltaDir: churn30 > 0 ? "down" : "up", spark: [] },
       { key: "pastdue", label: "Past due", tone: "amber", fmt: "int", value: pastDueCount, delta: pastDueCount ? "recover" : "clear", deltaDir: pastDueCount ? "down" : "up", spark: [] },
     ],
     plans,
     failed,
     promo,
+    // Revenue integrity: what MRR is NOT counting, and what it might be
+    // over-counting. Both are zero on a clean board.
+    integrity: {
+      comped: comped.length,
+      compedValue: compedValue,
+      stalePaid: stalePaid.length,
+      staleValue: staleValue,
+    },
   };
   return jsonResponse({ ok: true, money });
 }));

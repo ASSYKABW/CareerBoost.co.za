@@ -374,6 +374,14 @@
       if (isMock()) return { ok: true, _mock: true };
       return callMut("admin-promote-user", { targetUserId: userId, roles: roles || [] });
     },
+    // Drive the content engine by hand. marketing-cron accepts an admin JWT for
+    // exactly this, so it needs no cron secret — which matters, because the
+    // scheduler's secrets may not be set and the engine is otherwise
+    // unreachable (Content Studio went away with the legacy admin).
+    runMarketingTask: async function (task) {
+      if (isMock()) return { ok: true, _mock: true, task: task };
+      return call("marketing-cron", { task: task });
+    },
     loadMoney: async function () {
       var MOCK = {
         _mock: true,

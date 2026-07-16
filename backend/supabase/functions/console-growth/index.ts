@@ -400,8 +400,51 @@ Deno.serve(withCors(async (req) => {
     };
   } catch (_e) { /* leave the zeroed default — never 500 the section */ }
 
+  // ── Content engine status ─────────────────────────────────────────────
+  // The engine (market-scan → fact-led drafts) had no trigger until the panel
+  // below shipped, so its tables sat empty and the Console gave no hint why.
+  // This reports whether it has anything true to say THIS week.
+  let engine: Record<string, unknown> = {
+    weekStart: null, segments: [], scannedTotal: 0, sufficientCount: 0,
+    pieces: 0, drafts: 0, lastRunAt: null, lastRunStatus: null, lastRunError: null,
+  };
+  try {
+    const monday = new Date();
+    const day = (monday.getUTCDay() + 6) % 7;
+    monday.setUTCDate(monday.getUTCDate() - day);
+    const weekStart = monday.toISOString().slice(0, 10);
+
+    const { data: snaps } = await svc
+      .from("market_snapshots")
+      .select("segment,label,scanned,sufficient,week_start")
+      .eq("week_start", weekStart);
+    const rows = (snaps || []) as Array<Record<string, unknown>>;
+
+    const { count: pieceCount } = await svc.from("content_pieces").select("id", { count: "exact", head: true });
+    const { count: draftCount } = await svc.from("social_drafts").select("id", { count: "exact", head: true });
+    const { data: lastRun } = await svc
+      .from("agent_runs").select("status,error,created_at")
+      .eq("agent", "marketing").order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+    engine = {
+      weekStart,
+      segments: rows.map((r) => ({
+        segment: String(r.segment ?? ""), label: String(r.label ?? ""),
+        scanned: Number(r.scanned) || 0, sufficient: !!r.sufficient,
+      })),
+      scannedTotal: rows.reduce((n, r) => n + (Number(r.scanned) || 0), 0),
+      sufficientCount: rows.filter((r) => !!r.sufficient).length,
+      pieces: Number(pieceCount) || 0,
+      drafts: Number(draftCount) || 0,
+      lastRunAt: lastRun ? String(lastRun.created_at) : null,
+      lastRunStatus: lastRun ? String(lastRun.status) : null,
+      lastRunError: lastRun && lastRun.error ? String(lastRun.error).slice(0, 160) : null,
+    };
+  } catch (_e) { /* leave the default — never 500 the section */ }
+
   const growth = {
     traffic,
+    engine,
     kpis: [
       { key: "signups", label: "Signups (30d)", tone: "cyan", fmt: "int", value: signups30, delta: dSignups === null ? "new" : (dSignups >= 0 ? "+" : "") + dSignups + "%", deltaDir: dSignups !== null && dSignups < 0 ? "down" : "up", spark: bucketByDay(cur, "created_at", 30) },
       { key: "activation", label: "Activation rate", tone: "violet", fmt: "pct", value: activationPct, delta: onboarded30 + " onboarded", deltaDir: activationPct >= 50 ? "up" : "down", spark: [] },

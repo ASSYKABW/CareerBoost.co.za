@@ -149,22 +149,31 @@ function weekStartUtc(d: Date): string {
 }
 
 // Call our own jobs-search server-side. It accepts X-Cron-Secret for exactly
-// this kind of internal use, so no user session is involved.
-async function scanSegment(query: string): Promise<ScannedJob[]> {
+// this kind of internal use, so a scheduled scan needs no user session.
+//
+// When an admin triggers the scan by hand there is no cron secret involved, so
+// we forward their Authorization header instead — jobs-search accepts any valid
+// JWT and meters nothing, so this costs the admin no quota. Without this the
+// scan silently returned [] whenever CRON_SECRET was unset, which wrote an
+// empty snapshot and looked like the market simply had no jobs in it.
+async function scanSegment(query: string, authHeader?: string): Promise<ScannedJob[]> {
   const base = Deno.env.get("SUPABASE_URL") || "";
   const secret = (Deno.env.get("JOB_SCOUT_CRON_SECRET") || Deno.env.get("CRON_SECRET") || "").trim();
-  if (!base || !secret) return [];
+  if (!base) return [];
+  if (!secret && !authHeader) return [];
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 60_000);
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: Deno.env.get("SUPABASE_ANON_KEY") || "",
+    };
+    if (secret) headers["X-Cron-Secret"] = secret;
+    else if (authHeader) headers["Authorization"] = authHeader;
     const res = await fetch(`${base}/functions/v1/jobs-search`, {
       method: "POST",
       signal: ctl.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Cron-Secret": secret,
-        apikey: Deno.env.get("SUPABASE_ANON_KEY") || "",
-      },
+      headers: headers,
       // Constrain to SA: the content claims "the South African job market", so
       // the sample must actually BE the South African job market. Without this
       // the scan pulls in US/Canada remote listings and every percentage we
@@ -387,10 +396,12 @@ Deno.serve(withCors(async (req) => {
     const segs = only ? MARKET_SEGMENTS.filter((s) => s.id === only) : MARKET_SEGMENTS;
     if (!segs.length) return errorResponse("Unknown segment: " + only, 400);
 
+    // Present only on the admin-triggered path; the scheduler uses the secret.
+    const authHeader = bySecret ? undefined : (req.headers.get("Authorization") || undefined);
     const results: Array<Record<string, unknown>> = [];
     for (const seg of segs) {
       try {
-        const jobs = await scanSegment(seg.query);
+        const jobs = await scanSegment(seg.query, authHeader);
         const facts: MarketFacts = buildFacts(jobs);
         const { error } = await svc.from("market_snapshots").upsert({
           week_start: weekStart,
