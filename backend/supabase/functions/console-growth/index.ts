@@ -291,7 +291,117 @@ Deno.serve(withCors(async (req) => {
   lifecycle.pushDevices = pushDevices;
   lifecycle.pushStale = pushStale;
 
+  // ── Website traffic (anonymous visitors) ──────────────────────────
+  // The pre-signup half of the funnel, unlocked by 0053 + usage-ingest. Until
+  // then the product could only ever see people from sign-in onward.
+  //
+  // Aggregated in TS over a bounded window rather than in SQL: volumes are tiny
+  // today and this keeps it to one endpoint with no new view/RPC. If usage_events
+  // ever gets big, move this to a materialised view — the shape won't change.
+  //
+  // STITCHING: the client stamps the SAME persistent anonymous_id before AND
+  // after signup, so an anon id that also appears on a signed-in row is a
+  // visitor who converted. That's the visit→signup number, with no vendor.
+  let traffic: Record<string, unknown> = {
+    visitors7: 0, visitors30: 0, views7: 0, sessions7: 0,
+    returning7: 0, converted30: 0, convRate: 0,
+    series: [], topPages: [], sources: [], devices: [], empty: true,
+  };
+  try {
+    const since30 = isoAgo(30);
+    const { data: evRows } = await svc
+      .from("usage_events")
+      .select("user_id, anonymous_id, event_name, route, metadata, occurred_at")
+      .gte("occurred_at", since30)
+      .not("anonymous_id", "is", null)
+      .order("occurred_at", { ascending: false })
+      .limit(20000);
+    const ev = (evRows || []) as Array<Record<string, unknown>>;
+
+    const since7 = Date.now() - 7 * DAY_MS;
+    const anon30 = new Set<string>();
+    const anon7 = new Set<string>();
+    const knownAnon = new Set<string>();       // anon ids seen WITH a user_id → converted
+    const firstSeen = new Map<string, number>();
+    const pages = new Map<string, number>();
+    const sources = new Map<string, number>();
+    const devices = new Map<string, number>();
+    const byDay = new Map<string, Set<string>>();
+    let views7 = 0, sessions7 = 0;
+
+    for (const r of ev) {
+      const anon = String(r.anonymous_id || "");
+      if (!anon) continue;
+      const t = Date.parse(String(r.occurred_at || "")) || 0;
+      const isAnonRow = r.user_id === null || r.user_id === undefined;
+      if (!isAnonRow) { knownAnon.add(anon); continue; }  // signed-in rows only mark conversion
+
+      anon30.add(anon);
+      const prevSeen = firstSeen.get(anon);
+      if (prevSeen === undefined || t < prevSeen) firstSeen.set(anon, t);
+
+      const day = new Date(t).toISOString().slice(0, 10);
+      if (!byDay.has(day)) byDay.set(day, new Set());
+      byDay.get(day)!.add(anon);
+
+      if (t >= since7) {
+        anon7.add(anon);
+        const name = String(r.event_name || "");
+        if (name === "view_route") {
+          views7++;
+          const route = String(r.route || "unknown");
+          pages.set(route, (pages.get(route) || 0) + 1);
+        }
+        if (name === "session_start") {
+          sessions7++;
+          const md = (r.metadata || {}) as Record<string, unknown>;
+          // UTM wins over referrer when present — that's the deliberate channel.
+          const utm = String(md.utmSource || "").trim();
+          const ref = String(md.referrer || "").trim();
+          const src = utm ? "utm:" + utm : (ref || "direct");
+          if (src !== "internal") sources.set(src, (sources.get(src) || 0) + 1);
+          const dev = String(md.deviceType || "unknown");
+          devices.set(dev, (devices.get(dev) || 0) + 1);
+        }
+      }
+    }
+
+    // Returning = first seen before this 7d window but active inside it.
+    let returning7 = 0;
+    for (const a of anon7) {
+      const f = firstSeen.get(a);
+      if (f !== undefined && f < since7) returning7++;
+    }
+    // Converted = visitors (last 30d) whose anon id also appears signed-in.
+    let converted30 = 0;
+    for (const a of anon30) if (knownAnon.has(a)) converted30++;
+
+    const days: Array<{ day: string; visitors: number }> = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10);
+      days.push({ day: d, visitors: (byDay.get(d) || new Set()).size });
+    }
+    const rank = (m: Map<string, number>, n: number) =>
+      [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, count]) => ({ name, count }));
+
+    traffic = {
+      visitors7: anon7.size,
+      visitors30: anon30.size,
+      views7,
+      sessions7,
+      returning7,
+      converted30,
+      convRate: anon30.size ? Math.round((converted30 / anon30.size) * 1000) / 10 : 0,
+      series: days,
+      topPages: rank(pages, 8),
+      sources: rank(sources, 8),
+      devices: rank(devices, 4),
+      empty: anon30.size === 0,
+    };
+  } catch (_e) { /* leave the zeroed default — never 500 the section */ }
+
   const growth = {
+    traffic,
     kpis: [
       { key: "signups", label: "Signups (30d)", tone: "cyan", fmt: "int", value: signups30, delta: dSignups === null ? "new" : (dSignups >= 0 ? "+" : "") + dSignups + "%", deltaDir: dSignups !== null && dSignups < 0 ? "down" : "up", spark: bucketByDay(cur, "created_at", 30) },
       { key: "activation", label: "Activation rate", tone: "violet", fmt: "pct", value: activationPct, delta: onboarded30 + " onboarded", deltaDir: activationPct >= 50 ? "up" : "down", spark: [] },

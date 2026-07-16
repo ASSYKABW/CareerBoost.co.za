@@ -393,3 +393,66 @@
   .admin-auth-card h1 { font-size: var(--font-size-24, 1.5rem); }
   .admin-auth-actions .btn-primary { flex-basis: 100%; }
 }
+
+/* ── Website visitors panel (Growth → Acquisition) ──────────────────────
+   The pre-signup half of the funnel. Uses the console's own tokens. */
+.cbc-tr-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 4px;
+}
+.cbc-tr-k {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-glass-2, rgba(255, 255, 255, 0.03));
+}
+.cbc-tr-k span { font-size: 11px; color: var(--c-dim); letter-spacing: 0.02em; }
+.cbc-tr-k b { font-size: 19px; font-weight: 750; color: var(--c-text); font-variant-numeric: tabular-nums; }
+
+/* Daily visitors — deliberately a bar strip, not a line: with single-digit
+   traffic a line chart implies a trend that isn't there. */
+.cbc-tr-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-glass-2, rgba(255, 255, 255, 0.03));
+}
+.cbc-tr-bar {
+  flex: 1;
+  height: var(--h, 2%);
+  min-height: 2px;
+  border-radius: 3px 3px 1px 1px;
+  background: var(--c-grad, linear-gradient(180deg, #22e3ff, #6b7dff));
+  opacity: 0.9;
+  transition: opacity 140ms ease;
+}
+.cbc-tr-bar:hover { opacity: 1; }
+
+.cbc-tr-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+.cbc-tr-h { font-size: 11.5px; color: var(--c-dim); margin-bottom: 8px; letter-spacing: 0.02em; }
+.cbc-tr-list { display: flex; flex-direction: column; gap: 7px; }
+.cbc-tr-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 30px; align-items: center; gap: 8px; }
+.cbc-tr-nm {
+  font-size: 12.5px; color: var(--c-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cbc-tr-track { height: 6px; border-radius: 999px; background: var(--c-border); overflow: hidden; }
+.cbc-tr-track i { display: block; height: 100%; background: var(--c-cyan, #22e3ff); border-radius: 999px; }
+.cbc-tr-n { font-size: 12.5px; color: var(--c-muted); text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 900px) {
+  .cbc-tr-kpis { grid-template-columns: repeat(2, 1fr); }
+  .cbc-tr-cols { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cbc-tr-bar { transition: none; }
+}
