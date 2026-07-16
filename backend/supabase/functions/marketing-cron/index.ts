@@ -19,6 +19,64 @@ import { prompts } from "../_shared/prompts.ts";
 import { callLLM, callProvider, providerHasKey, extractJson } from "../_shared/llm.ts";
 import { SKILL_ROUTING, maxTokensFor, temperatureFor } from "../_shared/routing.ts";
 import { validateSkillPayload } from "../_shared/schemas.ts";
+import { buildFacts, type ScannedJob, type MarketFacts } from "../_shared/market-facts.ts";
+
+// ── Live market scan ────────────────────────────────────────────────────
+// Broad, SA-relevant segments. Kept small on purpose: each scan fans out to
+// every job provider, so this is the slow part of the job.
+const MARKET_SEGMENTS: Array<{ id: string; label: string; query: string }> = [
+  { id: "software-developer", label: "software developer", query: "software developer" },
+  { id: "data-analyst", label: "data analyst", query: "data analyst" },
+  { id: "accountant", label: "accountant", query: "accountant" },
+  { id: "sales-representative", label: "sales representative", query: "sales representative" },
+];
+
+// Monday (UTC) of the given date — the snapshot's week key.
+function weekStartUtc(d: Date): string {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = x.getUTCDay();                 // 0=Sun
+  x.setUTCDate(x.getUTCDate() - ((dow + 6) % 7));
+  return x.toISOString().slice(0, 10);
+}
+
+// Call our own jobs-search server-side. It accepts X-Cron-Secret for exactly
+// this kind of internal use, so no user session is involved.
+async function scanSegment(query: string): Promise<ScannedJob[]> {
+  const base = Deno.env.get("SUPABASE_URL") || "";
+  const secret = (Deno.env.get("JOB_SCOUT_CRON_SECRET") || Deno.env.get("CRON_SECRET") || "").trim();
+  if (!base || !secret) return [];
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 60_000);
+  try {
+    const res = await fetch(`${base}/functions/v1/jobs-search`, {
+      method: "POST",
+      signal: ctl.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Cron-Secret": secret,
+        apikey: Deno.env.get("SUPABASE_ANON_KEY") || "",
+      },
+      // Constrain to SA: the content claims "the South African job market", so
+      // the sample must actually BE the South African job market. Without this
+      // the scan pulls in US/Canada remote listings and every percentage we
+      // publish would quietly be about the wrong country.
+      body: JSON.stringify({
+        query,
+        filters: {
+          remoteOnly: false,
+          postedWithinDays: 30,
+          sort: "newest",
+          location: "South Africa",
+          locationStrictness: "balanced",
+        },
+      }),
+    });
+    const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return Array.isArray(j.jobs) ? (j.jobs as ScannedJob[]) : [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Evergreen, SA-flavoured topic rotation for the auto-draft cadence. The
 // scheduler runs ~3×/week; each run picks the next entry by day so content
@@ -195,6 +253,45 @@ Deno.serve(withCors(async (req) => {
   try { body = await req.json(); } catch { body = {}; }
   const task = String(body.task || "draft");
   const svc = getServiceClient();
+
+  // ── market-scan (no AI) ───────────────────────────────────────────────
+  // Scans the live SA job market per segment and stores one honest snapshot
+  // per week. This is what gives the content engine something true to say.
+  if (task === "market-scan") {
+    const weekStart = weekStartUtc(new Date());
+    const only = String(body.segment || "").trim();
+    const segs = only ? MARKET_SEGMENTS.filter((s) => s.id === only) : MARKET_SEGMENTS;
+    if (!segs.length) return errorResponse("Unknown segment: " + only, 400);
+
+    const results: Array<Record<string, unknown>> = [];
+    for (const seg of segs) {
+      try {
+        const jobs = await scanSegment(seg.query);
+        const facts: MarketFacts = buildFacts(jobs);
+        const { error } = await svc.from("market_snapshots").upsert({
+          week_start: weekStart,
+          segment: seg.id,
+          label: seg.label,
+          scanned: facts.scanned,
+          sufficient: facts.sufficient,
+          facts: facts as unknown as Record<string, unknown>,
+        }, { onConflict: "week_start,segment" });
+        results.push({
+          segment: seg.id,
+          scanned: facts.scanned,
+          sufficient: facts.sufficient,
+          remoteShare: facts.remoteShare,
+          topSkills: facts.topSkills.slice(0, 5).map((s) => s.name),
+          stored: !error,
+          storeError: error ? error.message : undefined,
+        });
+      } catch (e) {
+        // One bad segment must not sink the whole scan.
+        results.push({ segment: seg.id, error: String((e as Error).message || e) });
+      }
+    }
+    return jsonResponse({ ok: true, task, week_start: weekStart, segments: results });
+  }
 
   // ── publish-due (no AI) ───────────────────────────────────────────────
   if (task === "publish-due") {
