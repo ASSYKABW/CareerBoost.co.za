@@ -300,13 +300,19 @@
       '<section class="cbc-grid cbc-g-2b">' +
         failuresPanel(h.failures) +
         '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">AI cost</div><h2>Spend by model (7d)</h2></div></div>' + modelTable(h.byModel) + '</div>' +
-      '</section>';
+      '</section>' +
+      // P1: operator backend diagnostics + job-board credentials, moved here
+      // out of the candidate-facing Settings "Advanced" tab.
+      ((window.CBConsole.diagnostics && window.CBConsole.diagnostics.render) ? window.CBConsole.diagnostics.render() : "");
     bodyEl.querySelectorAll(".cbc-num[data-count]").forEach(function (n) {
       U().countUp(n, Number(n.getAttribute("data-count")), n.getAttribute("data-fmt"));
     });
     bindModelControl(bodyEl, mc);
     bindProviderKeys(bodyEl);
     bindCodeFix(bodyEl);
+    if (window.CBConsole.diagnostics && typeof window.CBConsole.diagnostics.bind === "function") {
+      window.CBConsole.diagnostics.bind();
+    }
   }
 
   window.CBConsole.sections.ai = { load: load };

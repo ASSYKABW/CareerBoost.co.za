@@ -138,6 +138,7 @@ const SCRIPTS = [
   "./src/js/modules/console/console.route.js",
   "./src/js/modules/console/console.users.js",
   "./src/js/modules/console/console.money.js",
+  "./src/js/modules/console/console.diagnostics.js",
   "./src/js/modules/console/console.ai.js",
   "./src/js/modules/console/console.growth.js",
   "./src/js/modules/console/console.ship.js",
