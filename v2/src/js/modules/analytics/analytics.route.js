@@ -2457,6 +2457,85 @@
     );
   }
 
+  // P1: pipeline filters — a date range (by application date, reusing the same
+  // appInWindow helper the coaching signals use) and a role segment. Scoped to
+  // the Pipeline tab, where every metric is inherently period-based. Defaults to
+  // "All time" so nothing changes until the user opts in.
+  const PIPELINE_RANGES = [
+    { days: 0, label: "All time" },
+    { days: 90, label: "Last 90 days" },
+    { days: 30, label: "Last 30 days" },
+    { days: 7, label: "Last 7 days" }
+  ];
+  let pipelineRangeDays = 0;
+  let pipelineRole = "";
+
+  function pipelineFiltersActive() {
+    return pipelineRangeDays > 0 || !!pipelineRole;
+  }
+
+  function pipelineRangeLabel() {
+    const hit = PIPELINE_RANGES.filter(function (r) { return r.days === pipelineRangeDays; })[0];
+    return (hit && hit.label) || "All time";
+  }
+
+  // Distinct roles across the pipeline, most-used first (capped so the picker
+  // stays usable for someone tracking many one-off titles).
+  function pipelineRoleOptions(apps) {
+    const counts = {};
+    apps.forEach(function (a) {
+      const r = String((a && a.role) || "").trim();
+      if (r) counts[r] = (counts[r] || 0) + 1;
+    });
+    return Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x]; }).slice(0, 15);
+  }
+
+  function applyPipelineFilters(apps) {
+    if (!pipelineFiltersActive()) return apps;
+    let startMs = null;
+    let endMs = null;
+    if (pipelineRangeDays > 0) {
+      endMs = Date.now();
+      startMs = endMs - (pipelineRangeDays * DAY_MS);
+    }
+    const role = pipelineRole.toLowerCase();
+    return apps.filter(function (a) {
+      if (pipelineRangeDays > 0 && !appInWindow(a, startMs, endMs)) return false;
+      if (role && String((a && a.role) || "").trim().toLowerCase() !== role) return false;
+      return true;
+    });
+  }
+
+  function renderPipelineFilterBar(apps, filteredApps) {
+    const st = getSt();
+    const roles = pipelineRoleOptions(apps);
+    return (
+      '<section class="analytics-filters" aria-label="Pipeline filters">' +
+        '<div class="analytics-filter-group">' +
+          '<label for="analytics-range">Period</label>' +
+          '<select id="analytics-range" title="Filters by the date you applied">' +
+            PIPELINE_RANGES.map(function (r) {
+              return '<option value="' + r.days + '"' + (r.days === pipelineRangeDays ? " selected" : "") + '>' + st(r.label) + "</option>";
+            }).join("") +
+          '</select>' +
+        '</div>' +
+        '<div class="analytics-filter-group">' +
+          '<label for="analytics-role">Role</label>' +
+          '<select id="analytics-role"' + (roles.length ? "" : " disabled") + '>' +
+            '<option value="">All roles</option>' +
+            roles.map(function (r) {
+              return '<option value="' + st(r) + '"' + (r.toLowerCase() === pipelineRole.toLowerCase() ? " selected" : "") + '>' + st(r) + "</option>";
+            }).join("") +
+          '</select>' +
+        '</div>' +
+        '<span class="analytics-filter-count">Showing <strong>' + filteredApps.length + '</strong> of ' + apps.length + " applications</span>" +
+        (pipelineFiltersActive()
+          ? '<button type="button" class="analytics-filter-clear" id="analytics-filters-clear"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Clear</button>'
+          : "") +
+      '</section>'
+    );
+  }
+
   function renderView() {
     const apps = window.CBV2.store.getApplications();
     if (!apps.length) {
@@ -2477,29 +2556,41 @@
     // active tab instead of on every visit.
     let body = "";
     if (section === "pipeline") {
+      const st = getSt();
+      // Only recompute when a filter is on — otherwise reuse the memoized
+      // whole-pipeline derivation from getDerived().
+      const filtered = pipelineFiltersActive();
+      const pApps = applyPipelineFilters(apps);
+      const pWeeks = filtered ? buildWeeklyBuckets(pApps, 8) : weeks;
+      const pAverages = filtered ? computeTimeInStage(pApps) : averages;
+      const pConversions = filtered ? computeStageConversion(pApps) : conversions;
+      const pIntel = filtered ? buildAnalyticsIntelligence(pApps, pWeeks, pConversions, pAverages) : intel;
+      const pAvgWeekly = Math.round((pWeeks.reduce(function (s, b) { return s + b.count; }, 0) / 8) * 10) / 10;
+      const scopeLabel = pipelineRangeLabel() + (pipelineRole ? " · " + pipelineRole : "");
       body =
-        renderPipelineFunnel(intel) +
+        renderPipelineFilterBar(apps, pApps) +
+        renderPipelineFunnel(pIntel) +
         '<section class="card panel-lg">' +
           '<div class="panel-head">' +
             '<h2>Applications per week</h2>' +
-            '<span class="chip cyan">Last 8 weeks · avg ' + avgWeekly + '/wk</span>' +
+            '<span class="chip cyan">Last 8 weeks · avg ' + pAvgWeekly + '/wk</span>' +
           '</div>' +
-          renderWeeklyChart(weeks) +
+          renderWeeklyChart(pWeeks) +
         '</section>' +
         '<section class="two-pane">' +
           '<article class="card panel-lg">' +
             '<div class="panel-head">' +
               '<h2>Stage conversion</h2>' +
-              '<span class="chip green">Across all time</span>' +
+              '<span class="chip green">' + st(scopeLabel) + '</span>' +
             '</div>' +
-            renderConversionTable(conversions) +
+            renderConversionTable(pConversions) +
           '</article>' +
           '<article class="card panel-lg">' +
             '<div class="panel-head">' +
               '<h2>Average time in stage</h2>' +
               '<span class="chip violet">Pipeline velocity</span>' +
             '</div>' +
-            renderTimeInStage(averages) +
+            renderTimeInStage(pAverages) +
           '</article>' +
         '</section>' +
         '<section class="card panel-lg">' +
@@ -2508,7 +2599,7 @@
             '<span class="chip warning">Stale ≥ 7 days</span>' +
           '</div>' +
           '<p class="page-subtitle">Applications that have sat idle — follow up, update status, or close out.</p>' +
-          renderStaleList(apps) +
+          renderStaleList(pApps) +
         '</section>';
     } else if (section === "coaching") {
       body = renderJudgePanel(apps);
@@ -2550,6 +2641,32 @@
         }
       });
     });
+    // Pipeline filters — re-render the section with the new scope.
+    const rerender = function () {
+      if (window.CBV2 && typeof window.CBV2.renderCurrentRoute === "function") window.CBV2.renderCurrentRoute();
+    };
+    const rangeSel = document.getElementById("analytics-range");
+    if (rangeSel) {
+      rangeSel.addEventListener("change", function () {
+        pipelineRangeDays = Number(rangeSel.value) || 0;
+        rerender();
+      });
+    }
+    const roleSel = document.getElementById("analytics-role");
+    if (roleSel) {
+      roleSel.addEventListener("change", function () {
+        pipelineRole = String(roleSel.value || "");
+        rerender();
+      });
+    }
+    const clearFilters = document.getElementById("analytics-filters-clear");
+    if (clearFilters) {
+      clearFilters.addEventListener("click", function () {
+        pipelineRangeDays = 0;
+        pipelineRole = "";
+        rerender();
+      });
+    }
     const btn = document.getElementById("export-csv");
     if (btn) {
       btn.addEventListener("click", function () {
