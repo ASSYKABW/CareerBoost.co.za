@@ -1,0 +1,44 @@
+# Daily expiry sweep for free-month comps granted from the Console Promo Center.
+#
+# Nothing in the entitlement path checks an end date (get_user_entitlements keys
+# limits off subscriptions.plan_id), and a comp has no payment processor and so
+# no webhook to end it. Without this sweep, "1 free month of Pro" would last
+# forever. This demotes lapsed comps back to free and closes their grant rows.
+#
+# Reuses the SAME secrets as the job-scout workflows:
+#   SUPABASE_FUNCTIONS_URL, JOB_SCOUT_CRON_SECRET
+name: Comp expiry sweep
+
+on:
+  schedule:
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Report what would expire without changing anything"
+        type: boolean
+        default: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Expire lapsed comps
+        env:
+          FN_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.JOB_SCOUT_CRON_SECRET }}
+          DRY_RUN: ${{ inputs.dryRun }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FN_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "SUPABASE_FUNCTIONS_URL / JOB_SCOUT_CRON_SECRET not set — skipping."
+            exit 0
+          fi
+          BODY='{"dryRun":false}'
+          if [ "${DRY_RUN:-false}" = "true" ]; then BODY='{"dryRun":true}'; fi
+          echo "→ comps-sweep $BODY"
+          curl -fsS -X POST "$FN_URL/comps-sweep" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d "$BODY"
+          echo ""

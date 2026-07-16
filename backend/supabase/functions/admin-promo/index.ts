@@ -133,11 +133,13 @@ Deno.serve(withCors(async (req) => {
   }
 
   // ── grants-list ─────────────────────────────────────────────────────────
+  // Lists BOTH kinds: percent discounts and free-month comps. (This used to
+  // filter kind='percent', which made comps invisible in the Promo Center even
+  // though its list renderer already knows how to show them.)
   if (action === "grants-list") {
     const { data, error } = await svc
       .from("promo_grants")
-      .select("id, user_id, percent, status, note, expires_at, redeemed_at, created_at")
-      .eq("kind", "percent")
+      .select("id, user_id, kind, percent, free_months, plan_id, status, note, expires_at, redeemed_at, created_at")
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) return errorResponse("Failed to list grants: " + error.message, 500);
@@ -155,13 +157,41 @@ Deno.serve(withCors(async (req) => {
   }
 
   // ── grant-create ────────────────────────────────────────────────────────
+  // Two kinds:
+  //   percent      → a coupon applied to their NEXT checkout (paystack-checkout
+  //                  reads it at runtime). Nothing changes for them until they pay.
+  //   free_months  → a comp: we put them on `plan_id` right now for N months.
+  //                  Applied straight to `subscriptions` because that is what
+  //                  every entitlement path already reads (get_user_entitlements
+  //                  maps subscriptions.plan_id → plan_catalog.limits, and
+  //                  job-scout's planTier reads plan_id + status='active').
   if (action === "grant-create") {
     const email = String(body.email ?? "").toLowerCase().trim();
     if (!email || email.indexOf("@") < 0) return errorResponse("A valid email is required.", 400);
 
-    const pct = Math.round(Number(body.percent));
-    if (!Number.isFinite(pct) || pct < 1 || pct > 99) {
-      return errorResponse("percent must be between 1 and 99.", 400);
+    const kind = String(body.kind ?? "percent").toLowerCase().trim();
+    if (kind !== "percent" && kind !== "free_months") {
+      return errorResponse("kind must be 'percent' or 'free_months'.", 400);
+    }
+
+    // Validate the per-kind payload before touching the user directory.
+    let pct = 0;
+    let planId = "";
+    let months = 0;
+    if (kind === "percent") {
+      pct = Math.round(Number(body.percent));
+      if (!Number.isFinite(pct) || pct < 1 || pct > 99) {
+        return errorResponse("percent must be between 1 and 99.", 400);
+      }
+    } else {
+      planId = String(body.plan_id ?? "").toLowerCase().trim();
+      if (!VALID_PLANS.includes(planId)) {
+        return errorResponse("plan_id must be one of: " + VALID_PLANS.join(", ") + ".", 400);
+      }
+      months = Math.round(Number(body.free_months));
+      if (!Number.isFinite(months) || months < 1 || months > 24) {
+        return errorResponse("free_months must be between 1 and 24.", 400);
+      }
     }
 
     let expiresAt: string | null = null;
@@ -179,30 +209,137 @@ Deno.serve(withCors(async (req) => {
     }
     if (!userId) return errorResponse("No account found with that email.", 404);
 
-    const { error } = await svc.from("promo_grants").insert({
+    if (kind === "percent") {
+      const { error } = await svc.from("promo_grants").insert({
+        user_id: userId,
+        kind: "percent",
+        percent: pct,
+        note: body.note ? String(body.note).slice(0, 200) : null,
+        granted_by: admin.id,
+        expires_at: expiresAt,
+        status: "active",
+      });
+      if (error) return errorResponse("Grant failed: " + error.message, 500);
+      return jsonResponse({ ok: true, kind: "percent", percent: pct });
+    }
+
+    // ── free_months (comp) ────────────────────────────────────────────────
+    const { data: subRow, error: subErr } = await svc
+      .from("subscriptions")
+      .select("plan_id, status, current_period_end, payment_processor, stripe_subscription_id, paystack_subscription_code")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (subErr) return errorResponse("Subscription lookup failed: " + subErr.message, 500);
+    const sub = (subRow || null) as Record<string, unknown> | null;
+
+    // Never overwrite a live processor subscription: we would clobber their real
+    // billing state and then fight the webhook over it. Comps are for accounts
+    // that aren't currently paying (which is exactly what the Console promises).
+    const hasLiveBilling = !!sub &&
+      (!!sub.payment_processor || !!sub.stripe_subscription_id || !!sub.paystack_subscription_code) &&
+      String(sub.status ?? "") !== "canceled";
+    if (hasLiveBilling) {
+      return errorResponse(
+        "That account has an active paid subscription. Comp it only after they cancel, or send a % discount instead.",
+        409,
+      );
+    }
+
+    // Stack onto an unexpired comp on the SAME plan (so "another month" extends
+    // rather than truncates); otherwise the comp starts now.
+    const now = new Date();
+    const existingEnd = sub && sub.current_period_end ? new Date(String(sub.current_period_end)) : null;
+    const samePlanStillRunning = !!sub && String(sub.plan_id ?? "") === planId &&
+      !!existingEnd && !Number.isNaN(existingEnd.getTime()) && existingEnd.getTime() > now.getTime();
+    const end = new Date(samePlanStillRunning ? (existingEnd as Date) : now);
+    end.setMonth(end.getMonth() + months);
+    const endIso = end.toISOString();
+
+    const { error: grantErr } = await svc.from("promo_grants").insert({
       user_id: userId,
-      kind: "percent",
-      percent: pct,
+      kind: "free_months",
+      free_months: months,
+      plan_id: planId,
       note: body.note ? String(body.note).slice(0, 200) : null,
       granted_by: admin.id,
-      expires_at: expiresAt,
+      // The comp is in force immediately and lapses at `expires_at`; the
+      // comps-sweep job flips it to 'expired' and demotes the plan.
+      expires_at: endIso,
+      redeemed_at: now.toISOString(),
       status: "active",
     });
-    if (error) return errorResponse("Grant failed: " + error.message, 500);
-    return jsonResponse({ ok: true });
+    if (grantErr) return errorResponse("Grant failed: " + grantErr.message, 500);
+
+    // status='active' (not 'trialing') on purpose: job-scout's planTier only
+    // honours 'active', and get_user_entitlements keys limits off plan_id.
+    const { error: upErr } = await svc.from("subscriptions").upsert({
+      user_id: userId,
+      plan_id: planId,
+      status: "active",
+      current_period_end: endIso,
+      cancel_at_period_end: true, // a comp does not auto-renew
+      updated_at: now.toISOString(),
+    }, { onConflict: "user_id" });
+    if (upErr) return errorResponse("Comp applied to grant log but the plan update failed: " + upErr.message, 500);
+
+    return jsonResponse({
+      ok: true,
+      kind: "free_months",
+      plan_id: planId,
+      free_months: months,
+      extended: samePlanStillRunning,
+      current_period_end: endIso,
+    });
   }
 
   // ── grant-revoke ────────────────────────────────────────────────────────
+  // For a percent coupon this just voids the row. For a free-months comp the
+  // plan is already applied, so revoking must also take the tier back —
+  // otherwise the button would silently do nothing the user can feel.
   if (action === "grant-revoke") {
     const id = String(body.id ?? "").trim();
     if (!id) return errorResponse("Grant id required.", 400);
+
+    const { data: gRow, error: gErr } = await svc
+      .from("promo_grants")
+      .select("id, user_id, kind, plan_id, status")
+      .eq("id", id)
+      .maybeSingle();
+    if (gErr) return errorResponse("Revoke failed: " + gErr.message, 500);
+    if (!gRow) return errorResponse("Grant not found.", 404);
+    const grant = gRow as Record<string, unknown>;
+
     const { error } = await svc
       .from("promo_grants")
       .update({ status: "revoked" })
       .eq("id", id)
       .eq("status", "active");
     if (error) return errorResponse("Revoke failed: " + error.message, 500);
-    return jsonResponse({ ok: true });
+
+    let demoted = false;
+    if (String(grant.kind ?? "") === "free_months" && String(grant.status ?? "") === "active") {
+      // Only demote if the plan is still the comped one AND still has no
+      // processor behind it (they may have started paying since the comp).
+      const { data: sRow } = await svc
+        .from("subscriptions")
+        .select("plan_id, payment_processor, stripe_subscription_id, paystack_subscription_code")
+        .eq("user_id", String(grant.user_id))
+        .maybeSingle();
+      const s = (sRow || null) as Record<string, unknown> | null;
+      const stillComp = !!s && String(s.plan_id ?? "") === String(grant.plan_id ?? "") &&
+        !s.payment_processor && !s.stripe_subscription_id && !s.paystack_subscription_code;
+      if (stillComp) {
+        await svc.from("subscriptions").update({
+          plan_id: "free",
+          status: "active",
+          current_period_end: null,
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString(),
+        }).eq("user_id", String(grant.user_id));
+        demoted = true;
+      }
+    }
+    return jsonResponse({ ok: true, demoted });
   }
 
   return errorResponse("Unknown action: " + action, 400);

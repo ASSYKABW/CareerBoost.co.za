@@ -278,3 +278,7 @@ verify_jwt = false
 # the scheduler (which has no user session) can reach the function.
 [functions.job-scout]
 verify_jwt = false
+
+# Cron-only (X-Cron-Secret); the function itself rejects anything else.
+[functions.comps-sweep]
+verify_jwt = false
