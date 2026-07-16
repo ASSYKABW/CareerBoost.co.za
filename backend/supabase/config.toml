@@ -127,6 +127,11 @@ verify_jwt = false
 [functions.client-telemetry]
 verify_jwt = false
 
+# Anonymous website analytics. Logged-out visitors have no JWT by definition;
+# the function validates + rate-limits and only ever writes user_id = NULL.
+[functions.usage-ingest]
+verify_jwt = false
+
 # Phase Billing: Stripe checkout session creator. Authenticated only.
 # Validates against caller's JWT.
 [functions.stripe-checkout]
