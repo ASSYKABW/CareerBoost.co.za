@@ -18,16 +18,13 @@ function assertHasAll(source, values, message) {
 function run() {
   const fn = read("backend/supabase/functions/admin-overview/index.ts");
   const migration = read("backend/supabase/migrations/0009_admin_production_hardening.sql");
-  // Phase D: admin.route.js was split into helpers + per-section files. The
-  // export buttons + privacy/freshness HTML now live in sections/reports.js
-  // and sections/settings.js. Read the combined module source for assertions.
-  const adminRoute = [
-    "v2/src/js/modules/admin/admin.route.js",
-    "v2/src/js/modules/admin/admin-helpers.js",
-    "v2/src/js/modules/admin/sections/reports.js",
-    "v2/src/js/modules/admin/sections/settings.js",
-    "v2/src/js/modules/admin/sections/logs.js"
-  ].map(read).join("\n");
+  // NOTE: this file used to also assert on the admin UI (admin.route.js +
+  // sections/*), but those modules were deleted in 8fc2030 when the Console
+  // replaced the legacy admin — which crashed this test and, because the runner
+  // stops at the first failure, blocked the whole suite. The Console has no
+  // equivalent of the old CSV-export buttons, so those UI assertions were
+  // removed rather than re-pointed at something that does not exist. The
+  // backend privacy/RLS/index hardening below is the real coverage and stays.
 
   const blockedKeys = [
     "apiKey",
@@ -73,12 +70,7 @@ function run() {
   assert.ok(/Privacy controls are active/.test(fn), "release checks should include privacy controls");
   assert.ok(/Telemetry is fresh/.test(fn), "release checks should include stale-data warnings");
 
-  assert.ok(/data-admin-export="cohortRetention"/.test(adminRoute), "admin UI should expose cohort CSV export");
-  assert.ok(/data-admin-export="dataFreshness"/.test(adminRoute), "admin UI should expose freshness CSV export");
-  assert.ok(/Privacy controls/.test(adminRoute), "admin UI should show privacy guardrails");
-  assert.ok(/Stale signals/.test(adminRoute), "admin UI should show stale-data warnings");
-
-  console.log("Admin production hardening tests passed.");
+  console.log("Admin production hardening tests passed (backend privacy/RLS/index checks).");
 }
 
 run();
