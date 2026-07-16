@@ -302,6 +302,39 @@
     return meta;
   }
 
+  // Where this visit came from. Captured at session start only — document
+  // .referrer is the landing referrer and is gone once they navigate, so a
+  // later read would just say "internal". Hostname only: no paths, no query
+  // strings, nothing that could carry someone's personal data.
+  function landingReferrer() {
+    try {
+      const raw = String((typeof document !== "undefined" && document.referrer) || "").trim();
+      if (!raw) return "direct";
+      const u = new URL(raw);
+      if (!u.hostname) return "direct";
+      if (u.hostname === window.location.hostname) return "internal";
+      return u.hostname.replace(/^www\./, "").slice(0, 80);
+    } catch (e) {
+      return "direct";
+    }
+  }
+
+  // Read a UTM tag from the querystring OR from inside the hash route
+  // (#/welcome?utm_source=…), since this app is hash-routed.
+  function utmParam(name) {
+    try {
+      let v = new URLSearchParams(window.location.search || "").get(name);
+      if (!v) {
+        const h = String(window.location.hash || "");
+        const q = h.indexOf("?");
+        if (q >= 0) v = new URLSearchParams(h.slice(q + 1)).get(name);
+      }
+      return v ? String(v).slice(0, 60) : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
   function ensureSessionStart(route, module, source) {
     const meta = getSessionMeta();
     if (meta.startEventTracked) return;
@@ -313,7 +346,12 @@
       browser: meta.browser,
       os: meta.os,
       previewMode: meta.previewMode,
-      startedInPreview: Boolean(meta.startedInPreview)
+      startedInPreview: Boolean(meta.startedInPreview),
+      // Acquisition: which channel produced this visit.
+      referrer: landingReferrer(),
+      utmSource: utmParam("utm_source"),
+      utmMedium: utmParam("utm_medium"),
+      utmCampaign: utmParam("utm_campaign")
     }, {
       route: route || meta.entryRoute,
       module: module || moduleFromRoute(route || meta.entryRoute),

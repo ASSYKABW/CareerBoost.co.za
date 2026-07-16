@@ -18,6 +18,81 @@
   var D = function () { return window.CBConsole.data; };
   function esc(s) { return U().escapeHtml(s); }
 
+  // ── Website traffic (anonymous visitors) ────────────────────────────
+  // The pre-signup half of the funnel. Before 0053 + usage-ingest this was
+  // impossible to see: usage_events.user_id was NOT NULL, so a logged-out page
+  // view could not be stored and the product only ever saw people at sign-in.
+  function trafficBars(series) {
+    if (!series || !series.length) return "";
+    var max = 1;
+    for (var i = 0; i < series.length; i++) {
+      var v = Number(series[i] && series[i].visitors) || 0;
+      if (v > max) max = v;
+    }
+    return '<div class="cbc-tr-bars" role="img" aria-label="Daily visitors, last 14 days">' +
+      series.map(function (d) {
+        var h = Math.round((d.visitors / max) * 100);
+        return '<span class="cbc-tr-bar" style="--h:' + Math.max(d.visitors ? 6 : 2, h) + '%"' +
+          ' title="' + esc(d.day) + ': ' + d.visitors + ' visitor' + (d.visitors === 1 ? "" : "s") + '"></span>';
+      }).join("") + "</div>";
+  }
+
+  function miniList(rows, emptyMsg, labelFmt) {
+    if (!rows || !rows.length) return '<div style="color:var(--c-muted);font-size:12.5px">' + esc(emptyMsg) + "</div>";
+    var max = Math.max(1, rows[0].count);
+    return '<div class="cbc-tr-list">' + rows.map(function (r) {
+      var pctw = Math.round((r.count / max) * 100);
+      return '<div class="cbc-tr-row"><span class="cbc-tr-nm">' + esc(labelFmt ? labelFmt(r.name) : r.name) + '</span>' +
+        '<span class="cbc-tr-track"><i style="width:' + pctw + '%"></i></span>' +
+        '<b class="cbc-tr-n">' + r.count + "</b></div>";
+    }).join("") + "</div>";
+  }
+
+  function sourceLabel(name) {
+    if (name === "direct") return "Direct / typed in";
+    if (name.indexOf("utm:") === 0) return name.slice(4) + " (tagged)";
+    return name;
+  }
+
+  function trafficPanel(t) {
+    t = t || {};
+    if (t.empty) {
+      return '<div class="cbc-card cbc-panel" id="cbc-traffic">' +
+        '<div class="cbc-ph"><div><div class="cbc-eb">Acquisition</div><h2>Website visitors</h2></div>' +
+          '<span class="cbc-chip dim">no visits yet</span></div>' +
+        '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">' +
+          'Tracking is live — every logged-out visit to careerboost.co.za now lands here. ' +
+          'Nothing to show yet simply means nobody has visited since it was switched on.' +
+        "</div></div>";
+    }
+    var conv = Number(t.convRate) || 0;
+    var convTone = conv >= 5 ? "green" : conv >= 2 ? "amber" : "red";
+    var newV = Math.max(0, (Number(t.visitors7) || 0) - (Number(t.returning7) || 0));
+    return '<div class="cbc-card cbc-panel" id="cbc-traffic">' +
+      '<div class="cbc-ph"><div><div class="cbc-eb">Acquisition</div><h2>Website visitors</h2></div>' +
+        '<span class="cbc-chip cyan">' + (Number(t.visitors7) || 0) + ' in 7d</span></div>' +
+
+      '<div class="cbc-tr-kpis">' +
+        '<div class="cbc-tr-k"><span>Visitors 7d</span><b>' + (Number(t.visitors7) || 0) + "</b></div>" +
+        '<div class="cbc-tr-k"><span>Page views 7d</span><b>' + (Number(t.views7) || 0) + "</b></div>" +
+        '<div class="cbc-tr-k"><span>New / returning</span><b>' + newV + " / " + (Number(t.returning7) || 0) + "</b></div>" +
+        '<div class="cbc-tr-k"><span>Visit → signup 30d</span><b><span class="cbc-chip ' + convTone + '">' + conv + "%</span></b></div>" +
+      "</div>" +
+
+      '<div style="font-size:11.5px;color:var(--c-dim);margin:12px 0 4px">Daily visitors · last 14 days</div>' +
+      trafficBars(t.series) +
+
+      '<div class="cbc-tr-cols">' +
+        '<div><div class="cbc-tr-h">Where they came from (7d)</div>' + miniList(t.sources, "No sessions yet.", sourceLabel) + "</div>" +
+        '<div><div class="cbc-tr-h">Top pages (7d)</div>' + miniList(t.topPages, "No page views yet.") + "</div>" +
+      "</div>" +
+
+      '<div style="font-size:11.5px;color:var(--c-dim);margin-top:12px">' +
+        (Number(t.converted30) || 0) + ' of ' + (Number(t.visitors30) || 0) + ' visitors in the last 30 days went on to create an account. ' +
+        'Matched by the anonymous id the browser keeps across signup — no third-party tracker involved.' +
+      "</div></div>";
+  }
+
   function channelsTable(channels) {
     if (!channels || !channels.length) return '<div style="color:var(--c-muted);font-size:12.5px">No attributed signups in the last 30 days.</div>';
     var body = channels.map(function (c) {
@@ -338,6 +413,9 @@
     var g = both[0], dq = both[1];
     bodyEl.innerHTML =
       U().sampleBadge(g._mock, "console-growth", "acquisition + marketing data") +
+      // Traffic sits first: it's the top of the funnel, and it's the half that
+      // was invisible until 0053 + usage-ingest made anonymous rows possible.
+      trafficPanel(g.traffic) +
       copilotPanel(dq) +
       '<section class="cbc-kpis cbc-kpis--4">' + (g.kpis || []).map(U().kpiCard).join("") + '</section>' +
       '<section class="cbc-grid cbc-g-2a">' +
