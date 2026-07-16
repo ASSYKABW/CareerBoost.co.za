@@ -2,15 +2,16 @@
 (function () {
   window.CBV2 = window.CBV2 || {};
 
-  // Phase Billing: "billing" is a new sibling tab between Account and
-  // Advanced. Houses current plan + usage meters + Stripe portal link.
-  const TABS = ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "apply-profile", "extension", "billing", "advanced"];
+  // Phase Billing: "billing" houses current plan + usage meters + portal link.
+  // P1: the "advanced" tab is gone — its only contents were operator tooling
+  // (backend diagnostics + raw job-board keys), which now live behind the admin
+  // gate in the Console's AI & Health section. Legacy ?tab=advanced /
+  // ?tab=diagnostics deep links fall through to Overview via normalizeTab.
+  const TABS = ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "apply-profile", "extension", "billing"];
   const ADMIN_ROLES = ["admin", "owner", "developer"];
   const LEGACY_ALIASES = {
     home: "overview",
     profile: "me",
-    integrations: "advanced",
-    diagnostics: "advanced",
     data: "data-privacy",
     docs: "documents",
     privacy: "data-privacy",
@@ -32,8 +33,7 @@
     { id: "apply-profile", icon: "fa-paper-plane", label: "Apply Assist" },
     { id: "extension", icon: "fa-puzzle-piece", label: "Extension" },
     // Phase Billing.
-    { id: "billing", icon: "fa-credit-card", label: "Billing & Plan" },
-    { id: "advanced", icon: "fa-screwdriver-wrench", label: "Advanced" }
+    { id: "billing", icon: "fa-credit-card", label: "Billing & Plan" }
   ];
   const TAB_SUMMARY = {
     overview: "A candidate-friendly command center for setup, sync, and service readiness.",
@@ -46,8 +46,7 @@
     account: "Review sign-in identity and account-level sync context.",
     "apply-profile": "Fields the browser extension will auto-fill on supported job application forms.",
     extension: "Download the browser extension and connect it to your CareerBoost account.",
-    billing: "Your current plan, this month's usage, and the Stripe billing portal.",
-    advanced: "Technical controls for app operators only."
+    billing: "Your current plan, this month's usage, and the Stripe billing portal."
   };
 
   function normalizeTab(raw) {
@@ -80,7 +79,6 @@
     const aa = (typeof window !== "undefined" && window.CBV2 && window.CBV2.applyAssist) || null;
     const applyAssistOn = aa && typeof aa.isFeatureEnabled === "function" ? aa.isFeatureEnabled() : false;
     return TAB_ITEMS.filter(function (item) {
-      if (item.id === "advanced") return !!canAccessAdvancedTab;
       if (item.id === "apply-profile") return applyAssistOn || !!canAccessAdvancedTab;
       return true;
     });

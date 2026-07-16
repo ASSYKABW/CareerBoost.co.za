@@ -4,10 +4,6 @@
   window.CBV2.afterRender = window.CBV2.afterRender || {};
 
   const viewState = {
-    testResults: {},
-    diagnostics: {},
-    diagnosticsRunning: false,
-    diagnosticsLastRunAt: "",
     docs: {
       cvFilter: "all",
       cvQuery: "",
@@ -25,13 +21,11 @@
     message: ""
   };
   const settingsMeta = window.CBV2.settingsMeta || {};
-  const SETTINGS_TABS = settingsMeta.TABS || ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "extension", "advanced"];
+  const SETTINGS_TABS = settingsMeta.TABS || ["overview", "me", "job-preferences", "ai", "documents", "data-privacy", "appearance", "account", "extension"];
   const ADMIN_ROLES = settingsMeta.ADMIN_ROLES || ["admin", "owner", "developer"];
   const LEGACY_TAB_ALIASES = settingsMeta.LEGACY_ALIASES || {
     home: "overview",
     profile: "me",
-    integrations: "advanced",
-    diagnostics: "advanced",
     data: "data-privacy",
     docs: "documents",
     privacy: "data-privacy",
@@ -49,132 +43,6 @@
       viewState.formStatus[key] = { dirty: false, kind: "idle", text: "" };
     }
     viewState.formStatus[key] = Object.assign({}, viewState.formStatus[key], patch || {});
-  }
-
-  function renderTestChip(id) {
-    const r = viewState.testResults[id];
-    if (!r) return "";
-    const tone = r.ok ? "green" : "rose";
-    const testedAt = r.testedAt ? new Date(r.testedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-    return '<span class="chip ' + tone + '">' + (r.ok ? "OK · " + r.count + " results" : "Failed · " + getSt()(r.error || "unknown")) + (testedAt ? " · " + testedAt : "") + "</span>";
-  }
-
-  function suggestDiagnosticFix(id, errorText) {
-    const msg = String(errorText || "").toLowerCase();
-    if (id === "auth") return "Re-authenticate in a new tab/session, then run diagnostics again.";
-    if (id === "db") return "Check RLS on the profiles table and ensure your signed-in user can read at least one row.";
-    if (id === "jobs") return "Verify the jobs-search Edge Function deployment and backend provider secrets.";
-    if (id === "ai" || id === "aiCritique" || id === "aiTailor") {
-      if (msg.indexOf("jwt") >= 0 || msg.indexOf("401") >= 0) return "Session token is likely stale. Sign out/in and retry.";
-      return "Check ai-run Edge Function logs and provider credentials in backend environment.";
-    }
-    return "Review backend logs for this service and retry.";
-  }
-
-  function renderDiagRow(id, label, description) {
-    const r = viewState.diagnostics[id];
-    const st = getSt();
-    let status = '<span class="chip">Not run</span>';
-    let detail = "";
-    if (viewState.diagnosticsRunning && !r) {
-      status = '<span class="chip blue"><i class="fa-solid fa-circle-notch fa-spin"></i> Running</span>';
-    } else if (r) {
-      const tone = r.ok ? "green" : "rose";
-      const icon = r.ok ? "fa-check" : "fa-xmark";
-      const text = r.ok
-        ? "OK · " + (r.latencyMs || 0) + "ms"
-        : "Failed";
-      status = '<span class="chip ' + tone + '"><i class="fa-solid ' + icon + '"></i> ' + text + "</span>";
-      if (!r.ok && r.error) {
-        detail =
-          '<p class="ai-error" style="margin-top:6px;font-size:12px;">' + st(r.error) + "</p>" +
-          '<p class="ai-meta" style="margin-top:4px;"><strong>Suggested fix:</strong> ' + st(suggestDiagnosticFix(id, r.error)) + "</p>";
-      } else if (r.ok && r.detail) {
-        detail = '<p class="ai-meta" style="margin-top:6px;">' + st(r.detail) + "</p>";
-      }
-      const copyPayload = st(JSON.stringify({
-        check: id,
-        ok: !!r.ok,
-        latencyMs: r.latencyMs || 0,
-        detail: r.detail || "",
-        error: r.error || "",
-        timestamp: new Date().toISOString()
-      }));
-      detail += '<button class="btn-ghost btn-sm" type="button" data-copy-diag="' + copyPayload + '" style="margin-top:4px;"><i class="fa-solid fa-copy"></i> Copy details</button>';
-    }
-    return (
-      '<div class="diag-row" style="display:flex;flex-direction:column;gap:6px;padding:12px 0;border-bottom:1px solid var(--border-subtle,rgba(255,255,255,0.06));">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
-      '<div><strong>' + st(label) + '</strong><br/><span class="ai-meta">' + st(description) + "</span></div>" +
-      status +
-      "</div>" +
-      detail +
-      "</div>"
-    );
-  }
-
-  function renderDiagnosticsSection() {
-    const backendOn = window.CBV2.config && window.CBV2.config.isBackendEnabled();
-    const signedIn = window.CBV2.auth && window.CBV2.auth.isAuthenticated();
-    if (!backendOn) return "";
-    return `
-      <section class="card panel-lg">
-        <div class="panel-head">
-          <h2>Backend diagnostics</h2>
-          <span class="chip cyan">${signedIn ? "Signed in" : "Signed out"}</span>
-        </div>
-        <p class="page-subtitle">
-          Run quick health checks against your Supabase backend — AI proxy, jobs aggregator, database, and auth.
-        </p>
-        ${viewState.diagnosticsLastRunAt ? '<p class="ai-meta">Last run: ' + getSt()(new Date(viewState.diagnosticsLastRunAt).toLocaleString()) + '</p>' : ""}
-        <div style="margin:8px 0 12px;">
-          ${renderDiagRow("auth", "Authentication", "Validates the current session token is accepted by Supabase Auth.")}
-          ${renderDiagRow("db", "Database", "Round-trips a tiny query to the profiles table (RLS must match you).")}
-          ${renderDiagRow("ai", "AI (query-parse)", "Calls the ai-run Edge Function and validates its JSON output.")}
-          ${renderDiagRow("aiCritique", "AI (resume-critique)", "Calls ai-run for Resume Lab critique and reports provider/model/issue count.")}
-          ${renderDiagRow("aiTailor", "AI (tailor-plan)", "Calls ai-run for Tailor Plan and reports provider/model/rewrite count.")}
-          ${renderDiagRow("jobs", "Job search aggregator", "Calls the jobs-search Edge Function and counts results.")}
-        </div>
-        <div class="form-actions">
-          <button class="btn-primary" id="run-diagnostics" type="button" ${!signedIn || viewState.diagnosticsRunning ? "disabled" : ""}>
-            <i class="fa-solid fa-stethoscope"></i> Run diagnostics
-          </button>
-          <button class="btn-ghost" id="copy-diagnostics-report" type="button" ${viewState.diagnosticsRunning ? "disabled" : ""}>
-            <i class="fa-solid fa-clipboard-list"></i> Copy report
-          </button>
-          <button class="btn-ghost" id="clear-diagnostics" type="button" ${viewState.diagnosticsRunning ? "disabled" : ""}>
-            Clear
-          </button>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderJobSearchPathSection() {
-    const backendOn = window.CBV2.config && window.CBV2.config.isBackendEnabled();
-    const signedIn = window.CBV2.auth && window.CBV2.auth.isAuthenticated();
-    if (!backendOn || !signedIn) return "";
-    const forced =
-      window.CBV2.config &&
-      typeof window.CBV2.config.isForceClientJobSearch === "function" &&
-      window.CBV2.config.isForceClientJobSearch();
-    return `
-      <section class="card panel-lg">
-        <div class="panel-head">
-          <h2>Job search path (this tab)</h2>
-          <span class="chip ${forced ? "warning" : "cyan"}">${forced ? "Browser feeds" : "CareerBoost Cloud"}</span>
-        </div>
-        <p class="page-subtitle">
-          <strong>Phase 1 — primary path:</strong> when you are signed in with cloud enabled, Job Search normally calls only the
-          <code>jobs-search</code> Edge Function (no parallel in-browser calls to the same boards). Use the toggle below only to
-          debug keys, CORS, or provider behaviour in your browser — it applies to <em>this tab</em> until you turn it off.
-        </p>
-        <label class="job-filter" style="display:flex;align-items:flex-start;gap:10px;margin-top:8px;">
-          <input type="checkbox" id="force-client-job-search" ${forced ? "checked" : ""} style="margin-top:4px;" />
-          <span><strong>Force browser job feeds</strong> — same provider fan-out as guest/local mode for this session tab. Clears the in-memory job cache when changed.</span>
-        </label>
-      </section>
-    `;
   }
 
   function renderAccountSection() {
@@ -1212,12 +1080,8 @@
       { id: "data-privacy", icon: "fa-shield-halved", label: "Data & Privacy" },
       { id: "appearance", icon: "fa-palette", label: "Appearance" },
       { id: "account", icon: "fa-id-badge", label: "Account" },
-      { id: "extension", icon: "fa-puzzle-piece", label: "Extension" },
-      { id: "advanced", icon: "fa-screwdriver-wrench", label: "Advanced" }
-    ].filter(function (item) {
-      if (canAccessAdvanced) return true;
-      return item.id !== "advanced";
-    }));
+      { id: "extension", icon: "fa-puzzle-piece", label: "Extension" }
+    ]);
     return `
       <aside class="card settings-studio-nav">
         <p class="eyebrow">Sections</p>
@@ -1247,8 +1111,7 @@
       ai: "Control AI personalization behavior and usage consent.",
       "data-privacy": "Control cloud sync, exports, and data safety actions.",
       account: "Review sign-in identity and account-level sync context.",
-      extension: "Install the Chrome extension and connect it to your CareerBoost account.",
-      advanced: "Technical controls for app operators only."
+      extension: "Install the Chrome extension and connect it to your CareerBoost account."
     };
     const text = typeof settingsMeta.summary === "function" ? settingsMeta.summary(activeTab) : (copy[activeTab] || copy.overview);
     return '<p class="ai-meta settings-tab-summary"><i class="fa-solid fa-circle-info"></i> ' + getSt()(text) + "</p>";
@@ -1258,9 +1121,6 @@
     const params = (window.CBV2.getRouteParams && window.CBV2.getRouteParams()) || {};
     const canAccessAdvanced = canAccessAdvancedSettings();
     let activeTab = normalizeSettingsTab(params.tab);
-    if (!canAccessAdvanced && activeTab === "advanced") {
-      activeTab = "overview";
-    }
     // Mirror the visibleTabs gating: apply-profile is hidden unless
     // CBV2.applyAssist.isFeatureEnabled() returns true (flag OR session
     // override) OR the user has admin access. URL deeplinks
@@ -1282,23 +1142,13 @@
     const showExtension = activeTab === "extension";
     // Phase Billing: dedicated tab for plan + usage + portal.
     const showBilling = activeTab === "billing";
-    const showAdvanced = canAccessAdvanced && activeTab === "advanced";
 
-    const keys = showAdvanced ? window.CBV2.store.getApiKeys() : {};
     const st = getSt();
     const telemetry = window.CBAI && window.CBAI.telemetry && typeof window.CBAI.telemetry.getSummary === "function"
       ? window.CBAI.telemetry.getSummary()
       : null;
 
     const signedIn = window.CBV2.auth && window.CBV2.auth.isAuthenticated();
-    const cloudPrimary =
-      window.CBV2.config &&
-      typeof window.CBV2.config.isCloudJobSearchPrimary === "function" &&
-      window.CBV2.config.isCloudJobSearchPrimary();
-    const forceClientJobs =
-      window.CBV2.config &&
-      typeof window.CBV2.config.isForceClientJobSearch === "function" &&
-      window.CBV2.config.isForceClientJobSearch();
 
     return `
       <section class="page-container">
@@ -1349,72 +1199,6 @@
             ${showBilling && window.CBV2.settingsBilling && window.CBV2.settingsBilling.render
               ? window.CBV2.settingsBilling.render()
               : ""}
-
-            ${showAdvanced ? renderDiagnosticsSection() : ""}
-            ${showAdvanced ? renderJobSearchPathSection() : ""}
-
-            ${showAdvanced ? `<section class="card panel-lg settings-section">
-          <div class="panel-head">
-            <h2>Developer job-board credentials</h2>
-            <span class="chip cyan">Operator only</span>
-          </div>
-          <p class="page-subtitle">
-            These controls are hidden from candidates. Use them only to validate provider access for the <strong>jobs-search</strong> Edge Function and local operator tests. Never store passwords for LinkedIn or other sites here.
-          </p>
-          ${
-            cloudPrimary
-              ? '<p class="ai-meta">While signed in with cloud enabled, Job Search uses <strong>CareerBoost Cloud</strong> only (no parallel in-browser calls to each board). See <code>docs/JOB_SEARCH_ARCHITECTURE.md</code> for Tier A/B/C.</p>'
-              : signedIn && forceClientJobs
-              ? '<p class="ai-meta">Diagnostic override is on: Job Search uses <strong>in-browser feeds</strong> for this tab. Keys below still apply to both paths where relevant. Turn off “Force browser job feeds” above to restore cloud-only search.</p>'
-              : ""
-          }
-
-          <form id="api-keys-form" class="form-grid settings-form">
-            <fieldset class="full-row">
-              <legend><i class="fa-solid fa-briefcase"></i> Adzuna ${renderTestChip("adzuna")}</legend>
-              <p class="ai-meta">Create a free key at <a href="https://developer.adzuna.com" target="_blank" rel="noopener noreferrer">developer.adzuna.com</a>.</p>
-              <div class="grid-3">
-                <label>App ID
-                  <input type="text" id="k-adzuna-id" value="${st(keys.adzunaAppId || "")}" autocomplete="off" />
-                </label>
-                <label>App Key
-                  <input type="password" id="k-adzuna-key" value="${st(keys.adzunaAppKey || "")}" autocomplete="off" />
-                </label>
-                <label>Country
-                  <select id="k-adzuna-country">
-                    ${["gb","us","ca","au","de","fr","nl","es","it","pl","za","br","in","sg"].map(function (c) {
-                      const sel = (keys.adzunaCountry || "gb") === c ? "selected" : "";
-                      return '<option value="' + c + '" ' + sel + '>' + c.toUpperCase() + "</option>";
-                    }).join("")}
-                  </select>
-                </label>
-              </div>
-              <div class="form-actions">
-                <button class="btn-ghost" type="button" data-test="adzuna"><i class="fa-solid fa-vial"></i> Test connection</button>
-              </div>
-            </fieldset>
-
-            <fieldset class="full-row">
-              <legend><i class="fa-solid fa-compass"></i> The Muse ${renderTestChip("muse")}</legend>
-              <p class="ai-meta">Optional key (boosts rate limit) at <a href="https://www.themuse.com/developers/api/v2" target="_blank" rel="noopener noreferrer">themuse.com/developers</a>.</p>
-              <label>API Key
-                <input type="password" id="k-muse" value="${st(keys.museKey || "")}" autocomplete="off" />
-              </label>
-              <div class="form-actions">
-                <button class="btn-ghost" type="button" data-test="muse"><i class="fa-solid fa-vial"></i> Test connection</button>
-              </div>
-            </fieldset>
-
-            <div class="full-row form-actions">
-              <button class="btn-primary" id="save-keys" type="submit">
-                <i class="fa-solid fa-floppy-disk"></i> Save keys
-              </button>
-              <button class="btn-ghost" id="clear-keys" type="button">
-                <i class="fa-solid fa-rotate-left"></i> Clear all
-              </button>
-            </div>
-          </form>
-        </section>` : ""}
 
             ${showData ? renderSyncStatusSection() : ""}
 
@@ -1500,356 +1284,11 @@
     `;
   }
 
-  async function testAdzuna() {
-    const cfg = window.CBV2.store.getApiKeys();
-    if (!cfg.adzunaAppId || !cfg.adzunaAppKey) {
-      viewState.testResults.adzuna = { ok: false, error: "Missing App ID or Key", testedAt: new Date().toISOString() };
-      window.CBV2.renderCurrentRoute();
-      return;
-    }
-    try {
-      const url = "https://api.adzuna.com/v1/api/jobs/" +
-        encodeURIComponent(cfg.adzunaCountry || "gb") +
-        "/search/1?app_id=" + encodeURIComponent(cfg.adzunaAppId) +
-        "&app_key=" + encodeURIComponent(cfg.adzunaAppKey) +
-        "&results_per_page=1";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      viewState.testResults.adzuna = { ok: true, count: data.count || 0, testedAt: new Date().toISOString() };
-    } catch (err) {
-      viewState.testResults.adzuna = { ok: false, error: err.message || "Request failed", testedAt: new Date().toISOString() };
-    }
-    window.CBV2.renderCurrentRoute();
-  }
-
-  async function diagAuth() {
-    const auth = window.CBV2.auth;
-    if (!auth || !auth.isAuthenticated()) {
-      viewState.diagnostics.auth = { ok: false, error: "Not signed in" };
-      return;
-    }
-    const start = Date.now();
-    try {
-      const token = await auth.getAccessToken();
-      if (!token) throw new Error("No access token in session.");
-      const client = auth.getClient();
-      const { data, error } = await client.auth.getUser();
-      if (error || !data || !data.user) throw new Error((error && error.message) || "No user returned");
-      viewState.diagnostics.auth = {
-        ok: true,
-        latencyMs: Date.now() - start,
-        detail: "User: " + data.user.email
-      };
-    } catch (err) {
-      viewState.diagnostics.auth = { ok: false, latencyMs: Date.now() - start, error: err.message || "auth failed" };
-    }
-  }
-
-  async function diagDb() {
-    const auth = window.CBV2.auth;
-    if (!auth || !auth.isAuthenticated()) {
-      viewState.diagnostics.db = { ok: false, error: "Not signed in" };
-      return;
-    }
-    const start = Date.now();
-    try {
-      const client = auth.getClient();
-      const { error } = await client.from("profiles").select("user_id").limit(1);
-      if (error) throw new Error(error.message);
-      viewState.diagnostics.db = {
-        ok: true,
-        latencyMs: Date.now() - start,
-        detail: "Database reachable and RLS policies allow reads."
-      };
-    } catch (err) {
-      viewState.diagnostics.db = { ok: false, latencyMs: Date.now() - start, error: err.message || "db failed" };
-    }
-  }
-
   // Read the response body as text first so we always have something useful
   // to show the user, then try JSON. Supabase platform 401s (invalid JWT) are
   // returned as plain JSON like `{"code":401,"message":"Invalid JWT"}` while
   // our own function errors are `{"ok":false,"error":"..."}`. Handle both.
-  async function readResponseDetail(res) {
-    let text = "";
-    try { text = await res.text(); } catch (e) { /* ignore */ }
-    let json = null;
-    try { json = text ? JSON.parse(text) : null; } catch (e) { /* non-JSON */ }
-    return { text: text, json: json };
-  }
-
-  function extractErrorMessage(status, info) {
-    if (info.json) {
-      if (typeof info.json.error === "string") return info.json.error;
-      if (typeof info.json.message === "string") return info.json.message;
-      if (typeof info.json.msg === "string") return info.json.msg;
-    }
-    const snippet = (info.text || "").slice(0, 200);
-    return snippet ? "HTTP " + status + " · " + snippet : "HTTP " + status;
-  }
-
-  async function callEdgeFunction(path, payload) {
-    const auth = window.CBV2.auth;
-    const cfg = window.CBV2.config;
-    const client = auth.getClient();
-
-    // Preferred: use the SDK's invoke — it attaches both the apikey and the
-    // current session token automatically, which avoids stale-token bugs.
-    if (client && client.functions && typeof client.functions.invoke === "function") {
-      const { data, error } = await client.functions.invoke(path, { body: payload });
-      if (error) {
-        // error may be a FunctionsHttpError with a .context Response.
-        let detail = null;
-        try {
-          if (error.context && typeof error.context.text === "function") {
-            const text = await error.context.text();
-            let json = null;
-            try { json = JSON.parse(text); } catch (e) { /* ignore */ }
-            detail = { text: text, json: json };
-          }
-        } catch (e) { /* ignore */ }
-        const status = (error.context && error.context.status) || error.status || 0;
-        const msg = detail
-          ? extractErrorMessage(status, detail)
-          : (error.message || "Edge function error");
-        const err = new Error(msg);
-        err.status = status;
-        throw err;
-      }
-      return data;
-    }
-
-    // Fallback: manual fetch (older SDK).
-    const token = await auth.getAccessToken();
-    const url = cfg.getFunctionsUrl() + "/" + path;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-        apikey: cfg.getSupabaseAnon(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-    const info = await readResponseDetail(res);
-    if (!res.ok || (info.json && info.json.ok === false)) {
-      const msg = extractErrorMessage(res.status, info);
-      const err = new Error(msg);
-      err.status = res.status;
-      throw err;
-    }
-    return info.json;
-  }
-
-  async function diagAi() {
-    const auth = window.CBV2.auth;
-    if (!auth || !auth.isAuthenticated()) {
-      viewState.diagnostics.ai = { ok: false, error: "Not signed in" };
-      return;
-    }
-    const start = Date.now();
-    try {
-      const body = await callEdgeFunction("ai-run", {
-        requestId: "diag_" + Date.now(),
-        skill: "query-parse",
-        promptVersion: "diag@1",
-        input: { query: "senior react engineer remote europe this week" }
-      });
-      if (!body || body.ok === false) {
-        throw new Error((body && body.error) || "AI returned no body.");
-      }
-      viewState.diagnostics.ai = {
-        ok: true,
-        latencyMs: Date.now() - start,
-        detail: "Provider: " + (body.provider || body.model || "unknown") + " · returned " + ((body.data && body.data.keywords) || []).length + " keywords."
-      };
-    } catch (err) {
-      viewState.diagnostics.ai = { ok: false, latencyMs: Date.now() - start, error: err.message || "ai failed" };
-    }
-  }
-
-  async function diagAiCritique() {
-    const auth = window.CBV2.auth;
-    if (!auth || !auth.isAuthenticated()) {
-      viewState.diagnostics.aiCritique = { ok: false, error: "Not signed in" };
-      return;
-    }
-    const start = Date.now();
-    try {
-      const body = await callEdgeFunction("ai-run", {
-        requestId: "diag_critique_" + Date.now(),
-        skill: "resume-critique",
-        promptVersion: "diag@1",
-        input: {
-          targetRole: "Frontend Engineer",
-          resume: JSON.stringify({
-            header: { name: "Alex Example", title: "Frontend Developer", email: "alex@example.com" },
-            summary: "Frontend engineer focused on reliable UI delivery and cross-functional collaboration.",
-            experience: [{ role: "Frontend Engineer", company: "Acme", bullets: [{ id: "b1", text: "Participated in design and development for internal web apps." }] }],
-            skills: { groups: [{ label: "Core", items: ["React", "TypeScript"] }] }
-          })
-        }
-      });
-      if (!body || body.ok === false) {
-        throw new Error((body && body.error) || "AI returned no body.");
-      }
-      const issues = ((body.data && body.data.issues) || []).length;
-      viewState.diagnostics.aiCritique = {
-        ok: true,
-        latencyMs: Date.now() - start,
-        detail: "Provider: " + (body.provider || body.model || "unknown") + " · model: " + (body.model || "unknown") + " · issues: " + issues + "."
-      };
-    } catch (err) {
-      viewState.diagnostics.aiCritique = { ok: false, latencyMs: Date.now() - start, error: err.message || "ai critique failed" };
-    }
-  }
-
-  async function diagAiTailor() {
-    const auth = window.CBV2.auth;
-    if (!auth || !auth.isAuthenticated()) {
-      viewState.diagnostics.aiTailor = { ok: false, error: "Not signed in" };
-      return;
-    }
-    const start = Date.now();
-    try {
-      const body = await callEdgeFunction("ai-run", {
-        requestId: "diag_tailor_" + Date.now(),
-        skill: "tailor-plan",
-        promptVersion: "diag@1",
-        input: {
-          targetRole: "Frontend Engineer",
-          jd: "We are hiring a Frontend Engineer to build performant React interfaces, collaborate with product/design, and improve usability.",
-          resume: JSON.stringify({
-            header: { name: "Alex Example", title: "Frontend Developer" },
-            summary: "Frontend engineer focused on delivery quality and UX.",
-            experience: [{ role: "Frontend Engineer", company: "Acme", bullets: [{ id: "b1", text: "Built and maintained React UI components for internal products." }] }],
-            skills: { groups: [{ label: "Core", items: ["React", "TypeScript", "CSS"] }] }
-          })
-        }
-      });
-      if (!body || body.ok === false) {
-        throw new Error((body && body.error) || "AI returned no body.");
-      }
-      const rewrites = ((body.data && body.data.bullets) || []).length;
-      viewState.diagnostics.aiTailor = {
-        ok: true,
-        latencyMs: Date.now() - start,
-        detail: "Provider: " + (body.provider || body.model || "unknown") + " · model: " + (body.model || "unknown") + " · rewrites: " + rewrites + "."
-      };
-    } catch (err) {
-      viewState.diagnostics.aiTailor = { ok: false, latencyMs: Date.now() - start, error: err.message || "ai tailor failed" };
-    }
-  }
-
-  async function diagJobs() {
-    const auth = window.CBV2.auth;
-    if (!auth || !auth.isAuthenticated()) {
-      viewState.diagnostics.jobs = { ok: false, error: "Not signed in" };
-      return;
-    }
-    const start = Date.now();
-    try {
-      const body = await callEdgeFunction("jobs-search", {
-        query: "engineer",
-        filters: { remoteOnly: false, postedWithinDays: 0, sort: "newest" }
-      });
-      if (!body || body.ok === false) {
-        throw new Error((body && body.error) || "Jobs returned no body.");
-      }
-      const sources = (body.sources || []).map(function (s) {
-        return s.name + ":" + (s.ok ? s.count : "fail");
-      }).join(", ");
-      viewState.diagnostics.jobs = {
-        ok: true,
-        latencyMs: Date.now() - start,
-        detail: (body.jobs || []).length + " jobs total · " + sources
-      };
-    } catch (err) {
-      viewState.diagnostics.jobs = { ok: false, latencyMs: Date.now() - start, error: err.message || "jobs failed" };
-    }
-  }
-
-  async function runDiagnostics() {
-    viewState.diagnosticsRunning = true;
-    viewState.diagnostics = {};
-    window.CBV2.renderCurrentRoute();
-    await diagAuth();
-    window.CBV2.renderCurrentRoute();
-    await diagDb();
-    window.CBV2.renderCurrentRoute();
-    await diagAi();
-    window.CBV2.renderCurrentRoute();
-    await diagAiCritique();
-    window.CBV2.renderCurrentRoute();
-    await diagAiTailor();
-    window.CBV2.renderCurrentRoute();
-    await diagJobs();
-    viewState.diagnosticsLastRunAt = new Date().toISOString();
-    viewState.diagnosticsRunning = false;
-    window.CBV2.renderCurrentRoute();
-  }
-
-  async function testMuse() {
-    const cfg = window.CBV2.store.getApiKeys();
-    try {
-      const auth = cfg.museKey ? "api_key=" + encodeURIComponent(cfg.museKey) + "&" : "";
-      const url = "https://www.themuse.com/api/public/jobs?" + auth + "page=0";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      viewState.testResults.muse = { ok: true, count: (data.results || []).length, testedAt: new Date().toISOString() };
-    } catch (err) {
-      viewState.testResults.muse = { ok: false, error: err.message || "Request failed", testedAt: new Date().toISOString() };
-    }
-    window.CBV2.renderCurrentRoute();
-  }
-
-  function readForm() {
-    return {
-      adzunaAppId: (document.getElementById("k-adzuna-id") || {}).value || "",
-      adzunaAppKey: (document.getElementById("k-adzuna-key") || {}).value || "",
-      adzunaCountry: (document.getElementById("k-adzuna-country") || {}).value || "gb",
-      museKey: (document.getElementById("k-muse") || {}).value || ""
-    };
-  }
-
   function bindForm() {
-    const form = document.getElementById("api-keys-form");
-    if (form) {
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        window.CBV2.store.setApiKeys(readForm());
-        if (window.CBJobs && typeof window.CBJobs.clearCache === "function") {
-          window.CBJobs.clearCache();
-        }
-        viewState.message = "API keys saved. Cached searches cleared — your next search will re-fetch from all providers.";
-        window.CBV2.renderCurrentRoute();
-      });
-    }
-
-    const clear = document.getElementById("clear-keys");
-    if (clear) {
-      clear.addEventListener("click", function () {
-        if (!window.confirm("Clear all API keys?")) return;
-        window.CBV2.store.setApiKeys({ adzunaAppId: "", adzunaAppKey: "", adzunaCountry: "gb", museKey: "" });
-        viewState.testResults = {};
-        viewState.message = "API keys cleared.";
-        window.CBV2.renderCurrentRoute();
-      });
-    }
-
-    if (form) {
-      form.querySelectorAll("[data-test]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          window.CBV2.store.setApiKeys(readForm());
-          const target = btn.getAttribute("data-test");
-          if (target === "adzuna") testAdzuna();
-          else if (target === "muse") testMuse();
-        });
-      });
-    }
-
     const reset = document.getElementById("reset-data");
     if (reset) {
       reset.addEventListener("click", function () {
@@ -2046,69 +1485,6 @@
       signout.addEventListener("click", async function () {
         try { await window.CBV2.auth.signOut(); } catch (e) { /* ignore */ }
         window.location.hash = "#/auth";
-      });
-    }
-
-    const runDiag = document.getElementById("run-diagnostics");
-    if (runDiag) {
-      runDiag.addEventListener("click", function () {
-        if (!viewState.diagnosticsRunning) runDiagnostics();
-      });
-    }
-    const clearDiag = document.getElementById("clear-diagnostics");
-    if (clearDiag) {
-      clearDiag.addEventListener("click", function () {
-        viewState.diagnostics = {};
-        viewState.diagnosticsLastRunAt = "";
-        window.CBV2.renderCurrentRoute();
-      });
-    }
-    const copyDiagReport = document.getElementById("copy-diagnostics-report");
-    if (copyDiagReport) {
-      copyDiagReport.addEventListener("click", async function () {
-        const report = {
-          runAt: viewState.diagnosticsLastRunAt || "",
-          checks: viewState.diagnostics || {}
-        };
-        const text = JSON.stringify(report, null, 2);
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-            if (window.CBV2.toast) window.CBV2.toast.success("Diagnostics report copied.");
-            return;
-          }
-        } catch (e) { /* fallback below */ }
-        window.prompt("Copy diagnostics report:", text);
-      });
-    }
-    document.querySelectorAll("[data-copy-diag]").forEach(function (btn) {
-      btn.addEventListener("click", async function () {
-        const payload = btn.getAttribute("data-copy-diag") || "";
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(payload);
-            if (window.CBV2.toast) window.CBV2.toast.success("Diagnostic details copied.");
-            return;
-          }
-        } catch (e) { /* fallback below */ }
-        window.prompt("Copy diagnostic details:", payload);
-      });
-    });
-
-    const forceJob = document.getElementById("force-client-job-search");
-    if (forceJob) {
-      forceJob.addEventListener("change", function () {
-        try {
-          if (forceJob.checked) sessionStorage.setItem("cb_force_client_job_search", "1");
-          else sessionStorage.removeItem("cb_force_client_job_search");
-        } catch (e) { /* ignore */ }
-        if (window.CBJobs && typeof window.CBJobs.clearCache === "function") {
-          window.CBJobs.clearCache();
-        }
-        viewState.message = forceJob.checked
-          ? "This tab will use in-browser job feeds until you turn this off. Open Job Search to refetch."
-          : "CareerBoost Cloud is restored for job search on this tab. Open Job Search to refetch.";
-        window.CBV2.renderCurrentRoute();
       });
     }
 
