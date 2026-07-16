@@ -443,13 +443,58 @@
     });
   }
 
+  // Anonymous visitors cannot insert into usage_events: RLS is owner-scoped and
+  // (before migration 0053) user_id was NOT NULL. That constraint — not a
+  // missing feature — is why the product only ever saw people from sign-in
+  // onward. Logged-out batches go to the usage-ingest edge function, which
+  // writes them service-side as user_id = NULL + this visitor's anonymous_id.
+  // Because the same persistent anonymous_id is stamped on their signed-in
+  // events too, their pre-signup journey stitches to the account by a join.
+  function flushAnonymous(batch) {
+    const c = window.CBV2 && window.CBV2.config;
+    if (!c || typeof c.isBackendEnabled !== "function" || !c.isBackendEnabled()) return Promise.resolve(false);
+    if (typeof c.getFunctionsUrl !== "function") return Promise.resolve(false);
+    const headers = { "Content-Type": "application/json" };
+    if (typeof c.getSupabaseAnon === "function") {
+      const anon = c.getSupabaseAnon();
+      headers.apikey = anon;
+      headers.Authorization = "Bearer " + anon;
+    }
+    return fetch(c.getFunctionsUrl() + "/usage-ingest", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ anonymous_id: getAnonymousId(), events: batch }),
+      // Survive the unload that usually follows the last page view.
+      keepalive: true
+    }).then(function (res) {
+      return !!(res && res.ok);
+    }, function () {
+      return false;
+    });
+  }
+
   function flush() {
     if (inFlight || !queue.length) {
       return flushSession();
     }
     if (Date.now() < disabledUntil) return Promise.resolve(false);
     const ctx = authContext();
-    if (!ctx) return Promise.resolve(false);
+    if (!ctx) {
+      // Anonymous visitor: send via the ingest endpoint. No session row —
+      // usage_sessions is still user-scoped; page views are the signal here.
+      const anonBatch = queue.splice(0, 25);
+      inFlight = true;
+      return flushAnonymous(anonBatch).then(function (ok) {
+        inFlight = false;
+        if (!ok) {
+          queue = anonBatch.concat(queue).slice(0, MAX_QUEUE);
+          disabledUntil = Date.now() + DISABLE_AFTER_ERROR_MS;
+          return false;
+        }
+        if (queue.length) scheduleFlush();
+        return true;
+      });
+    }
 
     const batch = queue.splice(0, 25).map(function (event) {
       return Object.assign({}, event, { user_id: ctx.user.id });
