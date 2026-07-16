@@ -150,6 +150,127 @@ export function buildFacts(jobs: ScannedJob[]): MarketFacts {
   };
 }
 
+// ── Angles ──────────────────────────────────────────────────────────────
+// Replaces the hardcoded 7-brief rotation. Each angle is derived FROM this
+// week's real numbers, so the topic universe changes as the market changes
+// instead of looping. Salience = how newsworthy the number actually is this
+// week (a 12% salary-disclosure rate is a story; 60% is not), so the engine
+// leads with what's genuinely interesting rather than what's next in a list.
+export interface Angle {
+  id: string;
+  salience: number;   // 0..1
+  hook: string;       // the concrete, checkable fact
+  brief: string;      // what the writer should do with it
+}
+
+function clamp01(n: number): number { return Math.max(0, Math.min(1, n)); }
+
+export function deriveAngles(
+  segmentLabel: string,
+  facts: MarketFacts,
+  prev?: MarketFacts | null,
+): Angle[] {
+  const out: Angle[] = [];
+  if (!facts || !facts.scanned) return out;
+  const n = facts.scanned;
+  const top = facts.topSkills[0];
+  const c1 = facts.topLocations[0];
+  const c2 = facts.topLocations[1];
+
+  // Thin samples get angles that need no rate — named examples only.
+  if (!facts.sufficient) {
+    if (top) {
+      out.push({
+        id: "skill_examples_small",
+        salience: 0.4,
+        hook: `${top.name} appeared in ${top.count} of the ${n} ${segmentLabel} roles we scanned`,
+        brief: `Write about what ${top.name} is doing to ${segmentLabel} hiring right now. We scanned only ${n} live roles this week, so talk in concrete named examples — do NOT state any percentage or imply a market-wide rate.`,
+      });
+    }
+    return out;
+  }
+
+  if (facts.salaryDisclosedShare !== null && facts.salaryDisclosedShare < 40) {
+    out.push({
+      id: "salary_opacity",
+      // The lower the disclosure, the better the story.
+      salience: clamp01(1 - facts.salaryDisclosedShare / 40),
+      hook: `only ${facts.salaryDisclosedShare}% of ${n} live ${segmentLabel} roles advertise a salary`,
+      brief: `Lead with this: across the ${n} live ${segmentLabel} roles CareerBoost scanned for South African job seekers this week, only ${facts.salaryDisclosedShare}% advertised a salary. Make it useful — what a candidate should actually do when the money is hidden (how to research the band, when to name a number, how to ask without killing the offer). Do not moralise; be practical and specific.`,
+    });
+  }
+
+  if (top && top.share >= 10) {
+    out.push({
+      id: "skill_lead",
+      salience: clamp01(top.share / 40),
+      hook: `${top.name} appears in ${top.share}% of ${segmentLabel} postings`,
+      brief: `Lead with this: ${top.name} showed up in ${top.share}% (${top.count} of ${n}) of the live ${segmentLabel} roles we scanned this week — the most-requested skill. Give a candidate a concrete way to prove that skill on a CV, and name the runners-up (${facts.topSkills.slice(1, 4).map((s) => `${s.name} ${s.share}%`).join(", ")}).`,
+    });
+  }
+
+  if (c1 && c2 && c1.count > 0) {
+    const close = Math.abs(c1.count - c2.count) <= Math.max(2, c1.count * 0.2);
+    out.push({
+      id: "geo_split",
+      salience: close ? 0.6 : 0.45,
+      hook: `${c1.name} ${c1.count} vs ${c2.name} ${c2.count}`,
+      brief: `Lead with where the ${segmentLabel} roles actually are this week: ${facts.topLocations.map((c) => `${c.name} ${c.count}`).join(", ")} (of ${n} scanned).${close ? ` ${c1.name} and ${c2.name} are effectively level — that's the hook.` : ""} Make it useful for someone deciding where to look or whether to relocate.`,
+    });
+  }
+
+  if (facts.remoteShare !== null) {
+    out.push({
+      id: "remote_share",
+      salience: clamp01(Math.abs(facts.remoteShare - 25) / 40 + 0.25),
+      hook: `${facts.remoteShare}% of ${segmentLabel} roles are remote-friendly`,
+      brief: `Lead with this: ${facts.remoteShare}% of the ${n} live ${segmentLabel} roles we scanned this week were remote-friendly. Be honest about what that means for a South African candidate (competition, time zones, what "remote" actually says in the ad) rather than cheerleading.`,
+    });
+  }
+
+  if (facts.postedLast7dShare !== null && facts.postedLast7dShare >= 20) {
+    out.push({
+      id: "freshness",
+      salience: clamp01(facts.postedLast7dShare / 70),
+      hook: `${facts.postedLast7dShare}% of listings were posted in the last 7 days`,
+      brief: `Lead with churn: ${facts.postedLast7dShare}% of the ${n} live ${segmentLabel} roles we scanned were posted in the last 7 days. The practical point is that a list you saw a month ago is mostly dead — argue for a weekly rhythm, and be concrete about what that rhythm looks like.`,
+    });
+  }
+
+  // Week-over-week beats everything when it's real — but only when both weeks
+  // clear the sample floor, otherwise it's noise wearing a suit.
+  if (prev && prev.sufficient && facts.sufficient) {
+    if (facts.remoteShare !== null && prev.remoteShare !== null) {
+      const d = Math.round((facts.remoteShare - prev.remoteShare) * 10) / 10;
+      if (Math.abs(d) >= 3) {
+        out.push({
+          id: "remote_shift",
+          salience: clamp01(0.6 + Math.abs(d) / 30),
+          hook: `remote share moved ${d > 0 ? "up" : "down"} ${Math.abs(d)} points to ${facts.remoteShare}%`,
+          brief: `Lead with the move: remote-friendly ${segmentLabel} roles went ${d > 0 ? "up" : "down"} ${Math.abs(d)} points week-over-week (${prev.remoteShare}% → ${facts.remoteShare}%, samples of ${prev.scanned} and ${n}). One week is not a trend — say so plainly — but tell a candidate what to do about it now.`,
+        });
+      }
+    }
+    const was = new Map(prev.topSkills.map((s) => [s.name, s.share]));
+    for (const s of facts.topSkills.slice(0, 4)) {
+      const before = was.get(s.name);
+      if (before === undefined) continue;
+      const d = Math.round((s.share - before) * 10) / 10;
+      if (Math.abs(d) >= 4) {
+        out.push({
+          id: "skill_shift_" + s.name.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+          salience: clamp01(0.55 + Math.abs(d) / 30),
+          hook: `${s.name} demand moved ${d > 0 ? "up" : "down"} ${Math.abs(d)} points`,
+          brief: `Lead with the move: ${s.name} went from ${before}% to ${s.share}% of ${segmentLabel} postings week-over-week (samples of ${prev.scanned} and ${n}). Be honest that one week is not a trend, then give the practical read for a candidate.`,
+        });
+        break;
+      }
+    }
+  }
+
+  return out.sort((a, b) => b.salience - a.salience);
+}
+
 // Render facts for the content prompt. Everything is phrased so the writer can
 // attribute it ("across N postings we scanned"), and when the sample is thin we
 // say so explicitly instead of quietly shipping a percentage.

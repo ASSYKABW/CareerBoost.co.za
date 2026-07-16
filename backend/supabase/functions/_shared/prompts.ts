@@ -1045,6 +1045,17 @@ export const prompts: Record<Skill, PromptSpec> = {
       const brief = pick(input, ["brief", "topic", "prompt"]);
       const audience = pick(input, ["audience", "targetAudience"]);
       const facts = pick(input, ["data", "facts", "keyFacts"]);
+      // P1b: what we've already published. Without this the writer happily
+      // re-runs its own angles and openings — the model has no memory of the
+      // feed it's writing into.
+      const recentArr = (input && typeof input === "object" && Array.isArray((input as Record<string, unknown>).recentTitles))
+        ? ((input as Record<string, unknown>).recentTitles as unknown[]).map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+      const recentBlock = recentArr.length
+        ? "\n\nALREADY PUBLISHED — DO NOT REPEAT (different angle, different opening, different examples; " +
+          "if the brief overlaps one of these, find a genuinely new way in):\n" +
+          recentArr.slice(0, 12).map((t) => "- " + t.slice(0, 140)).join("\n")
+        : "";
       const voice = (input && typeof input === "object"
         ? (input as Record<string, unknown>).brandVoice
         : undefined) as Record<string, unknown> | undefined;
@@ -1066,6 +1077,7 @@ export const prompts: Record<Skill, PromptSpec> = {
         "\nBRIEF / TOPIC: " + (brief || "Write something useful and on-brand for job seekers.") +
         (audience ? "\nTARGET AUDIENCE: " + audience : "") +
         (facts ? "\n\nFACTS YOU MAY USE (do not invent beyond these):\n" + String(facts).slice(0, 4000) : "") +
+        recentBlock +
         voiceBlock +
         aiContextBlock(input) +
         "\n\nReturn the JSON now."
