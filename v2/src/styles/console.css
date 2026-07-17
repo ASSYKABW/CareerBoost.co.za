@@ -111,6 +111,19 @@
 .cbc-seg button { padding: 6px 12px; border: 0; background: transparent; color: var(--c-muted); font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all var(--dur-fast) var(--ease-out); }
 .cbc-seg button.is-on { background: var(--c-grad-soft); color: #fff; box-shadow: inset 0 0 0 1px rgba(34, 227, 255, .22); }
 
+/* Section tabs — the segmented control, sized for labels rather than the
+   24h/7d/30d range switch it was built for. Wraps instead of overflowing. */
+.cbc-seg--tabs { flex-wrap: wrap; max-width: 100%; }
+.cbc-seg--tabs button { padding: 8px 14px; display: inline-flex; align-items: center; gap: 7px; }
+.cbc-seg--tabs button i { font-size: 11px; opacity: .85; }
+.cbc-gt { margin-bottom: 16px; }
+/* The hint answers "what is this tab for?" before the panels have to. */
+.cbc-gt-hint { margin: 9px 2px 0; font-size: 12px; color: var(--c-dim); line-height: 1.5; }
+@media (max-width: 720px) {
+  .cbc-seg--tabs { width: 100%; }
+  .cbc-seg--tabs button { flex: 1 1 auto; justify-content: center; }
+}
+
 .cbc-pill { font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--c-border-strong); color: var(--c-muted); display: inline-flex; align-items: center; gap: 7px; height: 38px; }
 .cbc-pill.cbc-env { color: var(--c-cyan); border-color: rgba(34, 227, 255, .3); background: rgba(34, 227, 255, .07); }
 .cbc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-ok); box-shadow: 0 0 0 0 rgba(34, 197, 94, .5); animation: cbc-pulse 2.4s infinite; }
@@ -127,6 +140,11 @@
 /* KPI cards */
 .cbc-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 13px; margin-bottom: 14px; }
 .cbc-kpis--4 { grid-template-columns: repeat(4, 1fr); }
+/* A KPI belongs to the tab that explains it, so strips are often short now.
+   Cap the width: two cards stretched across a 1400px board read as a mistake. */
+.cbc-kpis--3 { grid-template-columns: repeat(3, 1fr); }
+.cbc-kpis--2 { grid-template-columns: repeat(2, minmax(0, 320px)); }
+.cbc-kpis--1 { grid-template-columns: minmax(0, 320px); }
 .cbc-card { background: var(--c-glass); border: 1px solid var(--c-border); border-radius: var(--c-r); position: relative; overflow: hidden; backdrop-filter: blur(9px); }
 .cbc-kpi { padding: 15px 15px 13px; transition: transform var(--dur-med) var(--ease-out), border-color var(--dur-med), box-shadow var(--dur-med); }
 .cbc-kpi:hover { transform: translateY(-3px); border-color: rgba(34, 227, 255, .22); box-shadow: 0 18px 50px -28px rgba(0, 0, 0, .8); }

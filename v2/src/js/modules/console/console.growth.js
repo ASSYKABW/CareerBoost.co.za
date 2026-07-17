@@ -22,6 +22,61 @@
     if (f) f(m); else console.log(m);
   }
 
+  // ── Section IA ───────────────────────────────────────────────────────
+  // Growth used to be eleven panels in one scroll: visitor analytics, the
+  // content engine, referral loops and lifecycle email all stacked together,
+  // so nothing announced what it was for. These are four separate workspaces —
+  // pick one, see only that. Same idea as the interview prep mode toggle:
+  // one segmented control swaps the whole body instead of asking the reader to
+  // scroll past four unrelated jobs to find theirs.
+  //
+  // The KPI strip used to sit in the middle mixing all four topics at once;
+  // each KPI now lives in the tab it actually belongs to. Pulse is where the
+  // cross-section glance belongs — Growth is the deep dive.
+  var GROWTH_TABS = [
+    { id: "traffic", label: "Traffic", icon: "fa-arrow-trend-up",
+      hint: "Who reaches the site, where from, and how many become accounts." },
+    { id: "content", label: "Content", icon: "fa-pen-nib",
+      hint: "The market scan, this week's schedule, and drafts waiting on you." },
+    { id: "loops", label: "Referrals & tests", icon: "fa-flask",
+      hint: "Existing users bringing new ones, and the experiments running on them." },
+    { id: "messaging", label: "Email & push", icon: "fa-paper-plane",
+      hint: "Lifecycle drips and the devices reachable by push." }
+  ];
+  var activeTab = "traffic";
+  var cache = { g: null, dq: null };
+
+  function tabById(id) {
+    for (var i = 0; i < GROWTH_TABS.length; i++) if (GROWTH_TABS[i].id === id) return GROWTH_TABS[i];
+    return GROWTH_TABS[0];
+  }
+
+  function tabsHtml(active) {
+    return '<div class="cbc-gt">' +
+      '<div class="cbc-seg cbc-seg--tabs" role="tablist" aria-label="Growth sections">' +
+        GROWTH_TABS.map(function (t) {
+          var on = t.id === active;
+          return '<button type="button" role="tab" aria-selected="' + (on ? "true" : "false") + '"' +
+            ' class="' + (on ? "is-on" : "") + '" data-gtab="' + t.id + '">' +
+            '<i class="fa-solid ' + t.icon + '" aria-hidden="true"></i> ' + esc(t.label) + "</button>";
+        }).join("") +
+      "</div>" +
+      '<p class="cbc-gt-hint" id="cbc-gt-hint">' + esc(tabById(active).hint) + "</p>" +
+      "</div>";
+  }
+
+  // KPIs, routed to the tab they describe rather than pooled into one strip.
+  function kpisFor(g, keys) {
+    var all = g.kpis || [];
+    var picked = [];
+    keys.forEach(function (k) {
+      for (var i = 0; i < all.length; i++) if (all[i].key === k) picked.push(all[i]);
+    });
+    if (!picked.length) return "";
+    return '<section class="cbc-kpis cbc-kpis--' + Math.min(4, picked.length) + '">' +
+      picked.map(U().kpiCard).join("") + "</section>";
+  }
+
   // ── Website traffic (anonymous visitors) ────────────────────────────
   // The pre-signup half of the funnel. Before 0053 + usage-ingest this was
   // impossible to see: usage_events.user_id was NOT NULL, so a logged-out page
@@ -232,49 +287,46 @@
         'Close this and hit <b>Produce this week\'s schedule</b> to write the drafts.</div>';
   }
 
-  function bindEngine(bodyEl) {
-    bodyEl.addEventListener("click", async function (ev) {
-      var t = ev.target.closest ? ev.target.closest("[data-eng],[data-eng-plan]") : null;
-      if (!t) return;
-      var isPlan = t.hasAttribute("data-eng-plan");
-      var task = isPlan ? "weekly-schedule" : t.getAttribute("data-eng");
-      var label = t.innerHTML;
-      var busy = task === "market-scan" ? "Scanning the market…"
-        : (task === "weekly-schedule" && !isPlan) ? "Planning and writing the week…"
-        : "Working…";
-      t.disabled = true;
-      t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + busy;
-      try {
-        var r = await D().runMarketingTask(task, isPlan ? { plan: true } : null);
-        if (isPlan) {
-          t.disabled = false; t.innerHTML = label;
-          if (window.CBConsole.ui && window.CBConsole.ui.openDrawer) window.CBConsole.ui.openDrawer(planPreviewHtml(r));
-          else toast((r.slots || []).length + " slots planned across " + (r.distinctAngles || 0) + " distinct angles.");
-          return;
-        }
-        var msg = "Done.";
-        if (task === "market-scan" && r && r.segments) {
-          var total = r.segments.reduce(function (n, s) { return n + (Number(s.scanned) || 0); }, 0);
-          var good = r.segments.filter(function (s) { return s.sufficient; }).length;
-          msg = total
-            ? "Scanned " + total + " jobs — " + good + " of " + r.segments.length + " segments have enough data to quote."
-            : "The scan returned no jobs. The job providers may be rate-limited — try again shortly.";
-        } else if (task === "weekly-schedule" && r) {
-          var fails = (r.failures || []).length;
-          msg = "Week of " + r.week_start + ": " + r.generated + " written across " +
-            (r.distinctAngles || 0) + " distinct angles." +
-            (fails ? " " + fails + " slot" + (fails === 1 ? "" : "s") + " didn't finish — run it again to top up." : "");
-        } else if (r && r.piece) { msg = "Draft created — it's in the review queue."; }
-        toast(msg);
-        load(bodyEl);
-      } catch (err) {
-        t.disabled = false;
-        t.innerHTML = label;
-        var m = (err && err.message) ? err.message : "That task failed.";
-        if (/market scan/i.test(m)) toast(m); // already a plain-English instruction
-        else toast(/credit|quota|too low/i.test(m) ? "The AI provider is out of credit — scanning still works, but writing needs a top-up." : m);
+  async function engineAction(bodyEl, t) {
+    var isPlan = t.hasAttribute("data-eng-plan");
+    var task = isPlan ? "weekly-schedule" : t.getAttribute("data-eng");
+    var label = t.innerHTML;
+    var busy = task === "market-scan" ? "Scanning the market…"
+      : (task === "weekly-schedule" && !isPlan) ? "Planning and writing the week…"
+      : "Working…";
+    t.disabled = true;
+    t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + busy;
+    try {
+      var r = await D().runMarketingTask(task, isPlan ? { plan: true } : null);
+      if (isPlan) {
+        t.disabled = false; t.innerHTML = label;
+        if (window.CBConsole.ui && window.CBConsole.ui.openDrawer) window.CBConsole.ui.openDrawer(planPreviewHtml(r));
+        else toast((r.slots || []).length + " slots planned across " + (r.distinctAngles || 0) + " distinct angles.");
+        return;
       }
-    });
+      var msg = "Done.";
+      if (task === "market-scan" && r && r.segments) {
+        var total = r.segments.reduce(function (n, s) { return n + (Number(s.scanned) || 0); }, 0);
+        var good = r.segments.filter(function (s) { return s.sufficient; }).length;
+        msg = total
+          ? "Scanned " + total + " jobs — " + good + " of " + r.segments.length + " segments have enough data to quote."
+          : "The scan returned no jobs. The job providers may be rate-limited — try again shortly.";
+      } else if (task === "weekly-schedule" && r) {
+        var fails = (r.failures || []).length;
+        msg = "Week of " + r.week_start + ": " + r.generated + " written across " +
+          (r.distinctAngles || 0) + " distinct angles." +
+          (fails ? " " + fails + " slot" + (fails === 1 ? "" : "s") + " didn't finish — run it again to top up." : "");
+      } else if (r && r.piece) { msg = "Draft created — it's in the review queue."; }
+      toast(msg);
+      cache.dq = null; // these tasks mint drafts — force a refetch
+      load(bodyEl);
+    } catch (err) {
+      t.disabled = false;
+      t.innerHTML = label;
+      var m = (err && err.message) ? err.message : "That task failed.";
+      if (/market scan/i.test(m)) toast(m); // already a plain-English instruction
+      else toast(/credit|quota|too low/i.test(m) ? "The AI provider is out of credit — scanning still works, but writing needs a top-up." : m);
+    }
   }
 
   function channelsTable(channels) {
@@ -590,39 +642,123 @@
     });
   }
 
-  async function load(bodyEl) {
-    bodyEl.innerHTML = '<section class="cbc-kpis cbc-kpis--4">' + U().kpiSkeleton(4) + '</section>';
-    var both = await Promise.all([D().loadGrowth(), D().loadDrafts()]);
-    var g = both[0], dq = both[1];
-    bodyEl.innerHTML =
-      U().sampleBadge(g._mock, "console-growth", "acquisition + marketing data") +
-      // Traffic sits first: it's the top of the funnel, and it's the half that
-      // was invisible until 0053 + usage-ingest made anonymous rows possible.
-      trafficPanel(g.traffic) +
-      // The engine's own status + its only trigger. Above the copilot, because
-      // a draft written without market data is the thing we're trying to stop.
-      enginePanel(g.engine) +
-      // The week itself, right under the engine that produces it.
+  // ── Tab bodies ───────────────────────────────────────────────────────
+  // Each returns a complete, self-contained workspace. Nothing is shared
+  // between them, which is the point: one job per tab.
+
+  function trafficTab(g) {
+    // Reads top-down as the funnel actually runs: strangers → visits →
+    // accounts → activated.
+    return trafficPanel(g.traffic) +
+      kpisFor(g, ["signups", "activation"]) +
+      '<section class="cbc-grid cbc-g-2a">' +
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Acquisition</div><h2>Channels (30d)</h2></div></div>' +
+          channelsTable(g.channels) + "</div>" +
+        funnelPanel(g.funnel) +
+      "</section>";
+  }
+
+  function contentTab(g, dq) {
+    // Production order: can we say something true → what are we saying this
+    // week → what needs a human → did any of it land.
+    return enginePanel(g.engine) +
       schedulePanel(g.engine) +
       copilotPanel(dq) +
-      '<section class="cbc-kpis cbc-kpis--4">' + (g.kpis || []).map(U().kpiCard).join("") + '</section>' +
-      '<section class="cbc-grid cbc-g-2a">' +
-        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Acquisition</div><h2>Channels (30d)</h2></div></div>' + channelsTable(g.channels) + '</div>' +
-        funnelPanel(g.funnel) +
-      '</section>' +
+      '<section class="cbc-grid">' +
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Performance</div><h2>Content scorecard</h2></div></div>' +
+          contentTable(g.content) + "</div>" +
+      "</section>";
+  }
+
+  function loopsTab(g) {
+    return kpisFor(g, ["referrals"]) +
       '<section class="cbc-grid cbc-g-2b">' +
         referralsPanel(g.referrals) +
-        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Optimization</div><h2>A/B experiments</h2></div></div>' + experimentsTable(g.experiments) + '</div>' +
-      '</section>' +
-      '<section class="cbc-grid cbc-g-2a">' +
-        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Content</div><h2>Content scorecard</h2></div></div>' + contentTable(g.content) + '</div>' +
-        lifecyclePanel(g.lifecycle) +
-      '</section>';
-    bodyEl.querySelectorAll(".cbc-num[data-count]").forEach(function (n) {
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Optimization</div><h2>A/B experiments</h2></div></div>' +
+          experimentsTable(g.experiments) + "</div>" +
+      "</section>";
+  }
+
+  function messagingTab(g) {
+    return kpisFor(g, ["push"]) +
+      '<section class="cbc-grid">' + lifecyclePanel(g.lifecycle) + "</section>";
+  }
+
+  function tabBody(tab, g, dq) {
+    if (tab === "content") return contentTab(g, dq);
+    if (tab === "loops") return loopsTab(g);
+    if (tab === "messaging") return messagingTab(g);
+    return trafficTab(g);
+  }
+
+  // Paint the active tab into the body host, leaving the tab bar alone.
+  function paint(bodyEl) {
+    var host = bodyEl.querySelector("#cbc-gbody");
+    if (!host || !cache.g) return;
+    host.innerHTML = tabBody(activeTab, cache.g, cache.dq);
+    host.querySelectorAll(".cbc-num[data-count]").forEach(function (n) {
       U().countUp(n, Number(n.getAttribute("data-count")), n.getAttribute("data-fmt"));
     });
-    bindCopilot(bodyEl, (dq && dq.drafts) || []);
-    bindEngine(bodyEl);
+    // Re-bound every paint on purpose: #cbc-mk is a fresh element each time,
+    // so the old listener dies with the old node and nothing accumulates.
+    // Passed bodyEl (not host) because the copilot's own handlers call
+    // load(bodyEl) — querySelector finds #cbc-mk inside the host either way.
+    if (activeTab === "content") bindCopilot(bodyEl, (cache.dq && cache.dq.drafts) || []);
+  }
+
+  async function switchTab(bodyEl, tab) {
+    if (tab === activeTab) return;
+    activeTab = tab;
+    bodyEl.querySelectorAll("[data-gtab]").forEach(function (b) {
+      var on = b.getAttribute("data-gtab") === tab;
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    var hint = bodyEl.querySelector("#cbc-gt-hint");
+    if (hint) hint.textContent = tabById(tab).hint;
+
+    // Drafts are only needed by Content, so they're only fetched when Content
+    // is first opened — the other three tabs never pay for that request.
+    if (tab === "content" && !cache.dq) {
+      var host = bodyEl.querySelector("#cbc-gbody");
+      if (host) host.innerHTML = '<div class="cbc-skel" style="height:200px;margin-bottom:14px"></div><div class="cbc-skel" style="height:260px"></div>';
+      try { cache.dq = await D().loadDrafts(); } catch (e) { cache.dq = { drafts: [] }; }
+    }
+    paint(bodyEl);
+  }
+
+  // One delegated listener per body element, ever.
+  //
+  // This used to be re-attached inside load(), and load() is called by the very
+  // handlers it registers — so each action stacked another listener on the same
+  // node (1 → 2 → 4 → 8) and a later click fired a task several times over.
+  function bindOnce(bodyEl) {
+    if (bodyEl.__cbGrowthBound) return;
+    bodyEl.__cbGrowthBound = true;
+    bodyEl.addEventListener("click", function (ev) {
+      var tabBtn = ev.target.closest ? ev.target.closest("[data-gtab]") : null;
+      if (tabBtn) { switchTab(bodyEl, tabBtn.getAttribute("data-gtab")); return; }
+      var engBtn = ev.target.closest ? ev.target.closest("[data-eng],[data-eng-plan]") : null;
+      if (engBtn) engineAction(bodyEl, engBtn);
+    });
+  }
+
+  async function load(bodyEl) {
+    var tab = activeTab;
+    bodyEl.innerHTML = tabsHtml(tab) +
+      '<div id="cbc-gbody"><section class="cbc-kpis cbc-kpis--4">' + U().kpiSkeleton(4) + "</section></div>";
+    bindOnce(bodyEl);
+
+    var jobs = [D().loadGrowth()];
+    if (tab === "content") jobs.push(D().loadDrafts());
+    var res = await Promise.all(jobs);
+    cache.g = res[0];
+    if (tab === "content") cache.dq = res[1];
+
+    // The sample badge is a property of the data, so it sits above the tabs.
+    var badge = U().sampleBadge(cache.g._mock, "console-growth", "acquisition + marketing data");
+    bodyEl.innerHTML = badge + tabsHtml(activeTab) + '<div id="cbc-gbody"></div>';
+    paint(bodyEl);
   }
 
   window.CBConsole.sections.growth = { load: load };
