@@ -90,20 +90,57 @@
     }
   }
 
+  // The whole app boot awaits init() before the public landing page paints.
+  // getSession() is localStorage-first and normally instant, but when the
+  // stored token is expired it makes a network refresh — and it carries no
+  // timeout of its own. A stall there (Supabase paused, a slow SA mobile
+  // connection, an unreachable network) used to block the ENTIRE boot behind
+  // the "Loading your workspace…" splash with no escape but an 8s hint. A
+  // marketing page must never wait on the auth subsystem to appear. So we cap
+  // the wait: past this, we proceed as signed-out and let the auth listener
+  // (registered up front, below) reconcile if a session lands a moment later.
+  const AUTH_INIT_TIMEOUT_MS = 3500;
+
+  function withTimeout(promise, ms) {
+    return new Promise(function (resolve, reject) {
+      let settled = false;
+      const timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error("auth init timed out after " + ms + "ms"));
+      }, ms);
+      Promise.resolve(promise).then(
+        function (v) { if (settled) return; settled = true; clearTimeout(timer); resolve(v); },
+        function (e) { if (settled) return; settled = true; clearTimeout(timer); reject(e); }
+      );
+    });
+  }
+
   async function init() {
     const client = ensureClient();
     if (!client) { state.ready = true; return null; }
 
-    const { data } = await client.auth.getSession();
-    state.session = data ? data.session : null;
-    state.user = state.session ? state.session.user : null;
-    state.ready = true;
-
+    // Register the auth-state listener BEFORE awaiting getSession, so a session
+    // that arrives late (a slow refresh, or after the timeout above) is still
+    // caught and reconciled rather than lost.
     client.auth.onAuthStateChange(function (_evt, session) {
       state.session = session || null;
       state.user = session ? session.user : null;
       notify();
     });
+
+    try {
+      const res = await withTimeout(client.auth.getSession(), AUTH_INIT_TIMEOUT_MS);
+      const data = res && res.data;
+      state.session = data ? data.session : null;
+      state.user = state.session ? state.session.user : null;
+    } catch (e) {
+      // Timed out or errored — boot as signed-out for now. The listener above
+      // keeps state.session if it already resolved, and will correct us if the
+      // session shows up after this point. Never leave the app on the splash.
+      if (window.__CAREERBOOST_AUTH_DEBUG) console.warn("[auth] getSession slow/failed, booting unauthed:", (e && e.message) || e);
+    }
+    state.ready = true;
 
     return state.session;
   }
