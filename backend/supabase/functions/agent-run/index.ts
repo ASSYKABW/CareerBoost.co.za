@@ -266,17 +266,31 @@ function buildMarketingTools(adminId: string): AgentTool[] {
                 ". You have no market evidence. Say so in your rationale rather than inventing numbers.",
             };
           }
+          // A COMPACT summary, not the raw snapshot. Returning the full facts
+          // JSON cost ~1,300 tokens and every later turn resent it — on Groq's
+          // 12,000-tokens-per-MINUTE free tier that alone burned an eighth of
+          // the budget per turn and the run died of rate limits around turn 3.
+          // Everything quotable survives; the long tails (12 skills, companies,
+          // sources) do not.
           return {
             week_start: weekStart,
-            segments: rows.map((r) => ({
-              segment: r.segment,
-              label: r.label,
-              scanned: r.scanned,
-              quotable: r.sufficient,
-              facts: r.facts,
-            })),
+            segments: rows.map((r) => {
+              const f = (r.facts || {}) as Record<string, unknown>;
+              const skills = Array.isArray(f.topSkills) ? (f.topSkills as Array<Record<string, unknown>>).slice(0, 4) : [];
+              const cities = Array.isArray(f.topLocations) ? (f.topLocations as Array<Record<string, unknown>>).slice(0, 3) : [];
+              return {
+                segment: r.segment,
+                sample: r.scanned,
+                quotable: r.sufficient,
+                salaryDisclosedPct: f.salaryDisclosedShare ?? null,
+                remotePct: f.remoteShare ?? null,
+                postedLast7dPct: f.postedLast7dShare ?? null,
+                topSkills: skills.map((s) => s.name + " " + s.share + "%"),
+                topCities: cities.map((c) => c.name + " " + c.count),
+              };
+            }),
             rule: "Cite a number ONLY with its sample (e.g. '10.3% of 68 postings'). " +
-              "Segments where quotable=false have too small a sample — describe them qualitatively, never as a percentage.",
+              "quotable=false means the sample is too small — describe it in words, never as a percentage.",
           };
         } catch (e) {
           return { note: "market snapshot unavailable: " + (e as Error).message };

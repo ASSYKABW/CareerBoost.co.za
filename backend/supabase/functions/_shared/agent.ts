@@ -59,7 +59,16 @@ interface AnthropicContentBlock {
   content?: string;
 }
 
-const TOOL_OUTPUT_CAP = 6000; // chars per tool result fed back to the model
+// Chars per tool result fed back to the model. Every turn resends the whole
+// history, so a fat tool result is paid for again on every later turn — and on
+// Groq's 12k-tokens-per-minute free tier that is the difference between a run
+// that finishes and one that dies of rate limits.
+const TOOL_OUTPUT_CAP = 2500;
+
+// Waiting out a rate-limit window, within the edge function's wall clock.
+const MAX_RATE_RETRIES = 2;      // per provider, per turn
+const MAX_TOTAL_WAIT_MS = 45_000; // across the whole run
+const RUN_BUDGET_MS = 130_000;    // leave headroom under the function timeout
 
 function capJson(value: unknown): string {
   let s: string;
@@ -84,6 +93,68 @@ interface ModelReply {
   stopReason: string;
   inputTokens: number;
   outputTokens: number;
+  /** What the provider says is left in the current window, if it says. */
+  rateLimit?: { remainingTokens: number | null; resetMs: number };
+}
+
+/** A provider call that failed in a way we may be able to wait out. */
+interface ProviderFailure extends Error {
+  status?: number;
+  retryAfterMs?: number;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Seconds-ish strings the rate-limit headers use: "19.585s", "2m59.56s", "250ms". */
+export function parseDuration(v: string): number {
+  const s = String(v || "").trim();
+  if (!s) return 0;
+  let ms = 0;
+  const m = s.match(/(?:(\d+(?:\.\d+)?)m(?!s))?\s*(?:(\d+(?:\.\d+)?)s)?\s*(?:(\d+(?:\.\d+)?)ms)?/);
+  if (m) {
+    if (m[1]) ms += parseFloat(m[1]) * 60_000;
+    if (m[2]) ms += parseFloat(m[2]) * 1000;
+    if (m[3]) ms += parseFloat(m[3]);
+  }
+  if (!ms && /^\d+(\.\d+)?$/.test(s)) ms = parseFloat(s) * 1000; // bare seconds (Retry-After)
+  return Math.round(ms);
+}
+
+/**
+ * How long to wait before trying this provider again, or 0 for "don't".
+ *
+ * A 429 from Groq's free tier is a TOKENS-PER-MINUTE ceiling, not a refusal:
+ * the response literally carries the reset time. Treating it as fatal and
+ * failing over to two providers that are out of credit is how a transient
+ * 20-second wait turned into "All AI providers failed".
+ */
+export function retryDelayFrom(res: Response, bodyText: string): number {
+  const ra = res.headers.get("retry-after");
+  if (ra) { const ms = parseDuration(ra); if (ms) return Math.min(30_000, ms + 250); }
+  const reset = res.headers.get("x-ratelimit-reset-tokens") || res.headers.get("x-ratelimit-reset-requests") || "";
+  if (reset) { const ms = parseDuration(reset); if (ms) return Math.min(30_000, ms + 250); }
+  const m = bodyText.match(/try again in\s+([\dhms.]+)/i);
+  if (m) { const ms = parseDuration(m[1]); if (ms) return Math.min(30_000, ms + 250); }
+  return 0;
+}
+
+function providerError(res: Response, bodyText: string, prefix: string): ProviderFailure {
+  const err = new Error(prefix + " HTTP " + res.status + ": " + bodyText.slice(0, 400)) as ProviderFailure;
+  err.status = res.status;
+  // 429 = wait it out. 5xx/408 = a blip; a short retry is cheap.
+  if (res.status === 429) err.retryAfterMs = retryDelayFrom(res, bodyText) || 5_000;
+  else if (res.status >= 500 || res.status === 408) err.retryAfterMs = 1_500;
+  return err;
+}
+
+function rateLimitFrom(res: Response): ModelReply["rateLimit"] {
+  const remaining = res.headers.get("x-ratelimit-remaining-tokens");
+  const reset = res.headers.get("x-ratelimit-reset-tokens");
+  if (remaining === null && !reset) return undefined;
+  return {
+    remainingTokens: remaining === null ? null : Number(remaining),
+    resetMs: parseDuration(reset || ""),
+  };
 }
 
 interface AgentProvider {
@@ -105,7 +176,7 @@ async function callAnthropic(
       tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
     }),
   });
-  if (!res.ok) throw new Error("Anthropic HTTP " + res.status + ": " + (await res.text()).slice(0, 200));
+  if (!res.ok) throw providerError(res, await res.text(), "Anthropic");
   const data = await res.json() as {
     content: AnthropicContentBlock[];
     stop_reason: string;
@@ -113,6 +184,7 @@ async function callAnthropic(
   };
   return {
     blocks: data.content || [],
+    rateLimit: rateLimitFrom(res),
     stopReason: String(data.stop_reason || ""),
     inputTokens: data.usage?.input_tokens || 0,
     outputTokens: data.usage?.output_tokens || 0,
@@ -171,7 +243,7 @@ async function callOpenAiCompat(
     headers: { Authorization: "Bearer " + apiKey, "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("HTTP " + res.status + ": " + (await res.text()).slice(0, 200));
+  if (!res.ok) throw providerError(res, await res.text(), "");
   const data = await res.json() as {
     choices?: Array<{ message?: { content?: string; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -188,6 +260,7 @@ async function callOpenAiCompat(
   }
   return {
     blocks,
+    rateLimit: rateLimitFrom(res),
     stopReason: (msg.tool_calls && msg.tool_calls.length) ? "tool_use" : "end_turn",
     inputTokens: data.usage?.prompt_tokens || 0,
     outputTokens: data.usage?.completion_tokens || 0,
@@ -230,6 +303,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
     return { runId: null, status: "failed", result: "", steps: [], turns: 0, costUsd: 0, error: "No AI provider key configured (set ANTHROPIC_API_KEY, GROQ_API_KEY or OPENAI_API_KEY, or add one in the Console)." };
   }
   let active = 0; // index into `chain`
+  const deadline = Date.now() + RUN_BUDGET_MS;
   const budgetUsd = Math.min(2, Math.max(0.02, opts.budgetUsd ?? 0.25));
   const maxTurns = Math.min(10, Math.max(1, opts.maxTurns ?? 6));
   const maxTokens = Math.min(4000, Math.max(300, opts.maxTokens ?? 1200));
@@ -270,31 +344,70 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
 
   try {
     for (turns = 1; turns <= maxTurns; turns++) {
-      // Try the active provider; on failure fall down the chain. History is
-      // provider-neutral, so a mid-run switch costs only the failed call.
+      // Try the active provider; wait out a rate limit; only then fall down the
+      // chain. History is provider-neutral, so a mid-run switch costs only the
+      // failed call.
+      //
+      // The waiting matters more than the failover here. Groq's free tier caps
+      // TOKENS PER MINUTE (12k), and one turn of this agent costs ~4k — so a
+      // multi-turn run hits the ceiling around turn 3 and the 429 says exactly
+      // how long until the window resets (~20s). Before this, that transient
+      // pause fell straight through to two providers with no credit and the
+      // whole run died as "All AI providers failed".
       let data: ModelReply | null = null;
       const attemptErrors: string[] = [];
-      while (active < chain.length) {
+      while (active < chain.length && !data) {
         const provider = chain[active];
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 45_000);
-        try {
-          data = await provider.call(opts.system, messages, opts.tools, maxTokens, controller.signal);
-          costUsd += computeCostUSD(provider.model, { inputTokens: data.inputTokens, outputTokens: data.outputTokens });
-          break;
-        } catch (err) {
-          const msg = provider.id + ": " + ((err as Error).message || "call failed");
-          attemptErrors.push(msg);
-          steps.push({ at: new Date().toISOString(), type: "provider_failover", provider: provider.id, error: msg.slice(0, 300) });
-          active += 1;
-          if (active < chain.length) {
-            steps.push({ at: new Date().toISOString(), type: "note", text: "Falling back to " + chain[active].id + " (" + chain[active].model + ")." });
+        let waited = 0;
+        for (let attempt = 0; attempt <= MAX_RATE_RETRIES; attempt++) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 45_000);
+          try {
+            data = await provider.call(opts.system, messages, opts.tools, maxTokens, controller.signal);
+            costUsd += computeCostUSD(provider.model, { inputTokens: data.inputTokens, outputTokens: data.outputTokens });
+            break;
+          } catch (err) {
+            const pe = err as ProviderFailure;
+            const msg = provider.id + ": " + (pe.message || "call failed");
+            const wait = pe.retryAfterMs || 0;
+            const roomToWait = wait > 0 && attempt < MAX_RATE_RETRIES &&
+              (Date.now() + wait) < deadline && (waited + wait) <= MAX_TOTAL_WAIT_MS;
+            if (roomToWait) {
+              waited += wait;
+              steps.push({
+                at: new Date().toISOString(), type: "provider_wait", provider: provider.id,
+                waitMs: wait, reason: pe.status === 429 ? "rate limit — window resets shortly" : "transient error",
+              });
+              await sleep(wait);
+              continue; // same provider, once the window has moved on
+            }
+            attemptErrors.push(msg);
+            steps.push({ at: new Date().toISOString(), type: "provider_failover", provider: provider.id, error: msg.slice(0, 300) });
+            active += 1;
+            if (active < chain.length) {
+              steps.push({ at: new Date().toISOString(), type: "note", text: "Falling back to " + chain[active].id + " (" + chain[active].model + ")." });
+            }
+            break;
+          } finally {
+            clearTimeout(timer);
           }
-        } finally {
-          clearTimeout(timer);
         }
       }
       if (!data) throw new Error("All AI providers failed. " + attemptErrors.join(" | "));
+
+      // Pace the NEXT turn. The provider tells us what's left in the window, so
+      // pausing before we blow it beats taking a 429 and unwinding.
+      const rl = data.rateLimit;
+      if (rl && rl.remainingTokens !== null && rl.resetMs > 0) {
+        const nextTurnEstimate = data.inputTokens + maxTokens + 500;
+        if (rl.remainingTokens < nextTurnEstimate && rl.resetMs <= MAX_TOTAL_WAIT_MS && (Date.now() + rl.resetMs) < deadline) {
+          steps.push({
+            at: new Date().toISOString(), type: "provider_wait", provider: chain[active].id,
+            waitMs: rl.resetMs, reason: "only " + rl.remainingTokens + " tokens left this minute — waiting for the window",
+          });
+          await sleep(rl.resetMs);
+        }
+      }
 
       const textBlocks = (data.blocks || []).filter((b) => b.type === "text" && b.text);
       for (const b of textBlocks) {
