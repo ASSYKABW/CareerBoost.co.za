@@ -16,7 +16,7 @@
 import { handleOptions, jsonResponse, errorResponse, withCors } from "../_shared/cors.ts";
 import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { prompts } from "../_shared/prompts.ts";
-import { callLLM, callProvider, providerHasKey, extractJson } from "../_shared/llm.ts";
+import { callProvider, providerHasKey, extractJson, type LLMProvider } from "../_shared/llm.ts";
 import { SKILL_ROUTING, maxTokensFor, temperatureFor } from "../_shared/routing.ts";
 import { validateSkillPayload } from "../_shared/schemas.ts";
 import {
@@ -27,6 +27,7 @@ import {
   type ScannedJob,
   type MarketFacts,
 } from "../_shared/market-facts.ts";
+import { planWeek, type Cand } from "../_shared/schedule-plan.ts";
 
 // ── Live market scan ────────────────────────────────────────────────────
 // Broad, SA-relevant segments. Kept small on purpose: each scan fans out to
@@ -56,6 +57,11 @@ interface FactualTopic {
 // Format rotates independently of angle, so the same fact doesn't always
 // arrive as the same shape of post.
 const CONTENT_FORMATS = ["blog", "social_linkedin", "social_x"];
+
+// Order to fall through when the routed provider is down. Cheap-and-alive
+// beats premium-and-dead: a Groq draft the operator can edit is worth more
+// than a perfect draft that never gets written.
+const CONTENT_FALLBACK_ORDER: LLMProvider[] = ["anthropic", "groq", "openai", "gemini"];
 
 async function loadSnapshot(
   svc: ReturnType<typeof getServiceClient>,
@@ -99,16 +105,9 @@ async function recentHistory(
   return { titles, angleIds };
 }
 
-async function pickFactualTopic(
-  svc: ReturnType<typeof getServiceClient>,
-  dayIdx: number,
-): Promise<FactualTopic | null> {
-  const history = await recentHistory(svc);
-  const recentAngles = new Set(history.angleIds.slice(0, 4));
-
-  type Cand = { angle: Angle; segment: string; label: string; factsBlock: string };
+/** Every angle this week's scans support, across all segments. */
+async function collectCandidates(svc: ReturnType<typeof getServiceClient>): Promise<Cand[]> {
   const cands: Cand[] = [];
-
   for (const seg of MARKET_SEGMENTS) {
     const snap = await loadSnapshot(svc, seg.id);
     if (!snap.facts || !snap.facts.scanned) continue;
@@ -117,6 +116,17 @@ async function pickFactualTopic(
       cands.push({ angle, segment: seg.id, label: snap.label, factsBlock: block });
     }
   }
+  return cands;
+}
+
+async function pickFactualTopic(
+  svc: ReturnType<typeof getServiceClient>,
+  dayIdx: number,
+): Promise<FactualTopic | null> {
+  const history = await recentHistory(svc);
+  const recentAngles = new Set(history.angleIds.slice(0, 4));
+
+  const cands: Cand[] = await collectCandidates(svc);
   if (!cands.length) return null; // cold start — no scan yet
 
   // Prefer angles we haven't just used; fall back to all if we'd have nothing.
@@ -138,6 +148,25 @@ async function pickFactualTopic(
     angleId: chosen.angle.id,
     hook: chosen.angle.hook,
   };
+}
+
+/** Slots already written for this week, keyed by day index. */
+async function filledSlots(
+  svc: ReturnType<typeof getServiceClient>,
+  weekStart: string,
+): Promise<Map<number, Record<string, unknown>>> {
+  const out = new Map<number, Record<string, unknown>>();
+  const { data } = await svc
+    .from("content_pieces")
+    .select("id, title, type, status, scheduled_at, source_data")
+    .contains("source_data", { weekStart })
+    .limit(50);
+  for (const r of (data || []) as Array<Record<string, unknown>>) {
+    const sd = (r.source_data || {}) as Record<string, unknown>;
+    const idx = Number(sd.dayIdx);
+    if (Number.isFinite(idx)) out.set(idx, r);
+  }
+  return out;
 }
 
 // Monday (UTC) of the given date — the snapshot's week key.
@@ -250,15 +279,41 @@ async function generate(
     temperature: temperatureFor("content-generate"),
     maxTokens: maxTokensFor("content-generate"),
   };
-  // Prefer the routed provider/model (Anthropic Sonnet) when its key is set;
-  // otherwise fall back to the default provider chain.
+  // Try the routed provider first, then anything else with a key.
+  //
+  // This used to be `providerHasKey(route.provider) ? callProvider(route) :
+  // callLLM(...)` — which made a PRESENT-BUT-DEAD key worse than no key at
+  // all. The Anthropic key is set and out of credit, so every call went
+  // straight to it, took a 400, and threw; the `callLLM` branch (itself only a
+  // first-key-wins selector, not a failover) was never even reached. That is
+  // the whole reason content_pieces sat at zero: the engine was fine, its one
+  // provider wasn't, and nothing tried a second.
+  //
+  // ai-run has had this failover forever (tryProviders); marketing-cron never
+  // did. Same shape, same rule: only send the routed model to the routed
+  // provider, or a Claude model id ends up at Groq.
   const route = SKILL_ROUTING["content-generate"];
-  const out = providerHasKey(route.provider)
-    ? await callProvider(route.provider, { ...callInput, model: route.model })
-    : await callLLM(callInput);
-  const parsed = extractJson<Record<string, unknown>>(out.text);
-  validateSkillPayload("content-generate", parsed);
-  return parsed;
+  const order: LLMProvider[] = [
+    route.provider,
+    ...CONTENT_FALLBACK_ORDER.filter((p) => p !== route.provider),
+  ].filter((p) => providerHasKey(p));
+  if (!order.length) throw new Error("No AI provider key configured for content generation.");
+
+  const attempts: string[] = [];
+  for (const provider of order) {
+    try {
+      const out = await callProvider(provider, {
+        ...callInput,
+        model: provider === route.provider ? route.model : undefined,
+      });
+      const parsed = extractJson<Record<string, unknown>>(out.text);
+      validateSkillPayload("content-generate", parsed);
+      return parsed;
+    } catch (err) {
+      attempts.push(provider + ": " + String((err as Error).message || "failed").slice(0, 140));
+    }
+  }
+  throw new Error("Every AI provider failed. Attempts: " + attempts.join(" · "));
 }
 
 function rowFromGenerated(type: string, brief: string, d: Record<string, unknown>): Record<string, unknown> {
@@ -439,6 +494,102 @@ Deno.serve(withCors(async (req) => {
       .select("id");
     if (error) return errorResponse("publish-due failed: " + error.message, 500);
     return jsonResponse({ ok: true, task, published: (data ?? []).length });
+  }
+
+  // ── weekly-schedule (AI) ──────────────────────────────────────────────
+  // The operator asks; a whole week comes back, formatted and fact-led.
+  //
+  // Idempotent and resumable by design: it only fills the days this week that
+  // are still empty, so re-running tops the week up rather than duplicating it.
+  // That matters because generation is the slow part — a wall-clock budget
+  // stops us mid-week rather than letting the function get killed, and the next
+  // run continues where this one stopped.
+  if (task === "weekly-schedule") {
+    const weekStart = weekStartUtc(new Date());
+    const dryRun = body.plan === true; // plan only: instant, free, no AI
+    const cands = await collectCandidates(svc);
+    if (!cands.length) {
+      return errorResponse(
+        "No market scan for this week yet. Run 'Refresh market data' first — the schedule is built from those numbers, and without them it would just be generic filler.",
+        409,
+      );
+    }
+
+    const history = await recentHistory(svc);
+    const recentAngles = new Set(history.angleIds.slice(0, 4));
+    const slots = planWeek(cands, weekStart, recentAngles);
+    const already = await filledSlots(svc, weekStart);
+
+    const plan = slots.map((s) => {
+      const done = already.get(s.dayIdx);
+      return {
+        day: s.day, date: s.date, format: s.format, segment: s.segment,
+        label: s.label, angle: s.angleId, hook: s.hook,
+        status: done ? String(done.status || "") : "planned",
+        pieceId: done ? String(done.id) : null,
+        title: done ? String(done.title || "") : null,
+      };
+    });
+    if (dryRun) {
+      return jsonResponse({ ok: true, task, week_start: weekStart, planOnly: true, slots: plan, distinctAngles: new Set(slots.map((s) => s.angleId)).size });
+    }
+
+    const voiceForWeek = await getBrandVoice(svc);
+    const startedAt = Date.now();
+    const BUDGET_MS = 100_000; // leave headroom under the function's wall clock
+    const written: Array<Record<string, unknown>> = [];
+    const failures: Array<Record<string, unknown>> = [];
+    // Titles accumulate as we go, so slot 5 knows what slots 1-4 already said.
+    const seenTitles: string[] = history.titles.slice();
+
+    for (const s of slots) {
+      if (already.has(s.dayIdx)) continue;
+      if (Date.now() - startedAt > BUDGET_MS) {
+        failures.push({ day: s.day, error: "ran out of time this run — re-run to continue the week" });
+        continue;
+      }
+      try {
+        const d = await generate(s.format, s.brief, voiceForWeek, s.factsBlock, seenTitles);
+        const row = rowFromGenerated(s.format, s.brief, d);
+        row.status = "needs_review";
+        row.scheduled_at = new Date(s.date + "T06:00:00Z").toISOString();
+        row.channel = s.format === "blog" ? "blog" : s.format.replace("social_", "");
+        row.source_data = {
+          ...(row.source_data as Record<string, unknown>),
+          selection: { mode: "weekly_schedule", segment: s.segment },
+          weekStart, dayIdx: s.dayIdx, day: s.day,
+          angle: s.angleId, hook: s.hook, salience: s.salience,
+        };
+        const { data, error } = await svc.from("content_pieces").insert(row).select("id, title").maybeSingle();
+        if (error) { failures.push({ day: s.day, error: error.message }); continue; }
+        if (data?.title) seenTitles.unshift(String(data.title));
+        written.push({ day: s.day, date: s.date, format: s.format, angle: s.angleId, id: data?.id, title: data?.title });
+      } catch (e) {
+        failures.push({ day: s.day, error: String((e as Error).message || e).slice(0, 200) });
+      }
+    }
+
+    // Re-read so the returned schedule reflects what is actually stored.
+    const nowFilled = await filledSlots(svc, weekStart);
+    const finalSlots = slots.map((s) => {
+      const done = nowFilled.get(s.dayIdx);
+      return {
+        day: s.day, date: s.date, format: s.format, segment: s.segment,
+        label: s.label, angle: s.angleId, hook: s.hook,
+        status: done ? String(done.status || "") : "planned",
+        pieceId: done ? String(done.id) : null,
+        title: done ? String(done.title || "") : null,
+      };
+    });
+    return jsonResponse({
+      ok: true, task, week_start: weekStart,
+      slots: finalSlots,
+      generated: written.length,
+      alreadyPresent: slots.filter((s) => already.has(s.dayIdx)).length,
+      distinctAngles: new Set(slots.map((s) => s.angleId)).size,
+      segments: Array.from(new Set(slots.map((s) => s.segment))),
+      failures,
+    });
   }
 
   // ── draft / newsletter-draft (AI) ─────────────────────────────────────

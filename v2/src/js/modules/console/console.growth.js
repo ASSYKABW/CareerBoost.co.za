@@ -155,16 +155,103 @@
       "</div></div>";
   }
 
+  // ── This week's schedule ────────────────────────────────────────────
+  // The week as a plan, not a pile of drafts: one row per day, each showing
+  // the angle it leans on so two rows can never quietly be the same post.
+  var FORMAT_LABEL = { blog: "Blog", social_linkedin: "LinkedIn", social_x: "X", newsletter: "Newsletter" };
+  var STATUS_TONE = { needs_review: "amber", approved: "green", published: "green", scheduled: "cyan", draft: "dim", rejected: "dim" };
+
+  function angleLabel(id) {
+    var a = String(id || "").split(":").pop().replace(/_/g, " ");
+    return a || "—";
+  }
+
+  function schedulePanel(e) {
+    e = e || {};
+    var rows = (e.schedule || []).slice().sort(function (a, b) { return (a.dayIdx || 0) - (b.dayIdx || 0); });
+    var head = '<div class="cbc-ph"><div><div class="cbc-eb">This week</div><h2>Content schedule</h2></div>' +
+      (rows.length ? '<span class="cbc-chip cyan">' + rows.length + ' planned</span>' : '<span class="cbc-chip dim">not produced yet</span>') +
+      "</div>";
+
+    if (!rows.length) {
+      return '<div class="cbc-card cbc-panel" id="cbc-sched">' + head +
+        '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0;line-height:1.7">' +
+          'No schedule for the week of ' + esc(String(e.weekStart || "—")) + ' yet. ' +
+          '<b>Produce this week\'s schedule</b> plans five slots — two long-form, two LinkedIn, one X — each built on a ' +
+          'different finding from the market scan, then writes them. Every draft lands as <b>needs_review</b>; nothing publishes itself.' +
+        "</div>" +
+        '<div class="cbc-qa" style="margin-top:14px"><button class="cbc-btn cbc-sm cbc-primary" data-eng="weekly-schedule">' +
+          '<i class="fa-solid fa-calendar-week"></i> Produce this week\'s schedule</button>' +
+          '<button class="cbc-btn cbc-sm" data-eng-plan="1"><i class="fa-solid fa-eye"></i> Preview the plan first</button></div>' +
+        "</div>";
+    }
+
+    var body = rows.map(function (r) {
+      var tone = STATUS_TONE[r.status] || "dim";
+      var fmt = FORMAT_LABEL[r.type] || r.type;
+      return '<tr>' +
+        '<td><b>' + esc(r.day || "—") + '</b><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(r.date || "") + '</div></td>' +
+        '<td><span class="cbc-chip ' + (r.type === "blog" ? "violet" : "cyan") + '">' + esc(fmt) + '</span></td>' +
+        '<td><div style="font-weight:600">' + esc(r.title || "(untitled)") + '</div>' +
+          '<div style="font-size:11px;color:var(--c-dim)">' + esc(r.segment || "—") + ' · ' + esc(angleLabel(r.angle)) + '</div></td>' +
+        '<td><span class="cbc-chip ' + tone + '">' + esc(String(r.status || "").replace(/_/g, " ")) + '</span></td>' +
+        "</tr>";
+    }).join("");
+
+    var angles = {};
+    rows.forEach(function (r) { angles[r.angle] = 1; });
+    var distinct = Object.keys(angles).length;
+
+    return '<div class="cbc-card cbc-panel" id="cbc-sched">' + head +
+      '<table class="cbc-table"><thead><tr><th>Day</th><th>Format</th><th>Piece</th><th>Status</th></tr></thead><tbody>' + body + "</tbody></table>" +
+      '<div style="margin-top:12px;font-size:11.5px;color:var(--c-dim);line-height:1.6">' +
+        distinct + ' distinct ' + (distinct === 1 ? "angle" : "angles") + ' across ' + rows.length + ' ' +
+        (rows.length === 1 ? "slot" : "slots") + ' — the planner refuses to reuse an angle inside a week, ' +
+        'so a short week means the scan found fewer stories, not that something broke.' +
+      "</div>" +
+      '<div class="cbc-qa" style="margin-top:14px"><button class="cbc-btn cbc-sm" data-eng="weekly-schedule">' +
+        '<i class="fa-solid fa-rotate"></i> Fill any empty days</button></div>' +
+      "</div>";
+  }
+
+  // Preview: plans the week without writing anything. Instant and free — it
+  // never calls a model, so the operator can see the shape before committing.
+  function planPreviewHtml(r) {
+    var rows = (r.slots || []).map(function (s) {
+      return '<tr><td><b>' + esc(s.day) + '</b><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(s.date) + '</div></td>' +
+        '<td><span class="cbc-chip ' + (s.format === "blog" ? "violet" : "cyan") + '">' + esc(FORMAT_LABEL[s.format] || s.format) + '</span></td>' +
+        '<td><div style="font-weight:600">' + esc(s.hook || angleLabel(s.angle)) + '</div>' +
+          '<div style="font-size:11px;color:var(--c-dim)">' + esc(s.label || s.segment) + ' · ' + esc(angleLabel(s.angle)) + '</div></td></tr>';
+    }).join("");
+    return '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#22e3ff,#6b7dff)"><i class="fa-solid fa-calendar-week"></i></div>' +
+        '<div><div class="cbc-nm">Week of ' + esc(r.week_start || "") + '</div><div class="cbc-em">' +
+          (r.slots || []).length + ' slots · ' + (r.distinctAngles || 0) + ' distinct angles</div></div></div>' +
+      '<table class="cbc-table"><thead><tr><th>Day</th><th>Format</th><th>Angle</th></tr></thead><tbody>' + rows + "</tbody></table>" +
+      '<div style="margin-top:14px;font-size:11.5px;color:var(--c-dim);line-height:1.6">Nothing has been written yet — this is the plan only. ' +
+        'Close this and hit <b>Produce this week\'s schedule</b> to write the drafts.</div>';
+  }
+
   function bindEngine(bodyEl) {
     bodyEl.addEventListener("click", async function (ev) {
-      var t = ev.target.closest ? ev.target.closest("[data-eng]") : null;
+      var t = ev.target.closest ? ev.target.closest("[data-eng],[data-eng-plan]") : null;
       if (!t) return;
-      var task = t.getAttribute("data-eng");
+      var isPlan = t.hasAttribute("data-eng-plan");
+      var task = isPlan ? "weekly-schedule" : t.getAttribute("data-eng");
       var label = t.innerHTML;
+      var busy = task === "market-scan" ? "Scanning the market…"
+        : (task === "weekly-schedule" && !isPlan) ? "Planning and writing the week…"
+        : "Working…";
       t.disabled = true;
-      t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + (task === "market-scan" ? "Scanning the market…" : "Working…");
+      t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + busy;
       try {
-        var r = await D().runMarketingTask(task);
+        var r = await D().runMarketingTask(task, isPlan ? { plan: true } : null);
+        if (isPlan) {
+          t.disabled = false; t.innerHTML = label;
+          if (window.CBConsole.ui && window.CBConsole.ui.openDrawer) window.CBConsole.ui.openDrawer(planPreviewHtml(r));
+          else toast((r.slots || []).length + " slots planned across " + (r.distinctAngles || 0) + " distinct angles.");
+          return;
+        }
         var msg = "Done.";
         if (task === "market-scan" && r && r.segments) {
           var total = r.segments.reduce(function (n, s) { return n + (Number(s.scanned) || 0); }, 0);
@@ -172,6 +259,11 @@
           msg = total
             ? "Scanned " + total + " jobs — " + good + " of " + r.segments.length + " segments have enough data to quote."
             : "The scan returned no jobs. The job providers may be rate-limited — try again shortly.";
+        } else if (task === "weekly-schedule" && r) {
+          var fails = (r.failures || []).length;
+          msg = "Week of " + r.week_start + ": " + r.generated + " written across " +
+            (r.distinctAngles || 0) + " distinct angles." +
+            (fails ? " " + fails + " slot" + (fails === 1 ? "" : "s") + " didn't finish — run it again to top up." : "");
         } else if (r && r.piece) { msg = "Draft created — it's in the review queue."; }
         toast(msg);
         load(bodyEl);
@@ -179,7 +271,8 @@
         t.disabled = false;
         t.innerHTML = label;
         var m = (err && err.message) ? err.message : "That task failed.";
-        toast(/credit|quota|too low/i.test(m) ? "The AI provider is out of credit — the scan works, but drafting needs a top-up." : m);
+        if (/market scan/i.test(m)) toast(m); // already a plain-English instruction
+        else toast(/credit|quota|too low/i.test(m) ? "The AI provider is out of credit — scanning still works, but writing needs a top-up." : m);
       }
     });
   }
@@ -509,6 +602,8 @@
       // The engine's own status + its only trigger. Above the copilot, because
       // a draft written without market data is the thing we're trying to stop.
       enginePanel(g.engine) +
+      // The week itself, right under the engine that produces it.
+      schedulePanel(g.engine) +
       copilotPanel(dq) +
       '<section class="cbc-kpis cbc-kpis--4">' + (g.kpis || []).map(U().kpiCard).join("") + '</section>' +
       '<section class="cbc-grid cbc-g-2a">' +

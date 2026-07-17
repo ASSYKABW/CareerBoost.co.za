@@ -405,7 +405,7 @@ Deno.serve(withCors(async (req) => {
   // below shipped, so its tables sat empty and the Console gave no hint why.
   // This reports whether it has anything true to say THIS week.
   let engine: Record<string, unknown> = {
-    weekStart: null, segments: [], scannedTotal: 0, sufficientCount: 0,
+    weekStart: null, segments: [], schedule: [], scannedTotal: 0, sufficientCount: 0,
     pieces: 0, drafts: 0, lastRunAt: null, lastRunStatus: null, lastRunError: null,
   };
   try {
@@ -426,8 +426,29 @@ Deno.serve(withCors(async (req) => {
       .from("agent_runs").select("status,error,created_at")
       .eq("agent", "marketing").order("created_at", { ascending: false }).limit(1).maybeSingle();
 
+    // This week's schedule, read back from the pieces themselves — the plan
+    // has no table of its own; a scheduled piece IS the plan (source_data
+    // carries weekStart/dayIdx/angle, scheduled_at carries the day).
+    const { data: sched } = await svc
+      .from("content_pieces")
+      .select("id, title, type, status, scheduled_at, source_data")
+      .contains("source_data", { weekStart })
+      .order("scheduled_at", { ascending: true })
+      .limit(20);
+    const schedule = ((sched || []) as Array<Record<string, unknown>>).map((r) => {
+      const sd = (r.source_data || {}) as Record<string, unknown>;
+      return {
+        id: String(r.id), title: String(r.title || ""), type: String(r.type || ""),
+        status: String(r.status || ""), date: String(r.scheduled_at || "").slice(0, 10),
+        day: String(sd.day || ""), dayIdx: Number(sd.dayIdx),
+        angle: String(sd.angle || ""), hook: String(sd.hook || ""),
+        segment: String((sd.selection as Record<string, unknown>)?.segment || ""),
+      };
+    });
+
     engine = {
       weekStart,
+      schedule,
       segments: rows.map((r) => ({
         segment: String(r.segment ?? ""), label: String(r.label ?? ""),
         scanned: Number(r.scanned) || 0, sufficient: !!r.sufficient,

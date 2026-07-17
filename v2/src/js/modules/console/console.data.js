@@ -378,9 +378,11 @@
     // exactly this, so it needs no cron secret — which matters, because the
     // scheduler's secrets may not be set and the engine is otherwise
     // unreachable (Content Studio went away with the legacy admin).
-    runMarketingTask: async function (task) {
+    runMarketingTask: async function (task, extra) {
       if (isMock()) return { ok: true, _mock: true, task: task };
-      return call("marketing-cron", { task: task });
+      var body = { task: task };
+      if (extra && typeof extra === "object") Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+      return call("marketing-cron", body);
     },
     loadMoney: async function () {
       var MOCK = {
