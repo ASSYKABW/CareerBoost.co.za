@@ -168,6 +168,56 @@ Deno.serve(withCors(async (req) => {
     await logAdminAction(admin, "social_draft_update", { payload: { id, status }, resultStatus: "success", ...meta });
     return jsonResponse({ ok: true });
   }
+  // ── Scheduled pieces: read one, act on one ────────────────────────
+  //
+  // The weekly schedule listed titles and a "needs_review" status with nothing
+  // behind either: no way to read the piece, approve it, or turn it down. The
+  // writing existed the whole time — it just had no reader, so "review" was a
+  // status the operator had no way to perform. These two actions are that reader.
+  if (action === "piece-get") {
+    const id = String(body.id || "").trim();
+    if (!id) return errorResponse("id required", 400);
+    const { data, error } = await svc
+      .from("content_pieces")
+      .select("id, type, title, body, excerpt, status, slug, channel, scheduled_at, published_at, source_data, created_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) return errorResponse("Load failed: " + error.message, 500);
+    if (!data) return errorResponse("Piece not found.", 404);
+    return jsonResponse({ ok: true, piece: data });
+  }
+  if (action === "piece-update") {
+    const csrf = checkAdminCsrf(req);
+    if (!csrf.ok) return errorResponse(csrf.error, csrf.status);
+    const id = String(body.id || "").trim();
+    if (!id) return errorResponse("id required", 400);
+    const meta = extractRequestMeta(req);
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const status = String(body.status || "").trim();
+    if (status) {
+      // 'scheduled' is what publish-due looks for; 'archived' is our reject.
+      if (!["needs_review", "approved", "scheduled", "archived"].includes(status)) {
+        return errorResponse("status must be needs_review|approved|scheduled|archived", 400);
+      }
+      patch.status = status;
+    }
+    if (body.title !== undefined) {
+      const t = String(body.title || "").trim().slice(0, 240);
+      if (t.length < 3) return errorResponse("title too short.", 400);
+      patch.title = t;
+    }
+    if (body.body !== undefined) {
+      const text = String(body.body || "");
+      if (text.trim().length < 20) return errorResponse("body too short (min 20 chars).", 400);
+      patch.body = text.slice(0, 20000);
+    }
+    if (Object.keys(patch).length === 1) return errorResponse("Nothing to update.", 400);
+    const { error } = await svc.from("content_pieces").update(patch).eq("id", id);
+    if (error) return errorResponse("Update failed: " + error.message, 500);
+    await logAdminAction(admin, "content_piece_update", { payload: { id, status }, resultStatus: "success", ...meta });
+    return jsonResponse({ ok: true });
+  }
+
   const since30 = isoAgo(30);
   const since60 = isoAgo(60);
 

@@ -635,6 +635,19 @@
       if (isMock()) return { ok: true, _mock: true };
       return callMut("console-growth", { action: "draft-delete", id: id });
     },
+    // Scheduled pieces (content_pieces). The weekly schedule could list these
+    // but never open one — the writing was in the database with no reader.
+    loadPiece: async function (id) {
+      if (isMock()) {
+        return { piece: { id: id, type: "blog", title: "Sample piece", status: "needs_review",
+          body: "## Sample\nThis is mock content.", excerpt: "Sample excerpt.", source_data: {} } };
+      }
+      return call("console-growth", { action: "piece-get", id: id });
+    },
+    updatePiece: async function (id, patch) {
+      if (isMock()) return { ok: true, _mock: true };
+      return callMut("console-growth", Object.assign({ action: "piece-update", id: id }, patch || {}));
+    },
     // ── Auto-publish bridge (console-publish) ────────────────────────
     getPublishConfig: async function () {
       if (isMock()) return { ok: true, configured: false, urlMasked: null };

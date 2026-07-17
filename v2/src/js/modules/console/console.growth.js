@@ -235,12 +235,18 @@
     var body = rows.map(function (r) {
       var tone = STATUS_TONE[r.status] || "dim";
       var fmt = FORMAT_LABEL[r.type] || r.type;
-      return '<tr>' +
+      // The whole row opens the piece. It used to be inert: a title and a
+      // "needs review" chip with no way to read what was written or act on it.
+      var open = r.pieceId
+        ? ' class="cbc-piece-row" data-piece-open="' + esc(r.pieceId) + '" data-piece-title="' + esc(r.title || "") + '" tabindex="0" role="button"'
+        : "";
+      return "<tr" + open + ">" +
         '<td><b>' + esc(r.day || "—") + '</b><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(r.date || "") + '</div></td>' +
         '<td><span class="cbc-chip ' + (r.type === "blog" ? "violet" : "cyan") + '">' + esc(fmt) + '</span></td>' +
         '<td><div style="font-weight:600">' + esc(r.title || "(untitled)") + '</div>' +
           '<div style="font-size:11px;color:var(--c-dim)">' + esc(r.segment || "—") + ' · ' + esc(angleLabel(r.angle)) + '</div></td>' +
-        '<td><span class="cbc-chip ' + tone + '">' + esc(String(r.status || "").replace(/_/g, " ")) + '</span></td>' +
+        '<td><span class="cbc-chip ' + tone + '">' + esc(String(r.status || "").replace(/_/g, " ")) + "</span>" +
+          (r.pieceId ? '<span class="cbc-piece-read"><i class="fa-solid fa-book-open"></i> Read</span>' : "") + "</td>" +
         "</tr>";
     }).join("");
 
@@ -251,6 +257,7 @@
     return '<div class="cbc-card cbc-panel" id="cbc-sched">' + head +
       '<table class="cbc-table"><thead><tr><th>Day</th><th>Format</th><th>Piece</th><th>Status</th></tr></thead><tbody>' + body + "</tbody></table>" +
       '<div style="margin-top:12px;font-size:11.5px;color:var(--c-dim);line-height:1.6">' +
+        '<b style="color:var(--c-muted)">Click any row to read the piece</b> and approve or reject it. ' +
         distinct + ' distinct ' + (distinct === 1 ? "angle" : "angles") + ' across ' + rows.length + ' ' +
         (rows.length === 1 ? "slot" : "slots") + ' — the planner refuses to reuse an angle inside a week, ' +
         'so a short week means the scan found fewer stories, not that something broke.' +
@@ -258,6 +265,128 @@
       '<div class="cbc-qa" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="cbc-btn cbc-sm" data-eng="weekly-schedule">' +
         '<i class="fa-solid fa-rotate"></i> Fill any empty days</button>' + extras + "</div>" +
       "</div>";
+  }
+
+  // ── The reader ───────────────────────────────────────────────────────
+  // The schedule listed titles and a "needs_review" chip with nothing behind
+  // either — the writing was in the database the whole time and the Console had
+  // no way to open it. "Review" was a status the operator could not perform.
+
+  // Enough markdown for what the writer emits (## headings, **bold**, lists).
+  // Not a parser: a whitelist applied AFTER escaping, so the piece can never
+  // inject markup no matter what the model wrote.
+  function renderBody(text) {
+    var out = esc(String(text || ""));
+    out = out
+      .replace(/^###\s+(.+)$/gm, '<h4 style="margin:16px 0 6px;font-size:13.5px;color:var(--c-text)">$1</h4>')
+      .replace(/^##\s+(.+)$/gm, '<h3 style="margin:18px 0 7px;font-size:15px;color:var(--c-text)">$1</h3>')
+      .replace(/^#\s+(.+)$/gm, '<h3 style="margin:18px 0 7px;font-size:16px;color:var(--c-text)">$1</h3>')
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/^\s*[-*]\s+(.+)$/gm, '<div style="padding-left:14px;position:relative"><span style="position:absolute;left:0;color:var(--c-cyan)">•</span>$1</div>')
+      .replace(/^\s*(\d+)\.\s+(.+)$/gm, '<div style="padding-left:18px;position:relative"><span style="position:absolute;left:0;color:var(--c-cyan);font-variant-numeric:tabular-nums">$1.</span>$2</div>')
+      .replace(/(#[A-Za-z0-9_]+)/g, '<span style="color:var(--c-cyan)">$1</span>');
+    return out.split(/\n{2,}/).map(function (p) {
+      return '<p style="margin:0 0 11px;line-height:1.75">' + p.replace(/\n/g, "<br/>") + "</p>";
+    }).join("");
+  }
+
+  function pieceSkeleton(title) {
+    return '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#22e3ff,#6b7dff)"><i class="fa-solid fa-file-lines"></i></div>' +
+        '<div><div class="cbc-nm">' + esc(title || "Loading…") + '</div><div class="cbc-em">opening the piece…</div></div></div>' +
+      '<div class="cbc-skel" style="height:300px"></div>';
+  }
+
+  function pieceHtml(p) {
+    p = p || {};
+    var sd = p.source_data || {};
+    var tone = STATUS_TONE[p.status] || "dim";
+    var fmt = FORMAT_LABEL[p.type] || p.type;
+    var words = String(p.body || "").trim().split(/\s+/).filter(Boolean).length;
+
+    var meta = [];
+    if (sd.day) meta.push(esc(sd.day) + " " + esc(String(p.scheduled_at || "").slice(0, 10)));
+    if (sd.angle) meta.push(esc(angleLabel(sd.angle)));
+    if (sd.selection && sd.selection.segment) meta.push(esc(sd.selection.segment));
+    meta.push(words + " words");
+
+    // The angle it was built on — the reason this piece exists rather than
+    // another one. Worth seeing while judging it.
+    var why = sd.hook
+      ? '<div class="cbc-act-panel" style="margin:0 0 14px"><div style="font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--c-dim);margin-bottom:4px">Built on</div>' +
+        '<div style="font-size:12.5px;color:var(--c-text);line-height:1.6">' + esc(sd.hook) + "</div></div>"
+      : "";
+
+    var canApprove = p.status === "needs_review" || p.status === "archived";
+    var actions = '<div class="cbc-qa" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">' +
+      (canApprove
+        ? '<button class="cbc-btn cbc-sm cbc-primary" data-piece-act="approved" data-piece-id="' + esc(p.id) + '"><i class="fa-solid fa-check"></i> Approve</button>'
+        : '<button class="cbc-btn cbc-sm" data-piece-act="needs_review" data-piece-id="' + esc(p.id) + '"><i class="fa-solid fa-rotate-left"></i> Back to review</button>') +
+      '<button class="cbc-btn cbc-sm" data-piece-copy><i class="fa-solid fa-copy"></i> Copy text</button>' +
+      (p.status !== "archived"
+        ? '<button class="cbc-btn cbc-sm" data-piece-act="archived" data-piece-id="' + esc(p.id) + '"><i class="fa-solid fa-xmark"></i> Reject</button>'
+        : "") +
+      "</div>";
+
+    return '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+      '<div class="cbc-dw-hd"><div class="cbc-dw-av" style="background:linear-gradient(135deg,#22e3ff,#6b7dff)"><i class="fa-solid fa-file-lines"></i></div>' +
+        '<div style="min-width:0"><div class="cbc-nm">' + esc(p.title || "(untitled)") + '</div>' +
+        '<div class="cbc-em">' + meta.join(" · ") + "</div></div></div>" +
+      '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">' +
+        '<span class="cbc-chip ' + (p.type === "blog" ? "violet" : "cyan") + '">' + esc(fmt) + "</span>" +
+        '<span class="cbc-chip ' + tone + '">' + esc(String(p.status || "").replace(/_/g, " ")) + "</span>" +
+      "</div>" +
+      why +
+      '<div id="cbc-piece-body" style="font-size:13.5px;color:var(--c-muted);max-height:46vh;overflow:auto;padding-right:6px;' +
+        'border-left:2px solid var(--c-border);padding-left:14px">' + renderBody(p.body) + "</div>" +
+      actions +
+      '<div style="margin-top:10px;font-size:11.5px;color:var(--c-dim);line-height:1.6">' +
+        'Approving marks it ready. <b>Publish due</b> in step 2 then publishes anything approved whose day has arrived.' +
+      "</div>";
+  }
+
+  var openPieceId = null, openPieceText = "";
+  async function openPiece(bodyEl, id, title) {
+    if (!window.CBConsole.ui || !window.CBConsole.ui.openDrawer) return;
+    window.CBConsole.ui.openDrawer(pieceSkeleton(title));
+    try {
+      var r = await D().loadPiece(id);
+      var p = (r && r.piece) || r;
+      openPieceId = id;
+      openPieceText = String(p.body || "");
+      window.CBConsole.ui.openDrawer(pieceHtml(p));
+    } catch (e) {
+      window.CBConsole.ui.openDrawer(
+        '<button class="cbc-dw-x" data-drawer-close><i class="fa-solid fa-xmark"></i></button>' +
+        '<div class="cbc-dw-hd"><div><div class="cbc-nm">Could not open the piece</div>' +
+        '<div class="cbc-em">' + esc((e && e.message) || "Unknown error") + "</div></div></div>");
+    }
+  }
+
+  async function pieceAction(bodyEl, t) {
+    if (t.hasAttribute("data-piece-copy")) {
+      try {
+        await navigator.clipboard.writeText(openPieceText);
+        toast("Copied — paste it wherever you're posting.");
+      } catch (e) { toast("Copy failed — select the text and copy manually."); }
+      return;
+    }
+    var id = t.getAttribute("data-piece-id") || openPieceId;
+    var status = t.getAttribute("data-piece-act");
+    var label = t.innerHTML;
+    t.disabled = true;
+    t.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
+    try {
+      await D().updatePiece(id, { status: status });
+      toast(status === "approved" ? "Approved — it'll go out with Publish due."
+        : status === "archived" ? "Rejected — it stays out of the schedule."
+        : "Back in the review queue.");
+      if (window.CBConsole.ui.closeDrawer) window.CBConsole.ui.closeDrawer();
+      load(bodyEl);
+    } catch (e) {
+      t.disabled = false; t.innerHTML = label;
+      toast((e && e.message) || "That didn't save.");
+    }
   }
 
   // Preview: plans the week without writing anything. Instant and free — it
@@ -775,9 +904,32 @@
     bodyEl.addEventListener("click", function (ev) {
       var tabBtn = ev.target.closest ? ev.target.closest("[data-gtab]") : null;
       if (tabBtn) { switchTab(bodyEl, tabBtn.getAttribute("data-gtab")); return; }
+      var row = ev.target.closest ? ev.target.closest("[data-piece-open]") : null;
+      if (row) { openPiece(bodyEl, row.getAttribute("data-piece-open"), row.getAttribute("data-piece-title")); return; }
       var engBtn = ev.target.closest ? ev.target.closest("[data-eng],[data-eng-plan]") : null;
       if (engBtn) engineAction(bodyEl, engBtn);
     });
+    // A row you can click should be a row you can reach with a keyboard.
+    bodyEl.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      var row = ev.target.closest ? ev.target.closest("[data-piece-open]") : null;
+      if (!row) return;
+      ev.preventDefault();
+      openPiece(bodyEl, row.getAttribute("data-piece-open"), row.getAttribute("data-piece-title"));
+    });
+
+    // The drawer lives OUTSIDE this section (#cbc-drawer, a sibling of the
+    // whole console body), so a listener on bodyEl would never see Approve or
+    // Reject — they'd render perfectly and do nothing, which is the exact
+    // failure this reader exists to fix. Bind it where it actually is, once.
+    var drawer = document.getElementById("cbc-drawer");
+    if (drawer && !drawer.__cbPieceBound) {
+      drawer.__cbPieceBound = true;
+      drawer.addEventListener("click", function (ev) {
+        var t = ev.target.closest ? ev.target.closest("[data-piece-act],[data-piece-copy]") : null;
+        if (t) pieceAction(bodyEl, t);
+      });
+    }
   }
 
   async function load(bodyEl) {

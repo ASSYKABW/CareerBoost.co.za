@@ -478,3 +478,17 @@
 /* A two-up fuel strip: the market panel reports only what the scan knows now,
    so it no longer needs four tiles (two of them belonged to another system). */
 .cbc-tr-kpis--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Schedule rows open the piece. Before this the row was inert: a title and a
+   "needs review" chip with no way to read what was written. */
+.cbc-piece-row { cursor: pointer; transition: background var(--dur-fast) var(--ease-out); }
+.cbc-piece-row:hover td { background: rgba(34, 227, 255, .05); }
+.cbc-piece-row:focus-visible { outline: 2px solid var(--c-cyan); outline-offset: -2px; }
+.cbc-piece-read {
+  margin-left: 9px; font-size: 11px; color: var(--c-dim); white-space: nowrap;
+  opacity: 0; transition: opacity var(--dur-fast) var(--ease-out);
+}
+.cbc-piece-row:hover .cbc-piece-read,
+.cbc-piece-row:focus-visible .cbc-piece-read { opacity: 1; color: var(--c-cyan); }
+/* Touch/keyboard users get no hover, so never hide the affordance from them. */
+@media (hover: none) { .cbc-piece-read { opacity: 1; } }
