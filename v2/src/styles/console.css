@@ -474,3 +474,7 @@
 @media (prefers-reduced-motion: reduce) {
   .cbc-tr-bar { transition: none; }
 }
+
+/* A two-up fuel strip: the market panel reports only what the scan knows now,
+   so it no longer needs four tiles (two of them belonged to another system). */
+.cbc-tr-kpis--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

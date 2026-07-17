@@ -152,12 +152,13 @@
       "</div></div>";
   }
 
-  // ── Content engine ──────────────────────────────────────────────────
-  // The engine is fully built (market-scan → fact-led drafts) but had no
-  // trigger anywhere: Content Studio was deleted with the legacy admin and the
-  // GitHub cron no-ops until its secrets are set. So it produced nothing, and
-  // nothing in the Console explained why. This panel is the trigger.
-  function enginePanel(e) {
+  // ── Step 1: Market data ─────────────────────────────────────────────
+  // The fuel for everything else on this tab. Deliberately shows only what the
+  // SCAN knows — it used to also carry a "Social drafts" tile and the agent's
+  // last error, both of which belong to the on-request writer further down.
+  // Putting one system's numbers inside another's panel is exactly what made
+  // this section unreadable.
+  function marketPanel(e) {
     e = e || {};
     var segs = e.segments || [];
     var scanned = Number(e.scannedTotal) || 0;
@@ -178,35 +179,19 @@
         'No scan has run for the week of ' + esc(String(e.weekStart || "—")) + '. ' +
         'Until one does, drafts fall back to generic angles instead of this week\'s real numbers.</div>';
 
-    // A failed agent run is the single most useful thing to surface here: the
-    // agent has no provider fallback, so a dry key stops it dead.
-    var runNote = "";
-    if (e.lastRunStatus === "failed" && e.lastRunError) {
-      var credit = /credit balance|too low|quota/i.test(e.lastRunError);
-      runNote = '<div style="margin-top:12px;font-size:11.5px;color:var(--c-amber);line-height:1.6">' +
-        '<i class="fa-solid fa-triangle-exclamation"></i> Last agent run failed — ' +
-        esc(credit ? "the AI provider is out of credit." : e.lastRunError) + "</div>";
-    }
-
     return '<div class="cbc-card cbc-panel" id="cbc-engine">' +
-      '<div class="cbc-ph"><div><div class="cbc-eb">Content engine</div><h2>Market data &amp; drafts</h2></div>' +
+      '<div class="cbc-ph"><div><div class="cbc-eb">Step 1 · Fuel</div><h2>Market data</h2></div>' +
         '<span class="cbc-chip ' + tone + '">' + esc(state) + "</span></div>" +
-      '<div class="cbc-tr-kpis">' +
-        '<div class="cbc-tr-k"><span>Jobs scanned</span><b>' + scanned + "</b></div>" +
-        '<div class="cbc-tr-k"><span>Segments ready</span><b>' + ok + " / " + segs.length + "</b></div>" +
-        '<div class="cbc-tr-k"><span>Content pieces</span><b>' + (Number(e.pieces) || 0) + "</b></div>" +
-        '<div class="cbc-tr-k"><span>Social drafts</span><b>' + (Number(e.drafts) || 0) + "</b></div>" +
+      '<div class="cbc-tr-kpis cbc-tr-kpis--2">' +
+        '<div class="cbc-tr-k"><span>Jobs scanned this week</span><b>' + scanned + "</b></div>" +
+        '<div class="cbc-tr-k"><span>Segments quotable</span><b>' + ok + " / " + segs.length + "</b></div>" +
       "</div>" +
-      segLine + runNote +
-      '<div class="cbc-qa" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">' +
-        '<button class="cbc-btn cbc-sm" data-eng="market-scan"><i class="fa-solid fa-radar"></i> Refresh market data</button>' +
-        '<button class="cbc-btn cbc-sm" data-eng="draft"><i class="fa-solid fa-pen-nib"></i> Generate draft</button>' +
-        '<button class="cbc-btn cbc-sm" data-eng="newsletter-draft"><i class="fa-solid fa-envelope"></i> Weekly newsletter</button>' +
-        '<button class="cbc-btn cbc-sm" data-eng="publish-due"><i class="fa-solid fa-paper-plane"></i> Publish due</button>' +
-      "</div>" +
+      segLine +
+      '<div class="cbc-qa" style="margin-top:16px"><button class="cbc-btn cbc-sm" data-eng="market-scan">' +
+        '<i class="fa-solid fa-radar"></i> Refresh market data</button></div>' +
       '<div style="margin-top:10px;font-size:11.5px;color:var(--c-dim);line-height:1.6">' +
-        'Scanning reads the live SA job market and stores one snapshot per week — no AI, nothing sent to users. ' +
-        'Drafts always land as <b>needs_review</b>.' +
+        'Reads the live SA job market and stores one snapshot per week. No AI, no cost, nothing sent to anyone. ' +
+        'Everything below is written from these numbers — <b>“quotable”</b> means the sample is big enough to publish a percentage from.' +
       "</div></div>";
   }
 
@@ -224,9 +209,14 @@
   function schedulePanel(e) {
     e = e || {};
     var rows = (e.schedule || []).slice().sort(function (a, b) { return (a.dayIdx || 0) - (b.dayIdx || 0); });
-    var head = '<div class="cbc-ph"><div><div class="cbc-eb">This week</div><h2>Content schedule</h2></div>' +
+    var head = '<div class="cbc-ph"><div><div class="cbc-eb">Step 2 · Planned</div><h2>This week&rsquo;s schedule</h2></div>' +
       (rows.length ? '<span class="cbc-chip cyan">' + rows.length + ' planned</span>' : '<span class="cbc-chip dim">not produced yet</span>') +
       "</div>";
+    // Newsletter and publish live here, with the week they belong to — they sat
+    // in the market panel before, which is only the fuel.
+    var extras = '<button class="cbc-btn cbc-sm" data-eng="newsletter-draft"><i class="fa-solid fa-envelope"></i> Weekly newsletter</button>' +
+      '<button class="cbc-btn cbc-sm" data-eng="draft"><i class="fa-solid fa-pen-nib"></i> One extra piece</button>' +
+      '<button class="cbc-btn cbc-sm" data-eng="publish-due"><i class="fa-solid fa-paper-plane"></i> Publish due</button>';
 
     if (!rows.length) {
       return '<div class="cbc-card cbc-panel" id="cbc-sched">' + head +
@@ -235,9 +225,10 @@
           '<b>Produce this week\'s schedule</b> plans five slots — two long-form, two LinkedIn, one X — each built on a ' +
           'different finding from the market scan, then writes them. Every draft lands as <b>needs_review</b>; nothing publishes itself.' +
         "</div>" +
-        '<div class="cbc-qa" style="margin-top:14px"><button class="cbc-btn cbc-sm cbc-primary" data-eng="weekly-schedule">' +
+        '<div class="cbc-qa" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="cbc-btn cbc-sm cbc-primary" data-eng="weekly-schedule">' +
           '<i class="fa-solid fa-calendar-week"></i> Produce this week\'s schedule</button>' +
-          '<button class="cbc-btn cbc-sm" data-eng-plan="1"><i class="fa-solid fa-eye"></i> Preview the plan first</button></div>' +
+          '<button class="cbc-btn cbc-sm" data-eng-plan="1"><i class="fa-solid fa-eye"></i> Preview the plan first</button>' +
+          extras + "</div>" +
         "</div>";
     }
 
@@ -264,8 +255,8 @@
         (rows.length === 1 ? "slot" : "slots") + ' — the planner refuses to reuse an angle inside a week, ' +
         'so a short week means the scan found fewer stories, not that something broke.' +
       "</div>" +
-      '<div class="cbc-qa" style="margin-top:14px"><button class="cbc-btn cbc-sm" data-eng="weekly-schedule">' +
-        '<i class="fa-solid fa-rotate"></i> Fill any empty days</button></div>' +
+      '<div class="cbc-qa" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="cbc-btn cbc-sm" data-eng="weekly-schedule">' +
+        '<i class="fa-solid fa-rotate"></i> Fill any empty days</button>' + extras + "</div>" +
       "</div>";
   }
 
@@ -378,8 +369,18 @@
     return '<table class="cbc-table"><thead><tr><th>Experiment</th><th>Status</th><th style="text-align:right">Variants</th><th style="text-align:right">Winner</th></tr></thead><tbody>' + body + '</tbody></table>';
   }
 
-  function contentTable(content) {
-    if (!content || !content.length) return '<div style="color:var(--c-muted);font-size:12.5px">No content pieces tracked yet.</div>';
+  function contentTable(content, pieces) {
+    // "No content pieces tracked yet" while the engine reported 11 pieces read
+    // as a contradiction. Both were true: this table measures PUBLISHED
+    // performance, and everything written so far is still awaiting review.
+    if (!content || !content.length) {
+      var waiting = Number(pieces) || 0;
+      return '<div style="color:var(--c-muted);font-size:12.5px;line-height:1.7">' +
+        "Nothing published yet, so there's no performance to measure." +
+        (waiting ? " <b>" + waiting + "</b> " + (waiting === 1 ? "piece is" : "pieces are") +
+          " written and waiting on review above — approve one, then <b>Publish due</b>, and its views, clicks and signups appear here." : "") +
+        "</div>";
+    }
     var body = content.map(function (c) {
       return '<tr><td><div style="font-weight:600">' + esc(c.title) + '</div><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(c.slug) + '</div></td>' +
         '<td class="n">' + c.views + '</td><td class="n">' + c.clicks + '</td><td class="n">' + c.signups + '</td></tr>';
@@ -499,31 +500,57 @@
         '<button class="cbc-btn cbc-sm" data-mk-cancel>Cancel</button></div>';
   }
 
-  function copilotPanel(dq) {
+  function copilotPanel(dq, engine) {
     var drafts = (dq && dq.drafts) || [];
     var list = viewMode === "calendar"
       ? calendarHtml(drafts)
       : (drafts.length
         ? drafts.map(draftCard).join("")
-        : '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">No proposals yet — hit <b>Generate drafts</b> and the Copilot will study your growth data and propose platform-native content.</div>');
+        : '<div style="color:var(--c-muted);font-size:12.5px;padding:6px 0">Nothing asked for yet. Type what you want covered, or pick a starter below — the writer reads this week&rsquo;s market scan first, then drafts for the platform you need.</div>');
     return '<section class="cbc-card cbc-panel cbc-insights" id="cbc-mk">' +
-      '<div class="cbc-ph"><div><div class="cbc-eb">Marketing Copilot</div><h2>Content proposals</h2></div>' +
+      '<div class="cbc-ph"><div><div class="cbc-eb">Step 3 · On request</div><h2>Ask for a specific post</h2></div>' +
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<button class="cbc-btn cbc-sm" data-mk-view="' + (viewMode === "list" ? "calendar" : "list") + '">' +
             (viewMode === "list" ? '<i class="fa-solid fa-calendar"></i> Calendar' : '<i class="fa-solid fa-list"></i> List') + '</button>' +
-          '<button class="cbc-btn cbc-sm" data-mk-pubcfg><i class="fa-solid fa-paper-plane"></i> Publishing</button>' +
-          '<span class="cbc-chip violet"><i class="fa-solid fa-wand-magic-sparkles"></i> agent · copy + publish</span></div></div>' +
+          '<button class="cbc-btn cbc-sm" data-mk-pubcfg><i class="fa-solid fa-paper-plane"></i> Publishing</button></div></div>' +
+      // Step 2 covers the week automatically and writes about the market. This
+      // is for the posts only you know you need — about CareerBoost itself, on
+      // platforms the schedule doesn't touch (TikTok, Facebook, Instagram).
+      '<div style="font-size:11.5px;color:var(--c-dim);line-height:1.6;margin-bottom:12px">' +
+        'Step&nbsp;2 writes about <b>the job market</b>, on a fixed weekly rhythm. This writes about <b>CareerBoost</b>, whenever you ask — ' +
+        'and reaches TikTok, Facebook and Instagram, which the schedule doesn&rsquo;t. It still quotes only the Step&nbsp;1 numbers; ' +
+        'invented statistics are rejected before they reach the queue.' +
+      "</div>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
-        '<input id="cbc-mk-brief" class="cbc-inp" style="flex:1;min-width:220px" placeholder="Optional brief, e.g. focus on voice mock interviews this week" />' +
-        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-gen style="height:34px"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate drafts</button></div>' +
+        '<input id="cbc-mk-brief" class="cbc-inp" style="flex:1;min-width:220px" placeholder="What should this post be about? e.g. voice mock interviews" />' +
+        '<button class="cbc-btn cbc-primary cbc-sm" data-mk-gen style="height:34px"><i class="fa-solid fa-wand-magic-sparkles"></i> Write it</button></div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
         '<button class="cbc-btn cbc-sm" data-mk-preset="Campaign week on voice mock interviews — the Pro plan hero feature. Angle: interview nerves are beatable with practice.">🎤 Voice interviews</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-preset="CV / resume tailoring tips for SA job seekers. Angle: generic CVs get silence; tailored ones get replies.">📄 CV tips</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-preset="Referral push: invite a friend who is job hunting. Warm, community angle.">🤝 Referrals</button>' +
         '<button class="cbc-btn cbc-sm" data-mk-preset="Free plan awareness: you can start the whole workflow free, no card. Angle: lower the barrier.">🆓 Free plan</button></div>' +
       '<div id="cbc-mk-pubcfg"></div>' +
-      '<div id="cbc-mk-result">' + (lastRun ? runSummaryHtml(lastRun) : "") + '</div>' +
+      '<div id="cbc-mk-result">' + (lastRun ? runSummaryHtml(lastRun) : agentHealthNote(engine)) + '</div>' +
       '<div id="cbc-mk-list">' + list + '</div></section>';
+  }
+
+  // The writer's own health, shown where the writer is. This used to sit in the
+  // market panel — an error from one system displayed inside another's card,
+  // which is half of why this tab was unreadable.
+  //
+  // Only within a day, because the note means "the thing you just tried
+  // failed". Older than that it is history, not status — and a stale alarm is
+  // how a board teaches you to ignore it. agent_runs keeps the full record.
+  function agentHealthNote(engine) {
+    var e = engine || {};
+    if (e.lastRunStatus !== "failed" || !e.lastRunError) return "";
+    var when = Date.parse(e.lastRunAt || "");
+    if (!when || Date.now() - when > 86400000) return "";
+    var credit = /credit balance|too low|quota|rate limit/i.test(e.lastRunError);
+    return '<div class="cbc-act-panel" style="margin-bottom:12px;font-size:12px;color:var(--c-amber);line-height:1.6">' +
+      '<i class="fa-solid fa-triangle-exclamation"></i> The last request failed — ' +
+      esc(credit ? "the AI provider was out of credit or rate-limited. It falls back automatically, so try again." : e.lastRunError) +
+      "</div>";
   }
   // Auto-publish setup (Phase D): a webhook the operator points at
   // Zapier/Make/Buffer; Publish POSTs approved drafts there server-side.
@@ -659,14 +686,24 @@
   }
 
   function contentTab(g, dq) {
-    // Production order: can we say something true → what are we saying this
-    // week → what needs a human → did any of it land.
-    return enginePanel(g.engine) +
+    // One pipeline, read top to bottom: scan the market → publish a planned
+    // week from it → ask for extras → see what landed. There used to be two
+    // rival systems here ("Content engine" and "Marketing Copilot") that both
+    // wrote LinkedIn posts and never said how they differed. They are now
+    // steps of one flow: step 2 is the market on a rhythm, step 3 is the
+    // product on demand, and both are fed by step 1.
+    return '<div class="cbc-card cbc-panel" style="padding:16px 18px;margin-bottom:14px">' +
+        '<div style="font-size:12.5px;color:var(--c-muted);line-height:1.7">' +
+          '<b style="color:var(--c-text)">One scan feeds everything below.</b> ' +
+          'Step&nbsp;1 reads the live job market. Step&nbsp;2 turns it into a planned week, automatically. ' +
+          'Step&nbsp;3 is for the posts only you know you need. Nothing here publishes itself — every piece waits for you.' +
+        "</div></div>" +
+      marketPanel(g.engine) +
       schedulePanel(g.engine) +
-      copilotPanel(dq) +
+      copilotPanel(dq, g.engine) +
       '<section class="cbc-grid">' +
-        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Performance</div><h2>Content scorecard</h2></div></div>' +
-          contentTable(g.content) + "</div>" +
+        '<div class="cbc-card cbc-panel"><div class="cbc-ph"><div><div class="cbc-eb">Step 4 · Did it land</div><h2>Published performance</h2></div></div>' +
+          contentTable(g.content, g.engine && g.engine.pieces) + "</div>" +
       "</section>";
   }
 

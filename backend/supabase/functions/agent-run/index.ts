@@ -19,6 +19,7 @@ import { getAuthedAdmin, getServiceClient } from "../_shared/auth.ts";
 import { checkAdminCsrf } from "../_shared/admin-csrf.ts";
 import { enforceAdminRate } from "../_shared/admin-rate-limit.ts";
 import { runAgent, type AgentTool } from "../_shared/agent.ts";
+import { allowedFactsFrom, offendingClaims, factMenu } from "../_shared/fact-guard.ts";
 import { getRuntimeConfig, type AiRouteOverride } from "../_shared/runtime-config.ts";
 import { SKILL_ROUTING } from "../_shared/routing.ts";
 
@@ -201,9 +202,20 @@ PRODUCT BRAIN
 - Brand voice: calm, confident, professional, warm. "Your job search, in one calm place."
   Never hypey, never fake-urgency, no invented testimonials or fabricated stats.
 
+YOUR EVIDENCE — READ THIS BEFORE YOU WRITE A WORD
+- get_market_facts is your evidence base: a live scan of the real SA job market. It is the
+  only place you have numbers worth publishing. Lead with it.
+- get_growth reports CareerBoost's OWN usage, and CareerBoost is pre-launch: a handful of
+  users, almost no applications. Those numbers are NOT social proof and must never be
+  published, implied, or dressed up ("join thousands…", "our users see…"). Read it only to
+  avoid repeating yourself — never to make a claim.
+- If a number is not in get_market_facts with a sample behind it, you do not have it. Write
+  the piece without it. An honest post with one real number beats five invented ones.
+
 YOUR JOB
-1. FIRST call get_growth, get_content_performance and get_recent_drafts — ground every
-   proposal in what's actually working and avoid repeating recent drafts.
+1. FIRST call get_market_facts, then get_recent_drafts (and get_content_performance if
+   anything is published) — ground every proposal in the market scan and avoid repeating
+   recent drafts.
 2. Propose 2–4 pieces of content and SAVE EACH ONE with save_draft. Platform-native:
    - linkedin: strong first line (the hook), short paragraphs with line breaks, one clear
      insight or story, soft CTA, 3–5 hashtags (e.g. #JobSearchZA #CVTips #CareerBoost).
@@ -217,13 +229,60 @@ YOUR JOB
      rationale.
 3. Every draft's link MUST be a UTM-tagged URL:
    https://www.careerboost.co.za/?utm_source=<platform>&utm_medium=social&utm_campaign=<short-kebab-slug>
-4. In rationale, say WHY this piece, grounded in the data you read.
-5. Finish with a 2–3 sentence summary of what you created and the data signal behind it.
+4. In rationale, say WHY this piece and name the market fact it stands on — including its
+   sample. If you had no market facts, say that plainly in the rationale.
+5. Finish with a 2–3 sentence summary of what you created and the market signal behind it.
 Drafts are proposals only — the operator reviews, approves and posts them manually.`;
 
 function buildMarketingTools(adminId: string): AgentTool[] {
   const svc = getServiceClient();
   return [
+    {
+      // The agent's evidence base. Before this existed it grounded proposals in
+      // get_growth — CareerBoost's own analytics — which describe a pre-launch
+      // product with a handful of users. Asked to write from "what's working",
+      // it had nothing true to work from, so it reached for filler. The weekly
+      // market scan gives it real numbers about the market it sells into.
+      name: "get_market_facts",
+      description:
+        "This week's live scan of the South African job market, per role segment: sample size, " +
+        "what share of postings advertise a salary, remote share, top skills, city split, and " +
+        "week-over-week shifts. This is the strongest evidence available — prefer it over the " +
+        "product's own analytics for anything you claim publicly.",
+      inputSchema: { type: "object", properties: {} },
+      run: async () => {
+        try {
+          const monday = new Date();
+          monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+          const weekStart = monday.toISOString().slice(0, 10);
+          const { data } = await svc
+            .from("market_snapshots")
+            .select("segment, label, scanned, sufficient, facts")
+            .eq("week_start", weekStart);
+          const rows = (data || []) as Array<Record<string, unknown>>;
+          if (!rows.length) {
+            return {
+              note: "No market scan has run for the week of " + weekStart +
+                ". You have no market evidence. Say so in your rationale rather than inventing numbers.",
+            };
+          }
+          return {
+            week_start: weekStart,
+            segments: rows.map((r) => ({
+              segment: r.segment,
+              label: r.label,
+              scanned: r.scanned,
+              quotable: r.sufficient,
+              facts: r.facts,
+            })),
+            rule: "Cite a number ONLY with its sample (e.g. '10.3% of 68 postings'). " +
+              "Segments where quotable=false have too small a sample — describe them qualitatively, never as a percentage.",
+          };
+        } catch (e) {
+          return { note: "market snapshot unavailable: " + (e as Error).message };
+        }
+      },
+    },
     growthTool(),
     {
       name: "get_content_performance",
@@ -298,6 +357,36 @@ function buildMarketingTools(adminId: string): AgentTool[] {
         if (link && !/^https:\/\/(www\.)?careerboost\.co\.za\//.test(link)) {
           return { error: "link must point at careerboost.co.za" };
         }
+
+        // Fact guard. Observed in testing: the model wrote "30% of job postings
+        // ... sample of 1,000 job postings" when the real scan was 238 and had
+        // never said 30% — and it called save_draft BEFORE reading the facts.
+        // Instructions don't bind; this does. Reject and hand back the real
+        // numbers, so the retry is grounded instead of merely apologetic.
+        const claimText = body + " " + String(input.hook || "") + " " + String(input.rationale || "");
+        try {
+          const monday = new Date();
+          monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+          const weekStart = monday.toISOString().slice(0, 10);
+          const { data: snaps } = await svc
+            .from("market_snapshots").select("segment,label,scanned,facts").eq("week_start", weekStart);
+          const rows = (snaps || []) as Array<Record<string, unknown>>;
+          if (rows.length) {
+            const bad = offendingClaims(claimText, allowedFactsFrom(rows));
+            if (bad.length) {
+              return {
+                error: "REJECTED — these figures are not in this week's market scan: " + bad.join(", ") +
+                  ". Do not invent statistics. The real numbers available are: " + factMenu(rows) +
+                  ". Rewrite using ONLY those (always with their sample), or write the piece with no numbers at all, then call save_draft again.",
+              };
+            }
+          } else if (/\d\s*%|sample of\s+\d/i.test(claimText)) {
+            return {
+              error: "REJECTED — you cited a statistic but no market scan has run this week, so there is no evidence for it. " +
+                "Rewrite the piece with no numbers and call save_draft again.",
+            };
+          }
+        } catch (_e) { /* guard must never block a legitimate save on infra error */ }
         const { data, error } = await svc.from("social_drafts").insert({
           platform, body,
           hook: String(input.hook || "").slice(0, 200) || null,
