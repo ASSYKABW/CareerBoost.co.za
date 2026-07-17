@@ -40,7 +40,7 @@
         className: "candidate-intel-card--settings settings-section",
         title: "Candidate intelligence",
         badge: "Shared profile model",
-        description: "This is the reusable candidate brain behind search ranking, probability scoring, resume tailoring, cover letters, and interview prep.",
+        description: "Readiness (out of 100) is how much the AI has to work with — your resume, target roles, and saved evidence — not just account setup, so it can sit well below profile completeness. This same profile powers search ranking, resume tailoring, cover letters, and interview prep.",
         intel: intel,
         skills: topSkills,
         skillLimit: 8,

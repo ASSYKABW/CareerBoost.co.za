@@ -112,7 +112,7 @@
         panelHead(o.title || "Candidate intelligence", o.badge || "Shared profile model", o.badgeTone || "cyan") +
         '<div class="candidate-intel-body">' +
           '<div class="candidate-intel-score" style="--score:' + st(String(score)) + '">' +
-            '<strong>' + st(String(score)) + '</strong><span>readiness</span>' +
+            '<strong>' + st(String(score)) + '</strong><span>/ 100 ready</span>' +
           '</div>' +
           '<div class="candidate-intel-copy">' +
             '<p class="page-subtitle">' + st(o.description || "CareerBoost builds one reusable profile from your resume, target roles, saved evidence, and pipeline outcomes.") + '</p>' +

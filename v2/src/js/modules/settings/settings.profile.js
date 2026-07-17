@@ -104,8 +104,12 @@
       "</div>" +
       "</div>" +
       '<div class="settings-identity-completion">' +
-      '<p class="ai-meta">Profile completeness</p>' +
+      '<p class="ai-meta">Profile setup</p>' +
       '<strong>' + st(String(completeness)) + '%</strong>' +
+      // Names what this number measures, so it stops reading as a rival to the
+      // AI-readiness score in the Candidate intelligence card. They differ on
+      // purpose: this is account basics; readiness grades resume/targets/evidence.
+      '<p class="settings-completion-note">Account basics filled in — separate from your <strong>AI readiness</strong> score, which grades your resume, target roles &amp; evidence.</p>' +
       tasksHtml +
       "</div>" +
       "</section>"

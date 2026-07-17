@@ -4419,6 +4419,20 @@ a.settings-status-card:hover {
   line-height: 1;
 }
 
+/* One-line clarifier under the setup %, so it doesn't read as a rival to the
+   AI-readiness score. Its inline <strong> must NOT inherit the 32px above. */
+.settings-completion-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  max-width: 240px;
+}
+.settings-completion-note strong {
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
 .settings-kv-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
