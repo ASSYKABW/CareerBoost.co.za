@@ -237,8 +237,15 @@
       var fmt = FORMAT_LABEL[r.type] || r.type;
       // The whole row opens the piece. It used to be inert: a title and a
       // "needs review" chip with no way to read what was written or act on it.
-      var open = r.pieceId
-        ? ' class="cbc-piece-row" data-piece-open="' + esc(r.pieceId) + '" data-piece-title="' + esc(r.title || "") + '" tabindex="0" role="button"'
+      //
+      // Two producers, two field names, and they must both work: console-growth
+      // sends `id` (it maps content_pieces rows), while marketing-cron's
+      // weekly-schedule response calls the same thing `pieceId`. Reading only
+      // `pieceId` is what shipped the reader dead — every row silently lost its
+      // handle and nothing was clickable.
+      var pid = r.pieceId || r.id || "";
+      var open = pid
+        ? ' class="cbc-piece-row" data-piece-open="' + esc(pid) + '" data-piece-title="' + esc(r.title || "") + '" tabindex="0" role="button"'
         : "";
       return "<tr" + open + ">" +
         '<td><b>' + esc(r.day || "—") + '</b><div style="font-size:11px;color:var(--c-dim);font-family:var(--c-mono)">' + esc(r.date || "") + '</div></td>' +
@@ -246,7 +253,7 @@
         '<td><div style="font-weight:600">' + esc(r.title || "(untitled)") + '</div>' +
           '<div style="font-size:11px;color:var(--c-dim)">' + esc(r.segment || "—") + ' · ' + esc(angleLabel(r.angle)) + '</div></td>' +
         '<td><span class="cbc-chip ' + tone + '">' + esc(String(r.status || "").replace(/_/g, " ")) + "</span>" +
-          (r.pieceId ? '<span class="cbc-piece-read"><i class="fa-solid fa-book-open"></i> Read</span>' : "") + "</td>" +
+          (pid ? '<span class="cbc-piece-read"><i class="fa-solid fa-book-open"></i> Read</span>' : "") + "</td>" +
         "</tr>";
     }).join("");
 
