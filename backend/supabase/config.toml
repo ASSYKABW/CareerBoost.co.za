@@ -75,6 +75,9 @@ verify_jwt = false
 [functions.jobs-search]
 verify_jwt = false
 
+[functions.market-insights]
+verify_jwt = false
+
 [functions.job-import]
 verify_jwt = false
 

@@ -85,6 +85,8 @@ const SCRIPTS = [
   "./src/js/services/candidate/role.context.js",
   "./src/js/services/candidate/application.command-center.js",
   "./src/js/services/candidate/product.intelligence.js",
+  // Live market facts — loaded before the modules that read them (analytics).
+  "./src/js/services/market/market.insights.js",
   "./src/js/auth/auth.route.js",
   "./src/js/auth/auth.confirmed.js",
   "./src/js/auth/auth.verify.js",

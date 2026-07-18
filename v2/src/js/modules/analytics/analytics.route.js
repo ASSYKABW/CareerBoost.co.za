@@ -2386,6 +2386,10 @@
             '<span><i class="fa-solid fa-envelope-open-text"></i><strong>Sent letters</strong><small>unlock variant quality</small></span>' +
           '</div>' +
         '</section>' +
+        // Deliberately inside the empty state: this is the one thing here that
+        // is real on day one. Your own pipeline has no signal yet, but the job
+        // market does — so a brand-new user still gets something true.
+        renderMarketReality() +
       '</section>'
     );
   }
@@ -2536,6 +2540,115 @@
     );
   }
 
+  // ── Market reality ──────────────────────────────────────────────────
+  // The one panel here that works on day one, before the user has applied to
+  // anything: it describes the MARKET, not the user. Everything else in
+  // Analytics reflects your own activity back at you — and the old skill gap
+  // was self-referential (skills you typed vs your resume). This measures you
+  // against what employers actually posted this week.
+  //
+  // Honesty rules, inherited from the scan: every percentage travels with its
+  // sample, `quotable === false` means the sample is too thin to state a
+  // percentage at all, and a stale week is labelled rather than passed off.
+  function renderMarketReality() {
+    const mi = window.CBV2.marketInsights;
+    if (!mi || typeof mi.get !== "function") return "";
+    const data = mi.get();
+    if (!data || !Array.isArray(data.segments) || !data.segments.length) return "";
+
+    const st = getSt();
+    const store = window.CBV2.store;
+    const jsState = (store.getJobSearchState && store.getJobSearchState()) || {};
+    const titles = (jsState.roleProfile && jsState.roleProfile.targetTitles) || [];
+    const seg = mi.segmentFor(titles);
+    const foot = "From " + data.totalSample + " live South African postings scanned the week of " +
+      st(String(data.weekStart || "")) + (data.stale ? " (most recent scan)." : ".");
+
+    // No target role, or one we don't scan. Say so and show what IS covered —
+    // guessing a segment would put accountant figures in front of a developer.
+    if (!seg) {
+      const chips = data.segments.map(function (s) {
+        return '<span class="chip">' + st(s.label || s.segment) + " · n=" + s.sample + "</span>";
+      }).join("");
+      return (
+        '<section class="card panel-lg market-reality">' +
+          '<div class="panel-head"><h2>Market reality</h2><span class="chip cyan">live scan</span></div>' +
+          '<p class="page-subtitle">Set a target role and this becomes specific to it — the skills employers are actually asking for right now, and how many of them your resume covers.</p>' +
+          '<div class="market-chip-row">' + chips + "</div>" +
+          '<div class="analytics-command-actions" style="margin-top:14px">' +
+            '<a class="btn-secondary" href="#/settings?tab=job-preferences"><i class="fa-solid fa-crosshairs"></i> Set target role</a>' +
+          "</div>" +
+          '<p class="market-foot">' + st(foot) + "</p>" +
+        "</section>"
+      );
+    }
+
+    // The candidate's real evidence — resume + profile skills only. Target
+    // skills are excluded on purpose: those are what the user *typed*, and
+    // counting them as "have" is exactly the self-referential trap this panel
+    // exists to escape.
+    let have = [];
+    try {
+      const ci = window.CBV2.candidateIntel;
+      const intel = ci && typeof ci.build === "function" ? ci.build() : null;
+      if (intel && intel.skills) have = [].concat(intel.skills.resume || [], intel.skills.profile || []);
+    } catch (e) { /* no resume yet — everything reads as a gap, which is true */ }
+
+    const gap = mi.skillGap(seg, have);
+    const gapNames = {};
+    gap.forEach(function (g) { gapNames[String(g.name).toLowerCase()] = true; });
+
+    const quotable = seg.quotable !== false;
+    const statCell = function (label, value, suffix) {
+      return '<div class="market-stat"><span>' + st(label) + "</span><b>" +
+        (value === null || value === undefined ? "&mdash;" : st(String(value)) + (suffix || "")) + "</b></div>";
+    };
+    const stats = quotable
+      ? '<div class="market-stats">' +
+          statCell("Postings scanned", seg.sample, "") +
+          statCell("Advertise a salary", seg.salaryDisclosedPct, "%") +
+          statCell("Remote-friendly", seg.remotePct, "%") +
+          statCell("Posted this week", seg.postedLast7dPct, "%") +
+        "</div>"
+      : '<div class="market-stats">' + statCell("Postings scanned", seg.sample, "") + "</div>" +
+        '<p class="market-foot">Only ' + seg.sample + " postings matched this segment — too few to quote percentages, so the shares below are indicative only.</p>";
+
+    const skillRows = (seg.topSkills || []).map(function (s) {
+      const missing = gapNames[String(s.name).toLowerCase()];
+      const share = typeof s.share === "number" ? s.share : 0;
+      return '<div class="conv-row market-skill' + (missing ? " is-gap" : "") + '">' +
+        '<span class="conv-label">' + st(s.name) +
+          (missing
+            ? ' <span class="chip warning">not in your resume</span>'
+            : ' <span class="chip green">covered</span>') +
+        "</span>" +
+        '<div class="conv-track"><span class="conv-fill" style="width:' + Math.min(100, share) + "%;background:" + (missing ? "#f59e0b" : "#22c55e") + '"></span></div>' +
+        '<span class="conv-rate">' + (quotable ? share + "%" : String(s.count || 0)) + "</span>" +
+        '<span class="conv-count">' + (s.count || 0) + " of " + seg.sample + "</span>" +
+        "</div>";
+    }).join("");
+
+    const headline = gap.length
+      ? gap.length + " of the top " + (seg.topSkills || []).length + " skills employers asked for aren't in your resume."
+      : "Your resume covers every top skill in this segment.";
+
+    return (
+      '<section class="card panel-lg market-reality">' +
+        '<div class="panel-head"><h2>Market reality &mdash; ' + st(seg.label || seg.segment) + "</h2>" +
+          '<span class="chip cyan">n=' + seg.sample + "</span></div>" +
+        '<p class="page-subtitle">' + st(headline) + "</p>" +
+        stats +
+        '<div class="conv-grid market-skills">' + skillRows + "</div>" +
+        (gap.length
+          ? '<div class="analytics-command-actions" style="margin-top:14px">' +
+              '<a class="btn-primary" href="#/resume"><i class="fa-solid fa-wand-magic-sparkles"></i> Add this evidence to your resume</a>' +
+            "</div>"
+          : "") +
+        '<p class="market-foot">' + st(foot) + " Percentages are shares of that sample, not predictions.</p>" +
+      "</section>"
+    );
+  }
+
   function renderView() {
     const apps = window.CBV2.store.getApplications();
     if (!apps.length) {
@@ -2613,6 +2726,9 @@
     } else {
       body =
         renderNextActions(intel) +
+        // External truth first: what the market wants, and what your resume is
+        // missing against it. The panels below describe your own activity.
+        renderMarketReality() +
         renderMomentumMetrics(intel) +
         renderHealthMatrix(intel) +
         renderInsightCards(intel);
@@ -2628,7 +2744,26 @@
   }
 
   window.CBV2.routes.analytics = renderView;
+
+  // Market facts load async but renderView() is synchronous, so the first paint
+  // has no panel. Fetch once, then re-render so it fills in. `marketPrimed`
+  // guards the loop: afterRender runs again on that re-render, and a failed or
+  // signed-out load returns null forever — without the flag that would retry
+  // on every single render.
+  let marketPrimed = false;
+  function primeMarketInsights() {
+    const mi = window.CBV2.marketInsights;
+    if (!mi || marketPrimed || mi.get()) return;
+    marketPrimed = true;
+    Promise.resolve(mi.load()).then(function (data) {
+      if (data && window.CBV2 && typeof window.CBV2.renderCurrentRoute === "function") {
+        window.CBV2.renderCurrentRoute();
+      }
+    });
+  }
+
   window.CBV2.afterRender.analytics = function () {
+    primeMarketInsights();
     // Section tabs — switch the active analytics section and re-render.
     document.querySelectorAll("[data-analytics-section]").forEach(function (tab) {
       tab.addEventListener("click", function () {
