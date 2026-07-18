@@ -386,7 +386,11 @@
     $$("#cbc-sb .cbc-nl").forEach(function (n) { n.classList.toggle("is-on", n.getAttribute("data-sec") === sec); });
     var meta = SECTIONS[sec] || SECTIONS.pulse;
     if ($("#cbc-title")) $("#cbc-title").innerHTML = meta.title;
-    if ($("#cbc-sub")) $("#cbc-sub").innerHTML = sec === "pulse" ? meta.sub : "Phase 2 — wires to your existing secure endpoints.";
+    // Every section defines a real `sub` now. This used to show a build-time
+    // placeholder ("Phase 2 — wires to your existing secure endpoints.") for
+    // everything except Pulse, so five of six sections described the rebuild
+    // instead of themselves.
+    if ($("#cbc-sub")) $("#cbc-sub").innerHTML = meta.sub;
     closeNav();
     stopTicker();
     var body = $("#cbc-body"); if (!body) return;

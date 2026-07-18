@@ -458,7 +458,7 @@
       <article class="card panel-lg intel-phase-a-panel">
         <div class="panel-head">
           <h2>Employer research</h2>
-          <span class="chip violet">Phase A</span>
+          <span class="chip violet">before you apply</span>
         </div>
         <p class="ai-body">
           Retrieves public snippets via Google Custom Search (same secrets as Job Search external lookup), then asks the model to summarize with strict URL citations — not HR gospel.
@@ -477,7 +477,7 @@
           </label>
           <label class="form-row-full intel-check">
             <input type="checkbox" name="intelIncludeMock" ${includeIntel ? "checked" : ""} />
-            Pass Phase A briefing into the Virtual interviewer (Phase B)
+            Pass the research briefing into the virtual interviewer
           </label>
         </form>
         <div class="form-actions intel-actions">
@@ -699,7 +699,7 @@
       <article class="card panel-lg mock-panel">
         <div class="panel-head">
           <h2>Virtual interview</h2>
-          <span class="chip blue">Phase B</span>
+          <span class="chip blue">multi-round mock</span>
         </div>
         <p class="ai-body">
           Multi-turn mock: the AI plays interviewer through realistic stages, then produces a debrief with gap analysis and practice drills.
@@ -770,7 +770,7 @@
           <div>
             <p class="eyebrow">Interview Prep</p>
             <h1 class="page-title">Mock Interview Coach</h1>
-            <p class="page-subtitle">Research public interview clues (Phase A), drill STAR answers, or run a multi-round virtual interview with debrief (Phase B).</p>
+            <p class="page-subtitle">Research public interview clues, drill STAR answers, or run a multi-round virtual interview with a debrief you can act on.</p>
           </div>
           <div class="hero-actions interview-hero-split">
             <div class="prep-mode-toggle" role="group" aria-label="Prep mode">
@@ -1897,7 +1897,7 @@
     return (
       '<section class="phase4-intel-panel phase4-interview-intel">' +
         '<div class="phase4-intel-head">' +
-          '<div><p class="eyebrow">Phase 4 intelligence</p><h2>Interview preparation built from role evidence.</h2><p>Research, likely process, questions, weak-area drills, and mock scoring now sit in one preparation model.</p></div>' +
+          '<div><p class="eyebrow">Role intelligence</p><h2>Interview preparation built from role evidence.</h2><p>Research, likely process, questions, weak-area drills, and mock scoring now sit in one preparation model.</p></div>' +
           '<span class="chip ' + (intel.sourceConfidence === "Source-backed" ? "green" : "warning") + '">' + st(intel.sourceConfidence) + '</span>' +
         '</div>' +
         '<div class="phase4-interview-grid">' +
@@ -2064,7 +2064,7 @@
             <h2>Research the company like a prepared insider.</h2>
             <p>Build a public-source briefing, identify likely interview angles, and pass the brief into your AI interviewer.</p>
           </div>
-          <span class="interview-phase-badge">Phase A</span>
+          <span class="interview-phase-badge">Research</span>
         </header>
         <div class="interview-intel-layout">
           <form id="intel-research-form" class="form-grid interview-form-grid">
@@ -2202,7 +2202,7 @@
             <h2>Rehearse with a realistic AI interviewer.</h2>
             <p>Run a multi-turn interview, answer under pressure, and leave with a structured debrief you can act on.</p>
           </div>
-          <span class="interview-phase-badge blue">Phase B</span>
+          <span class="interview-phase-badge blue">Mock interview</span>
         </header>
         <div class="interview-session-grid">
           <form id="mock-session-form" class="form-grid interview-form-grid mock-setup-form">

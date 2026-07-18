@@ -1188,7 +1188,7 @@
     if (window.CBV2.ui && typeof window.CBV2.ui.candidateIntelligenceCard === "function") {
       return window.CBV2.ui.candidateIntelligenceCard({
         title: "Candidate intelligence",
-        badge: "Phase 2 brain",
+        badge: "Shared profile model",
         description: "CareerBoost is now building one reusable profile from your resume, target roles, saved evidence, and pipeline outcomes.",
         actionClass: "candidate-intel-actions"
       });

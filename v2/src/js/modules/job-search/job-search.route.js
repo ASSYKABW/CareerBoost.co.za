@@ -1800,7 +1800,7 @@
       pathChip +
       diagChip +
       bookmarkChip +
-      '<span class="resume-meta-updated">Phase 4 · ' +
+      '<span class="resume-meta-updated">Updated ' +
       st(updatedLabel) +
       "</span>" +
       "</p>" +
