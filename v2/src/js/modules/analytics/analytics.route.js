@@ -291,10 +291,10 @@
       });
     }
     actions.push({
-      icon: "fa-gavel",
+      icon: "fa-clipboard-check",
       tone: "violet",
-      title: "Generate the weekly AI Judge",
-      detail: "Get a ruthless score, gaps, and a 7-day correction plan.",
+      title: "Generate the weekly scorecard",
+      detail: "Score your search across five dimensions, with gaps and a 7-day correction plan.",
       judge: true
     });
     return actions.slice(0, 5);
@@ -428,7 +428,7 @@
           '<h1 class="page-title">Job-search command center</h1>' +
           '<p class="page-subtitle">' + st(intel.headline) + ' ' + st(intel.summary) + '</p>' +
           '<div class="analytics-command-actions">' +
-            '<button class="btn-primary" type="button" data-judge-generate><i class="fa-solid fa-gavel"></i> Generate AI Judge</button>' +
+            '<button class="btn-primary" type="button" data-judge-generate><i class="fa-solid fa-clipboard-check"></i> Generate scorecard</button>' +
             '<button class="btn-secondary" id="export-csv" type="button"><i class="fa-solid fa-file-csv"></i> Export CSV</button>' +
           '</div>' +
         '</div>' +
@@ -1049,11 +1049,14 @@
     const offerRate = submitted ? clampScore(((p.offers || 0) / submitted) * 100) : 0;
     const appsLast7 = scores.details && scores.details.appsLast7 ? scores.details.appsLast7 : 0;
 
-    const cohort = { appsPerWeek: 5, interviewRate: 22, offerRate: 6 };
+    // These are rules of thumb, not measurements — we have no cohort to compare
+    // against, and pretending otherwise would be inventing a peer group. The UI
+    // labels them as targets and says where they come from. (A hardcoded
+    // `cohort` {5,22,6} used to be computed here and was never rendered; it's
+    // gone rather than left lying around implying a comparison that never ran.)
     const target = { appsPerWeek: 8, interviewRate: 30, offerRate: 10 };
     return {
       current: { appsPerWeek: appsLast7, interviewRate: interviewRate, offerRate: offerRate },
-      cohort: cohort,
       target: target,
       gaps: {
         appsPerWeek: appsLast7 - target.appsPerWeek,
@@ -1471,11 +1474,11 @@
       return (
         '<section class="card panel-lg">' +
           '<div class="panel-head">' +
-            '<h2>AI Judge (Phase 1)</h2>' +
+            '<h2>Weekly Scorecard</h2>' +
             '<span class="chip warning">No report yet</span>' +
           '</div>' +
-          '<p class="page-subtitle">Generate your weekly ruthless report: score, what is missing, what is working, and the exact next actions.</p>' +
-          '<div class="hero-actions"><button class="btn-primary" id="judge-generate" type="button"><i class="fa-solid fa-gavel"></i> Generate report</button></div>' +
+          '<p class="page-subtitle">Scores your search across five dimensions — execution, targeting, profile, interview readiness and momentum — then lists what is missing and the exact next actions. Calculated from your own pipeline, so it is instant and never invents a number.</p>' +
+          '<div class="hero-actions"><button class="btn-primary" id="judge-generate" type="button"><i class="fa-solid fa-clipboard-check"></i> Generate report</button></div>' +
         '</section>'
       );
     }
@@ -1506,11 +1509,12 @@
     }
 
     function benchmarkCard(data) {
-      const b = data || { current: {}, cohort: {}, target: {}, gaps: {} };
+      const b = data || { current: {}, target: {}, gaps: {} };
       function gap(v) { return v > 0 ? "+" + v : String(v || 0); }
       return (
         '<section class="card panel-lg">' +
-          '<div class="panel-head"><h2>Benchmark Positioning</h2><span class="chip blue">Phase 2</span></div>' +
+          '<div class="panel-head"><h2>Against target</h2><span class="chip dim">rules of thumb</span></div>' +
+          '<p class="page-subtitle">General job-search targets, not a measurement of other users — we don&rsquo;t compare you to anyone. Treat them as a pace to aim at.</p>' +
           '<div class="conv-grid">' +
             '<div class="conv-row"><span class="conv-label">Applications / week</span><div class="conv-track"><span class="conv-fill" style="width:' + Math.min(100, (b.current.appsPerWeek || 0) * 10) + '%;background:#22d3ee"></span></div><span class="conv-rate">' + (b.current.appsPerWeek || 0) + '</span><span class="conv-count">target ' + (b.target.appsPerWeek || 0) + ' (' + gap(b.gaps.appsPerWeek) + ')</span></div>' +
             '<div class="conv-row"><span class="conv-label">Interview rate</span><div class="conv-track"><span class="conv-fill" style="width:' + (b.current.interviewRate || 0) + '%;background:#6b7dff"></span></div><span class="conv-rate">' + (b.current.interviewRate || 0) + '%</span><span class="conv-count">target ' + (b.target.interviewRate || 0) + '% (' + gap(b.gaps.interviewRate) + ')</span></div>' +
@@ -1572,7 +1576,7 @@
       }).join("");
       return (
         '<section class="card panel-lg">' +
-          '<div class="panel-head"><h2>Coaching Memory</h2><span class="chip violet">Phase 3</span></div>' +
+          '<div class="panel-head"><h2>Coaching Memory</h2><span class="chip violet">your history</span></div>' +
           '<div class="card-grid">' +
             '<article class="card kpi-card"><div class="kpi-head"><span class="chip cyan">Reports generated</span></div><div class="value">' + h.generatedCount + '</div></article>' +
             '<article class="card kpi-card"><div class="kpi-head"><span class="chip green">Adherence streak</span></div><div class="value">' + h.streak + '</div><div class="kpi-foot"><span class="kpi-sub">non-regressing reports</span></div></article>' +
@@ -1593,7 +1597,7 @@
       function fmt(n) { return (n > 0 ? "+" : "") + (Math.round(n * 10) / 10); }
       return (
         '<section class="card panel-lg">' +
-          '<div class="panel-head"><h2>Phase 4 Experiments</h2><span class="chip blue">A/B enabled</span></div>' +
+          '<div class="panel-head"><h2>What we’re testing</h2><span class="chip blue">A/B enabled</span></div>' +
           '<p class="ai-meta">Current report variant: <strong>' + st(variantLabel(latestReport && latestReport.variant)) + '</strong></p>' +
           '<p class="ai-meta">Selection policy: ' + (policy.lockedVariant ? ('locked to <strong>' + st(variantLabel(policy.lockedVariant)) + "</strong>") : ('auto-rotate until each arm reaches ' + (policy.minSamplesPerArm || 4) + ' samples')) + '.</p>' +
           '<div class="conv-grid">' +
@@ -1609,7 +1613,7 @@
       if (!top.length) {
         return (
           '<section class="card panel-lg">' +
-            '<div class="panel-head"><h2>Skill Gap Action Mapper</h2><span class="chip cyan">Phase 3.3</span></div>' +
+            '<div class="panel-head"><h2>Skill Gap Action Mapper</h2><span class="chip cyan">from your gaps</span></div>' +
             '<p class="ai-meta">No critical skill actions to map yet.</p>' +
           '</section>'
         );
@@ -1639,7 +1643,7 @@
         : '<button type="button" class="btn-ghost btn-sm" id="skill-plans-personalize" style="margin-left:8px;"><i class="fa-solid fa-wand-magic-sparkles"></i> Personalize with AI</button>';
       return (
         '<section class="card panel-lg" id="skill-actions-card">' +
-          '<div class="panel-head"><h2>Skill Gap Action Mapper</h2><span class="chip cyan">Phase 3.3</span>' + aiBtn + '</div>' +
+          '<div class="panel-head"><h2>Skill Gap Action Mapper</h2><span class="chip cyan">from your gaps</span>' + aiBtn + '</div>' +
           '<p class="ai-meta">' + (aiPersonalized
             ? 'AI-generated tactical actions tailored to each skill and your background.'
             : 'Templated execution path: resume proof, project proof, and interview story. Click "Personalize with AI" to swap in skill-specific tactical actions.') + '</p>' +
@@ -1651,7 +1655,7 @@
     return (
       '<section class="card panel-lg">' +
         '<div class="panel-head">' +
-          '<h2>AI Judge (Phase 1)</h2>' +
+          '<h2>Weekly Scorecard</h2>' +
           '<span class="chip ' + band.tone + '">' + band.label + '</span>' +
         '</div>' +
         '<div class="card-grid">' +
@@ -1702,7 +1706,7 @@
     state.reports[0] = report;
     updateExperimentStats(state, report);
     saveJudgeState(state);
-    if (window.CBV2.toast) window.CBV2.toast.success("AI Judge report generated.");
+    if (window.CBV2.toast) window.CBV2.toast.success("Weekly scorecard generated.");
     window.CBV2.renderCurrentRoute();
   }
 
@@ -2315,7 +2319,7 @@
       '<section class="analytics-fit-panel phase4-analytics-panel">' +
         '<div class="analytics-section-heading">' +
           '<div><p class="eyebrow">Explainable recommendations</p><h2>What the numbers are asking you to do next.</h2></div>' +
-          '<span class="chip cyan">Phase 4 intelligence</span>' +
+          '<span class="chip cyan">role intelligence</span>' +
         '</div>' +
         '<div class="phase4-recommendation-grid">' + rows + '</div>' +
       '</section>'
