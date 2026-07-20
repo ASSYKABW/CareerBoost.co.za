@@ -385,7 +385,26 @@
     scheduleFlush();
   }
 
+  // Mark this browser as ours so it never shows up as website traffic.
+  //
+  // The Console already drops any anonymous id that has been seen with an admin
+  // account, which covers browsers we've signed into. It cannot cover a browser
+  // we only ever browse signed-out from — and it can never cover a private
+  // window, which has no persistent identity by definition. This is the manual
+  // escape hatch for those: nothing is queued, so nothing is sent at all, which
+  // is cleaner than filtering it back out server-side afterwards.
+  const INTERNAL_KEY = "cbv2_internal_traffic_v1";
+  function isInternalBrowser() {
+    return storageGet("local", INTERNAL_KEY) === "1";
+  }
+  function setInternalBrowser(on) {
+    if (on) storageSet("local", INTERNAL_KEY, "1");
+    else { try { window.localStorage.removeItem(INTERNAL_KEY); } catch (e) { /* ignore */ } }
+    return isInternalBrowser();
+  }
+
   function track(eventName, metadata, options) {
+    if (isInternalBrowser()) return null;
     const opts = options || {};
     const route = opts.route || currentRoute();
     const module = opts.module || moduleFromRoute(route);
@@ -614,6 +633,8 @@
     getSessionId: getSessionId,
     getAnonymousId: getAnonymousId,
     getSessionSnapshot: getSessionSnapshot,
+    isInternalBrowser: isInternalBrowser,
+    setInternalBrowser: setInternalBrowser,
     sanitizeMetadata: function (metadata) { return sanitizeMetadata(metadata || {}, 0); }
   };
 })();

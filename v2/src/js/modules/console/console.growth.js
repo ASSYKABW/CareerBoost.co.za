@@ -113,6 +113,33 @@
     return name;
   }
 
+  // Your own visits are filtered out of every traffic number. Say so, and say
+  // how many — a number that quietly drops data earns no more trust than one
+  // that inflates it. Silent when there's nothing to disclose.
+  function internalNote(t) {
+    var v = Number(t.excludedVisitors7) || 0;
+    var views = Number(t.excludedViews7) || 0;
+    var usage = window.CBV2 && window.CBV2.usage;
+    var muted = usage && typeof usage.isInternalBrowser === "function" && usage.isInternalBrowser();
+
+    var line = "";
+    if (v || views) {
+      line = '<br/><i class="fa-solid fa-user-shield" style="color:var(--c-cyan)"></i> ' +
+        "Excluding your own browsing: " + v + " visit" + (v === 1 ? "" : "s") +
+        (views ? " and " + views + " page view" + (views === 1 ? "" : "s") : "") +
+        " from admin browsers were left out of the figures above.";
+    }
+    // Auto-exclusion only knows browsers an admin has signed into. This covers
+    // the rest — and a private window can never be caught, so say so plainly
+    // instead of implying the number is now perfectly clean.
+    line += '<br/><i class="fa-solid ' + (muted ? "fa-eye-slash" : "fa-eye") + '" style="color:var(--c-dim)"></i> ' +
+      "This browser is " + (muted ? "<b>not being counted</b>" : "currently counted") + " as traffic. " +
+      '<button class="cbc-btn cbc-sm" data-internal-toggle="' + (muted ? "0" : "1") + '" style="margin-left:6px">' +
+        (muted ? "Start counting it" : "Don't count this browser") + "</button>" +
+      '<span style="display:block;margin-top:4px">Private/incognito windows can never be recognised — they keep no identity between visits.</span>';
+    return line;
+  }
+
   function trafficPanel(t) {
     t = t || {};
     if (t.empty) {
@@ -149,6 +176,7 @@
       '<div style="font-size:11.5px;color:var(--c-dim);margin-top:12px">' +
         (Number(t.converted30) || 0) + ' of ' + (Number(t.visitors30) || 0) + ' visitors in the last 30 days went on to create an account. ' +
         'Matched by the anonymous id the browser keeps across signup — no third-party tracker involved.' +
+        internalNote(t) +
       "</div></div>";
   }
 
@@ -911,6 +939,19 @@
     bodyEl.addEventListener("click", function (ev) {
       var tabBtn = ev.target.closest ? ev.target.closest("[data-gtab]") : null;
       if (tabBtn) { switchTab(bodyEl, tabBtn.getAttribute("data-gtab")); return; }
+      var muteBtn = ev.target.closest ? ev.target.closest("[data-internal-toggle]") : null;
+      if (muteBtn) {
+        var on = muteBtn.getAttribute("data-internal-toggle") === "1";
+        var usage = window.CBV2 && window.CBV2.usage;
+        if (usage && typeof usage.setInternalBrowser === "function") {
+          usage.setInternalBrowser(on);
+          toast(on
+            ? "This browser is no longer counted as website traffic."
+            : "This browser will be counted as traffic again.");
+          load(bodyEl);
+        }
+        return;
+      }
       var row = ev.target.closest ? ev.target.closest("[data-piece-open]") : null;
       if (row) { openPiece(bodyEl, row.getAttribute("data-piece-open"), row.getAttribute("data-piece-title")); return; }
       var engBtn = ev.target.closest ? ev.target.closest("[data-eng],[data-eng-plan]") : null;

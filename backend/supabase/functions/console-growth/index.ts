@@ -368,10 +368,45 @@ Deno.serve(withCors(async (req) => {
       .limit(20000);
     const ev = (evRows || []) as Array<Record<string, unknown>>;
 
+    // ── Exclude our own traffic ───────────────────────────────────────
+    // The operator checks the live site most days, and every one of those
+    // visits was landing in "Website visitors" — so the count crept up all week
+    // and read as organic growth when it was one person. Any anonymous id ever
+    // seen alongside an admin/owner account is one of our own browsers: drop it
+    // from visitors, views, sessions AND conversion, and report how many we
+    // dropped so the remaining number is trustworthy rather than merely smaller.
+    //
+    // Caveat, stated rather than hidden: this can only catch browsers where an
+    // admin has signed in at least once. A private window has no persistent id
+    // to recognise, so it is unknowable by design.
+    const adminIds = new Set<string>();
+    try {
+      const { data: userList } = await svc.auth.admin.listUsers({ page: 1, perPage: 200 });
+      for (const u of (userList?.users || [])) {
+        const meta = (u.app_metadata || {}) as Record<string, unknown>;
+        const roles = ([] as unknown[]).concat(
+          (meta.roles as unknown[]) || [],
+          (meta.role as unknown) || [],
+        );
+        if (roles.some((r) => /admin|owner|developer/i.test(String(r)))) adminIds.add(String(u.id));
+      }
+    } catch (_e) { /* can't resolve admins → exclude nothing; numbers stay as before */ }
+
+    const internalAnon = new Set<string>();
+    if (adminIds.size) {
+      for (const r of ev) {
+        const a = String(r.anonymous_id || "");
+        const uid = r.user_id ? String(r.user_id) : "";
+        if (a && uid && adminIds.has(uid)) internalAnon.add(a);
+      }
+    }
+
     const since7 = Date.now() - 7 * DAY_MS;
     const anon30 = new Set<string>();
     const anon7 = new Set<string>();
     const knownAnon = new Set<string>();       // anon ids seen WITH a user_id → converted
+    const excludedAnon7 = new Set<string>();   // our own browsers, for disclosure
+    let excludedViews7 = 0;
     const firstSeen = new Map<string, number>();
     const pages = new Map<string, number>();
     const sources = new Map<string, number>();
@@ -385,6 +420,17 @@ Deno.serve(withCors(async (req) => {
       const t = Date.parse(String(r.occurred_at || "")) || 0;
       const isAnonRow = r.user_id === null || r.user_id === undefined;
       if (!isAnonRow) { knownAnon.add(anon); continue; }  // signed-in rows only mark conversion
+
+      // One of our own browsers. Counted only for disclosure, never as traffic —
+      // and skipping it here also keeps it out of anon30, so it can't inflate
+      // the visit→signup rate as a "conversion" either.
+      if (internalAnon.has(anon)) {
+        if (t >= since7) {
+          excludedAnon7.add(anon);
+          if (String(r.event_name || "") === "view_route") excludedViews7++;
+        }
+        continue;
+      }
 
       anon30.add(anon);
       const prevSeen = firstSeen.get(anon);
@@ -447,6 +493,11 @@ Deno.serve(withCors(async (req) => {
       sources: rank(sources, 8),
       devices: rank(devices, 4),
       empty: anon30.size === 0,
+      // Disclosed, not silently swallowed: a number that quietly drops data is
+      // as untrustworthy as one that inflates it.
+      excludedVisitors7: excludedAnon7.size,
+      excludedViews7: excludedViews7,
+      internalBrowsers: internalAnon.size,
     };
   } catch (_e) { /* leave the zeroed default — never 500 the section */ }
 
